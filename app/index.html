@@ -4,6 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CareerPilot AI</title>
+  <script>
+    /* apply saved theme before first paint to avoid a flash */
+    try {
+      var u = JSON.parse(localStorage.getItem('careerpilot_ui_v1') || '{}');
+      if (u.theme === 'dark') document.documentElement.dataset.theme = 'dark';
+      if (u.accent && u.accent !== 'indigo') document.documentElement.dataset.accent = u.accent;
+    } catch (e) { /* defaults */ }
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Instrument+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
@@ -11,6 +19,7 @@
   <link rel="stylesheet" href="css/profile.css">
   <link rel="stylesheet" href="css/applications.css">
   <link rel="stylesheet" href="css/resumes.css">
+  <link rel="stylesheet" href="css/polish.css">
 </head>
 <body>
 
@@ -21,7 +30,7 @@
         <div class="mark"><i></i></div>
         <div>
           <div class="name">CareerPilot <span style="color:#8082E2">AI</span></div>
-          <div class="tag">SPRINT 4 · UI MVP</div>
+          <div class="tag">SPRINT 5 · UI MVP</div>
         </div>
       </div>
 
@@ -38,18 +47,38 @@
       <header class="topbar">
         <h1 id="screen-title">Dashboard</h1>
         <div class="sync"><i></i> Last sync 6:00 AM</div>
-        <button class="btn btn-primary" style="margin-left:auto" onclick="runDailySearch()">Run daily search</button>
+        <div class="gsearch">
+          <span class="gs-icon" id="gs-icon"></span>
+          <input id="gsearch-input" type="text" autocomplete="off" spellcheck="false"
+                 placeholder="Search applications…"
+                 oninput="Search.onInput(this.value)" onkeydown="Search.onKey(event)" onblur="Search.onBlur()">
+          <span class="gs-kbd">Ctrl K</span>
+          <div class="gs-drop" id="gs-drop" hidden></div>
+        </div>
+        <button class="btn btn-primary" onclick="runDailySearch()">Run daily search</button>
       </header>
 
-      <main id="screen" class="screen"></main>
+      <main id="screen" class="screen">
+        <!-- boot skeleton — replaced by the first navigate() -->
+        <div class="skel" style="width:220px; height:20px; margin-bottom:18px"></div>
+        <div class="grid grid-4">
+          <div class="skel" style="height:88px"></div><div class="skel" style="height:88px"></div>
+          <div class="skel" style="height:88px"></div><div class="skel" style="height:88px"></div>
+        </div>
+        <div class="skel" style="height:120px; margin-top:12px"></div>
+        <div class="skel" style="height:260px; margin-top:12px"></div>
+      </main>
     </div>
 
   </div>
 
-  <div id="toast"></div>
+  <div id="toasts"></div>
 
   <script src="js/data.js"></script>
   <script src="js/lib/icons.js"></script>
+  <script src="js/lib/notify.js"></script>
+  <script src="js/lib/activity.js"></script>
+  <script src="js/lib/theme.js"></script>
   <script src="js/profile/profile-store.js"></script>
   <script src="js/profile/profile-validate.js"></script>
   <script src="js/profile/profile-view.js"></script>
@@ -60,6 +89,7 @@
   <script src="js/resumes/resumes-store.js"></script>
   <script src="js/resumes/resumes-view.js"></script>
   <script src="js/resumes/resumes.js"></script>
+  <script src="js/search/search.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

@@ -53,31 +53,42 @@ function renderNav() {
   document.getElementById('nav').innerHTML = nav;
 }
 
-/* ---------- toast ---------- */
-let toastTimer;
-function toast(msg) {
-  const el = document.getElementById('toast');
-  el.textContent = msg;
-  el.classList.add('show');
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
-}
+/* toast() now lives in lib/notify.js (stacked, typed, feeds Activity) */
 
 /* ============================================================
    DASHBOARD
    ============================================================ */
 function renderDashboard() {
-  const stats = DB.stats.map(s => `
+  /* live analytics computed from the Applications board */
+  const cc = Applications.counts();
+  const conv = cc.total ? Math.round(((cc.interview + cc.offer) / cc.total) * 100) : 0;
+  const succ = cc.total ? Math.round((cc.offer / cc.total) * 100) : 0;
+  const statData = [
+    { k: 'Applications',         v: '128',       d: `${cc.total} on the board now`, up: false },
+    { k: 'Interview conversion', v: conv + '%',  d: `${cc.interview + cc.offer} of ${cc.total} progressed`, up: conv >= 25 },
+    { k: 'Success rate',         v: succ + '%',  d: `${cc.offer} offer${cc.offer === 1 ? '' : 's'} on the board`, up: succ > 0 },
+    { k: 'Avg salary',           v: '$148k',     d: 'target band', up: false },
+  ];
+  const stats = statData.map(s => `
     <div class="card stat">
       <div class="k">${s.k}</div>
       <div class="v">${s.v}</div>
       <div class="d ${s.up ? 'up' : ''}">${s.d}</div>
     </div>`).join('');
 
-  const bars = DB.weekly.map(w => `
+  /* monthly activity: seeded history + live Jun/Jul from the board */
+  const liveMonths = { '2026-06': { m: 'Jun', n: 0 }, '2026-07': { m: 'Jul', n: 0 } };
+  Applications.getItems().forEach(a => {
+    const k = (a.applied || '').slice(0, 7);
+    if (liveMonths[k]) liveMonths[k].n++;
+  });
+  const months = [...DB.monthly, ...Object.values(liveMonths).map(x => ({ ...x, live: true }))];
+  const maxM = Math.max(...months.map(x => x.n), 1);
+  const bars = months.map(x => `
     <div class="col">
-      <div class="bar" style="height:${w.pct}%"></div>
-      <span class="lbl">${w.label}</span>
+      <div class="bar" title="${x.n} application${x.n === 1 ? '' : 's'}"
+           style="height:${Math.max(4, Math.round(x.n / maxM * 100))}%; background:${x.live ? 'var(--accent)' : 'var(--accent-soft)'}"></div>
+      <span class="lbl">${x.m}</span>
     </div>`).join('');
 
   const actions = DB.pendingActions.map(a => `
@@ -93,16 +104,17 @@ function renderDashboard() {
       <span class="fn">${f.n}</span>
     </div>`).join('');
 
-  const best = DB.bestPerformers.map(b => `
-    <div class="card card-pad">
-      <div class="k" style="font-size:11px; color:var(--muted)">${b.k}</div>
-      <div style="font-family:var(--disp); font-weight:600; font-size:16px; margin-top:5px">${b.v}</div>
-      <div style="font-size:11.5px; color:var(--green); margin-top:3px">${b.d}</div>
-    </div>`).join('');
+  /* recent activity timeline — fed by Activity (every toast logs) */
+  const timeline = Activity.recent(7).map(e => `
+    <div class="tl-row">
+      <span class="tl-dot ${e.type}"></span>
+      <div class="tl-body"><p>${e.msg}</p><span class="tl-time">${Activity.rel(e.t)}</span></div>
+    </div>`).join('') ||
+    '<div class="empty" style="border:none"><b>No activity yet</b>Actions you take will show up here.</div>';
 
   /* live counts from the Applications board — always current
      because the dashboard re-renders on every visit */
-  const pc = Applications.counts();
+  const pc = cc;
   const pipeline = `
     <div class="card card-pad pipe-card">
       <div class="pipe-head">
@@ -124,7 +136,7 @@ function renderDashboard() {
     ${pipeline}
     <div class="dash-mid">
       <div class="card card-pad">
-        <p class="card-title">Applications · last 8 weeks</p>
+        <p class="card-title">Monthly activity · applications sent</p>
         <div class="bars">${bars}</div>
       </div>
       <div class="card card-pad">
@@ -137,7 +149,10 @@ function renderDashboard() {
         <p class="card-title">Interview conversion funnel</p>
         <div style="display:flex; flex-direction:column; gap:9px">${funnel}</div>
       </div>
-      <div class="grid" style="align-content:start">${best}</div>
+      <div class="card card-pad">
+        <p class="card-title">Recent activity</p>
+        <div class="tline">${timeline}</div>
+      </div>
     </div>`;
 }
 
@@ -442,12 +457,60 @@ function renderSettings() {
       </label>
     </div>`;
 
+  /* live pieces: theme state, profile summary, storage sizes */
+  const escS = v => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const th = Theme.get();
+  const pcm = Profile.completeness();
+  const pp = Profile.getState().preferences;
+
+  const appearance = `
+    <div class="card card-pad">
+      <p class="card-title">Appearance</p>
+      <div class="theme-tiles">
+        <button class="theme-tile ${th.theme !== 'dark' ? 'active' : ''}" onclick="Theme.set('light')">${Icons.get('sun', 15)} Light</button>
+        <button class="theme-tile ${th.theme === 'dark' ? 'active' : ''}" onclick="Theme.set('dark')">${Icons.get('moon', 15)} Dark</button>
+      </div>
+      <div class="field" style="margin-top:14px; margin-bottom:0"><label>Accent color</label>
+        <div class="swatches">
+          ${[['indigo', '#3538CD'], ['forest', '#1E7A4D'], ['rust', '#B7791F']].map(([a, c]) => `
+            <button class="swatch ${(th.accent || 'indigo') === a ? 'active' : ''}" style="background:${c}" title="${a}" onclick="Theme.setAccent('${a}')"></button>`).join('')}
+        </div>
+      </div>
+      <div class="hint" style="margin-top:9px">Applies instantly and is remembered in this browser.</div>
+    </div>`;
+
+  const profilePrefs = `
+    <div class="card card-pad">
+      <p class="card-title">Profile preferences</p>
+      <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px">
+        <div class="meter-track" style="flex:1"><div class="meter-fill" style="width:${pcm.pct}%"></div></div>
+        <span class="mono" style="font-size:10.5px; color:var(--muted)">${pcm.pct}% complete</span>
+      </div>
+      <div class="pref-row"><span>Target roles</span><b>${escS(pp.targetRoles) || '—'}</b></div>
+      <div class="pref-row"><span>Locations</span><b>${escS(pp.locations) || '—'}</b></div>
+      <div class="pref-row"><span>Minimum salary</span><b>$${escS(pp.minSalary)}k</b></div>
+      <div class="pref-row"><span>Work mode</span><b>${escS(pp.workMode)} · ${escS(pp.jobType)}</b></div>
+      <a class="btn btn-ghost" href="#/profile" style="margin-top:12px; display:inline-block">Edit on Profile page →</a>
+    </div>`;
+
+  const localData = `
+    <div class="card card-pad">
+      <p class="card-title">Local data</p>
+      <div class="hint" style="margin-bottom:6px">Everything CareerPilot stores lives in this browser's localStorage — nothing leaves your machine.</div>
+      ${storageRows()}
+      <div class="ld-actions">
+        <button class="btn btn-primary" onclick="exportAllData()" style="display:inline-flex; align-items:center; gap:7px">${Icons.get('download', 13)} Export all data</button>
+        <button class="btn btn-ghost btn-danger" onclick="clearAllData()" style="display:inline-flex; align-items:center; gap:7px">${Icons.get('trash', 13)} Clear all</button>
+      </div>
+    </div>`;
+
   return `
-    <p class="screen-intro">Sprint 1: settings are UI-only and reset on refresh. Real persistence arrives with the backend.</p>
+    <p class="screen-intro">Appearance and local data controls are live. Account and search preferences below are UI-only until the backend arrives.</p>
     <div class="set-grid">
       <div style="display:flex; flex-direction:column; gap:12px">
+        ${appearance}
         <div class="card card-pad">
-          <p class="card-title">Profile</p>
+          <p class="card-title">Account</p>
           <div class="field"><label>Full name</label><input type="text" id="set-name" value="${s.name}"></div>
           <div class="field"><label>Email</label><input type="text" id="set-email" value="${s.email}"></div>
           <div class="field"><label>Target roles</label><input type="text" id="set-roles" value="${s.targetRoles}">
@@ -462,8 +525,10 @@ function renderSettings() {
               ${['05:00', '06:00', '07:00', '08:00'].map(t => `<option ${t === s.searchTime ? 'selected' : ''}>${t}</option>`).join('')}
             </select></div>
         </div>
+        ${localData}
       </div>
       <div style="display:flex; flex-direction:column; gap:12px">
+        ${profilePrefs}
         <div class="card card-pad">
           <p class="card-title">Job sources</p>
           ${sw('sources', 'greenhouse', 'Greenhouse', 'Direct ATS boards', s.sources.greenhouse)}
@@ -513,14 +578,93 @@ function saveSettings() {
 }
 
 /* ============================================================
+   local data management (Settings)
+   ============================================================ */
+const LOCAL_STORES = () => [
+  { key: ProfileStore.KEY,      label: 'Career profile' },
+  { key: ApplicationsStore.KEY, label: 'Applications board' },
+  { key: ResumesStore.KEY,      label: 'Generated documents' },
+  { key: Activity.KEY,          label: 'Activity log' },
+  { key: Theme.KEY,             label: 'Theme & UI preferences' },
+];
+
+function storageRows() {
+  return LOCAL_STORES().map(({ key, label }) => {
+    let size = 'empty';
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw) size = (raw.length / 1024).toFixed(1) + ' KB';
+    } catch (e) { size = 'unavailable'; }
+    return `
+      <div class="ldrow">
+        <div><b>${label}</b><span>${key} · ${size}</span></div>
+        <button class="ld-clear" onclick="clearStore('${key}', '${label}')">Clear</button>
+      </div>`;
+  }).join('');
+}
+
+function buildExport() {
+  const data = { exportedAt: new Date().toISOString(), app: 'CareerPilot AI (UI MVP)' };
+  LOCAL_STORES().forEach(({ key }) => {
+    try { data[key] = JSON.parse(localStorage.getItem(key)); } catch (e) { data[key] = null; }
+  });
+  return JSON.stringify(data, null, 2);
+}
+
+function exportAllData() {
+  const blob = new Blob([buildExport()], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'careerpilot-data.json';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  toast('Data exported as careerpilot-data.json');
+}
+
+function clearStore(key, label) {
+  if (!confirm(`Clear "${label}" from this browser? The page will reload with defaults.`)) return;
+  try { localStorage.removeItem(key); } catch (e) { /* ignore */ }
+  location.reload();
+}
+
+function clearAllData() {
+  if (!confirm('Clear ALL CareerPilot data from this browser? The page will reload with defaults.')) return;
+  LOCAL_STORES().forEach(({ key }) => {
+    try { localStorage.removeItem(key); } catch (e) { /* ignore */ }
+  });
+  location.reload();
+}
+
+/* ============================================================
    top bar action + boot
    ============================================================ */
+function skeletonHtml() {
+  return `
+    <div class="skel" style="width:220px; height:20px; margin-bottom:18px"></div>
+    <div class="grid grid-4">
+      <div class="skel" style="height:88px"></div><div class="skel" style="height:88px"></div>
+      <div class="skel" style="height:88px"></div><div class="skel" style="height:88px"></div>
+    </div>
+    <div class="skel" style="height:120px; margin-top:12px"></div>
+    <div class="skel" style="height:260px; margin-top:12px"></div>`;
+}
+
 function runDailySearch() {
-  toast('Daily search queued (mock) — sourcing runs nightly once the backend lands');
+  const screen = document.getElementById('screen');
+  if (screen) screen.innerHTML = skeletonHtml();
+  setTimeout(() => {
+    navigate();
+    toast('Daily search complete — 6 matches waiting on Today’s Jobs (mock)', 'info');
+  }, 800);
 }
 
 window.addEventListener('hashchange', navigate);
 window.addEventListener('DOMContentLoaded', () => {
+  if (typeof Theme !== 'undefined') Theme.init();
+  if (typeof Activity !== 'undefined') Activity.init();
+  if (typeof Search !== 'undefined') Search.init();
   if (!location.hash) location.hash = '#/dashboard';
   navigate();
 });

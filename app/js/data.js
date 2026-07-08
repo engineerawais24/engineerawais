@@ -24,6 +24,12 @@ const DB = {
     { label: 'W7', pct: 70 }, { label: 'W8', pct: 90 },
   ],
 
+  /* seeded history for the monthly activity chart — Jun/Jul are
+     computed live from the Applications board at render time */
+  monthly: [
+    { m: 'Feb', n: 14 }, { m: 'Mar', n: 19 }, { m: 'Apr', n: 16 }, { m: 'May', n: 22 },
+  ],
+
   pendingActions: [
     { color: '#3538CD', html: '<b>Complete your profile</b> — sharpens match scores', route: 'profile' },
     { color: '#B7791F', html: '<b>6 new matches</b> awaiting review', route: 'jobs' },

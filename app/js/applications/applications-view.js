@@ -37,7 +37,7 @@ const ApplicationsView = (() => {
 
   function card(a) {
     return `
-      <article class="kcard" draggable="true"
+      <article class="kcard" draggable="true" data-id="${a.id}"
                ondragstart="Applications.dragStart(event,'${a.id}')"
                ondragend="Applications.dragEnd(event)">
         <div class="ktop">
