@@ -1,0 +1,100 @@
+/* ============================================================
+   CareerPilot AI — Resume Builder styles (Sprint 4)
+   Loads after styles.css; only builder-specific components.
+   ============================================================ */
+
+/* ---- two-column layout: workbench | preview ---- */
+.doc-layout{ display:grid; grid-template-columns:1fr 1.45fr; gap:12px; align-items:start; }
+.doc-side{ display:flex; flex-direction:column; gap:12px; min-width:0; }
+
+/* ---- workbench ---- */
+.doc-select{
+  width:100%; padding:9px 11px; border:1px solid var(--border); border-radius:8px;
+  background:var(--card); font-family:inherit; font-size:13px; color:var(--ink);
+}
+.doc-select:focus{ outline:2px solid var(--accent-border); border-color:var(--accent); }
+.sugg-status{ display:flex; align-items:center; gap:8px; margin-top:10px; }
+
+.sugg{ margin-top:12px; }
+.sugg-label{ font-family:var(--mono); font-size:9.5px; letter-spacing:.12em; color:var(--faint); margin-bottom:7px; }
+.sugg-tips{ margin:13px 0 0; padding-left:16px; font-size:11.5px; line-height:1.65; color:var(--body); }
+.sugg-tips li{ margin-bottom:3px; }
+
+.doc-actions{ display:flex; gap:8px; flex-wrap:wrap; margin-top:15px; padding-top:14px; border-top:1px solid var(--divider); }
+
+/* ---- variants list ---- */
+.variant-list{ display:flex; flex-direction:column; gap:7px; }
+.vrow{
+  display:flex; align-items:center; gap:10px;
+  border:1px solid var(--divider); border-radius:10px; background:var(--subtle);
+  padding:9px 11px;
+}
+.vrow.active{ border-color:var(--accent-border); background:var(--accent-soft); }
+.vinfo{ flex:1; min-width:0; }
+.vt{ font-weight:600; font-size:12.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.vm{ font-size:10.5px; color:var(--muted); margin-top:1px; }
+.vrow .ats{ font-family:var(--mono); font-size:10.5px; font-weight:600; padding:3px 8px; border-radius:6px; flex:none; }
+.vload{
+  border:1px solid var(--border); border-radius:7px; background:var(--card);
+  font-size:10.5px; font-weight:600; color:var(--body); padding:5px 10px; flex:none;
+}
+.vload:hover{ background:var(--panel); }
+.vrow.active .vload{ background:var(--accent); border-color:var(--accent); color:#fff; }
+
+/* ---- preview panel ---- */
+.doc-main{ padding:14px 16px 20px; min-width:0; }
+.doc-toolbar{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:12px; }
+.doc-tools{ margin-left:auto; display:flex; gap:8px; flex-wrap:wrap; }
+
+.doc-banner{
+  display:flex; align-items:center; gap:6px; flex-wrap:wrap;
+  font-size:11.5px; color:var(--accent-ink);
+  background:var(--accent-soft); border:1px solid var(--accent-border);
+  border-radius:9px; padding:8px 12px; margin-bottom:12px;
+}
+.doc-banner.neutral{ background:var(--subtle); border-color:var(--divider); color:var(--muted); }
+.doc-banner .ats{ font-family:var(--mono); font-size:10.5px; font-weight:600; padding:3px 8px; border-radius:6px; }
+
+/* ---- the paper ---- */
+.paper{
+  background:#fff; border:1px solid var(--border); border-radius:8px;
+  padding:34px 36px; box-shadow:0 14px 40px -22px rgba(26,23,18,.35);
+  min-height:480px;
+}
+.rp-name{ font-family:var(--disp); font-weight:700; font-size:25px; letter-spacing:-.02em; }
+.rp-headline{ font-size:14px; color:var(--accent); font-weight:600; margin-top:2px; }
+.rp-contact{ font-family:var(--mono); font-size:10px; color:var(--body); margin-top:8px; line-height:1.6; overflow-wrap:anywhere; }
+.rp-sec{
+  font-family:var(--mono); font-size:9.5px; letter-spacing:.16em; color:var(--accent);
+  font-weight:600; margin:20px 0 7px; border-bottom:1px solid var(--border); padding-bottom:5px;
+}
+.rp-text{ font-size:12px; line-height:1.65; color:var(--body); margin:0; }
+.rp-skills{ display:flex; flex-wrap:wrap; gap:5px; }
+.rp-skills span{
+  font-size:11px; border:1px solid var(--border); border-radius:5px;
+  padding:3px 8px; color:var(--body);
+}
+.rp-skills .hl{ background:var(--accent-soft); border-color:var(--accent-border); color:var(--accent-ink); font-weight:600; }
+.rp-job{ margin-bottom:12px; }
+.rp-job-head{ font-size:12.5px; color:var(--body); }
+.rp-job-head b{ color:var(--ink); }
+.rp-period{ float:right; font-family:var(--mono); font-size:10px; color:var(--muted); }
+.rp-job ul{ margin:5px 0 0; padding-left:17px; font-size:11.5px; line-height:1.6; color:var(--body); }
+.rp-job li{ margin-bottom:2px; }
+.rp-cols{ display:flex; gap:36px; flex-wrap:wrap; }
+.rp-cols > div{ flex:1; min-width:180px; }
+
+/* cover letter */
+.rp-letter p{ font-size:12.5px; line-height:1.75; color:var(--body); margin:0 0 14px; }
+.rp-letter p:first-child{ font-family:var(--mono); font-size:10.5px; color:var(--muted); }
+.paper-empty{ display:flex; align-items:center; justify-content:center; }
+
+/* ---- responsive ---- */
+@media (max-width:1100px){
+  .doc-layout{ grid-template-columns:1fr; }
+}
+@media (max-width:560px){
+  .paper{ padding:22px 18px; }
+  .doc-tools{ margin-left:0; width:100%; }
+  .doc-tools .btn{ flex:1; justify-content:center; }
+}

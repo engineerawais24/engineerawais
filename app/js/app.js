@@ -18,7 +18,7 @@ const SCREENS = {
   jobs:      { label: "Today's Jobs",    title: "Today's Jobs",         render: renderJobs,      badge: () => DB.jobs.filter(j => j.status === 'pending').length },
   approvals: { label: 'Approvals',       title: 'Approvals',            render: renderApprovals, badge: () => DB.approvals.filter(a => a.status === 'awaiting').length },
   applications: { label: 'Applications', title: 'Applications Board',   render: () => Applications.render() },
-  resumes:   { label: 'Resume Library',  title: 'Resume Library',       render: renderResumes },
+  resumes:   { label: 'Resume Library',  title: 'Resume Library',       render: () => Resumes.render() },
   tracker:   { label: 'Tracker',         title: 'Applications Tracker', render: renderTracker },
   interview: { label: 'Interview Prep',  title: 'Interview Prep',       render: renderInterview },
   settings:  { label: 'Settings',        title: 'Settings',             render: renderSettings },
@@ -321,47 +321,6 @@ function rejectPackage(id) {
 
 function editPackage() {
   toast('Document editor ships in Sprint 2');
-}
-
-/* ============================================================
-   RESUME LIBRARY
-   ============================================================ */
-function renderResumes() {
-  const variants = DB.variants.map(v => `
-    <div class="card variant">
-      <div>
-        <div class="vt">${v.company} · ${v.title}</div>
-        <div class="vm">${v.meta}</div>
-      </div>
-      <span class="ats" style="background:${v.tone === 'green' ? 'var(--green-soft)' : 'var(--amber-soft)'}; color:${v.tone === 'green' ? 'var(--green-ink)' : 'var(--amber)'}">ATS ${v.ats}</span>
-      <div class="fmt">
-        <button onclick="downloadDoc('${v.company}','DOCX')">DOCX</button>
-        <button onclick="downloadDoc('${v.company}','PDF')">PDF</button>
-      </div>
-    </div>`).join('');
-
-  return `
-    <p class="screen-intro">One master resume is the single source of truth; every tailored variant is generated from it and versioned separately.</p>
-    <div class="res-grid">
-      <div class="res-master">
-        <div class="rk">MASTER RESUME</div>
-        <div class="rt">${DB.master.title}</div>
-        <div class="rd">${DB.master.blurb}</div>
-        <div class="skills">${DB.master.skills.map(s => `<span>${s}</span>`).join('')}</div>
-        <button class="btn" onclick="toast('Master editor ships in Sprint 2')">Edit master · ${DB.master.updated}</button>
-      </div>
-      <div style="display:flex; flex-direction:column; gap:9px">
-        <div style="font-size:12.5px; font-weight:600; color:var(--body)">Tailored variants</div>
-        ${variants}
-        <button class="gen-variant" onclick="toast('Paste-a-JD generation ships in Sprint 2 (needs AI)')">
-          <span class="plus">+</span> Generate variant for a pasted job description…
-        </button>
-      </div>
-    </div>`;
-}
-
-function downloadDoc(company, fmt) {
-  toast(`${company} ${fmt} export is mocked — real files come with the backend`);
 }
 
 /* ============================================================
