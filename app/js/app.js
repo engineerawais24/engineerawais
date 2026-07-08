@@ -14,6 +14,7 @@ const UI = {
 /* ---------- screens registry ---------- */
 const SCREENS = {
   dashboard: { label: 'Dashboard',       title: 'Dashboard',            render: renderDashboard },
+  profile:   { label: 'Profile',         title: 'Career Profile',       render: () => Profile.render(), badge: () => Profile.isDirty() ? '•' : 0 },
   jobs:      { label: "Today's Jobs",    title: "Today's Jobs",         render: renderJobs,      badge: () => DB.jobs.filter(j => j.status === 'pending').length },
   approvals: { label: 'Approvals',       title: 'Approvals',            render: renderApprovals, badge: () => DB.approvals.filter(a => a.status === 'awaiting').length },
   resumes:   { label: 'Resume Library',  title: 'Resume Library',       render: renderResumes },
@@ -40,11 +41,12 @@ function renderNav() {
   const route = currentRoute();
   const nav = Object.entries(SCREENS).map(([key, s]) => {
     const badge = s.badge ? s.badge() : 0;
+    const badgeCls = badge === '•' ? 'badge amber' : 'badge';
     return `
       <button class="nav-item ${key === route ? 'active' : ''}" onclick="location.hash='#/${key}'">
         <span class="dot"></span>
         <span>${s.label}</span>
-        ${badge ? `<span class="badge">${badge}</span>` : ''}
+        ${badge ? `<span class="${badgeCls}">${badge}</span>` : ''}
       </button>`;
   }).join('');
   document.getElementById('nav').innerHTML = nav;

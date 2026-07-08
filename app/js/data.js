@@ -25,6 +25,7 @@ const DB = {
   ],
 
   pendingActions: [
+    { color: '#3538CD', html: '<b>Complete your profile</b> — sharpens match scores', route: 'profile' },
     { color: '#B7791F', html: '<b>6 new matches</b> awaiting review', route: 'jobs' },
     { color: '#3538CD', html: '<b>3 tailored applications</b> ready to approve', route: 'approvals' },
     { color: '#1E7A4D', html: 'Prep <b>Stripe</b> tech screen · Jul 9', route: 'interview' },

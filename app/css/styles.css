@@ -417,8 +417,10 @@ button{ font-family:inherit; cursor:pointer; }
   .rail{ position:static; height:auto; flex-direction:row; align-items:center; flex-wrap:wrap; gap:4px; padding:10px 12px; }
   .rail-logo{ padding:0 8px 0 0; }
   .rail-label,.rail-user{ display:none; }
+  #nav{ display:flex; flex-wrap:wrap; gap:4px; flex:1; }
   .nav-item{ width:auto; padding:7px 11px; }
   .nav-item .dot{ display:none; }
+  .topbar{ flex-wrap:wrap; row-gap:8px; }
   .grid-4{ grid-template-columns:1fr 1fr; }
   .dash-mid,.grid-2,.res-grid,.pkg-docs,.set-grid{ grid-template-columns:1fr; }
   .res-master{ position:static; }
