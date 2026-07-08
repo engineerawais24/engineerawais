@@ -17,6 +17,7 @@ const SCREENS = {
   profile:   { label: 'Profile',         title: 'Career Profile',       render: () => Profile.render(), badge: () => Profile.isDirty() ? '•' : 0 },
   jobs:      { label: "Today's Jobs",    title: "Today's Jobs",         render: renderJobs,      badge: () => DB.jobs.filter(j => j.status === 'pending').length },
   approvals: { label: 'Approvals',       title: 'Approvals',            render: renderApprovals, badge: () => DB.approvals.filter(a => a.status === 'awaiting').length },
+  applications: { label: 'Applications', title: 'Applications Board',   render: () => Applications.render() },
   resumes:   { label: 'Resume Library',  title: 'Resume Library',       render: renderResumes },
   tracker:   { label: 'Tracker',         title: 'Applications Tracker', render: renderTracker },
   interview: { label: 'Interview Prep',  title: 'Interview Prep',       render: renderInterview },
@@ -99,8 +100,28 @@ function renderDashboard() {
       <div style="font-size:11.5px; color:var(--green); margin-top:3px">${b.d}</div>
     </div>`).join('');
 
+  /* live counts from the Applications board — always current
+     because the dashboard re-renders on every visit */
+  const pc = Applications.counts();
+  const pipeline = `
+    <div class="card card-pad pipe-card">
+      <div class="pipe-head">
+        <p class="card-title" style="margin:0">Application pipeline</p>
+        <span class="eyebrow" style="font-size:9px">LIVE · SYNCED WITH BOARD</span>
+        <a class="open" href="#/applications">Open board →</a>
+      </div>
+      <div class="pipe-row">
+        ${ApplicationsView.COLS.map(c => `
+          <a class="pipe-item" href="#/applications">
+            <div class="n" style="color:${c.color}">${pc[c.id]}</div>
+            <div class="l">${c.label}</div>
+          </a>`).join('')}
+      </div>
+    </div>`;
+
   return `
     <div class="grid grid-4">${stats}</div>
+    ${pipeline}
     <div class="dash-mid">
       <div class="card card-pad">
         <p class="card-title">Applications · last 8 weeks</p>
