@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CareerPilot AI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Instrument+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+  <div class="shell">
+
+    <aside class="rail">
+      <div class="rail-logo">
+        <div class="mark"><i></i></div>
+        <div>
+          <div class="name">CareerPilot <span style="color:#8082E2">AI</span></div>
+          <div class="tag">SPRINT 1 · UI MVP</div>
+        </div>
+      </div>
+
+      <div class="rail-label">WORKSPACE</div>
+      <div id="nav"></div>
+
+      <div class="rail-user">
+        <div class="avatar">YO</div>
+        <div class="who"><b>You</b><span>Pro · 1 seat</span></div>
+      </div>
+    </aside>
+
+    <div class="main">
+      <header class="topbar">
+        <h1 id="screen-title">Dashboard</h1>
+        <div class="sync"><i></i> Last sync 6:00 AM</div>
+        <button class="btn btn-primary" style="margin-left:auto" onclick="runDailySearch()">Run daily search</button>
+      </header>
+
+      <main id="screen" class="screen"></main>
+    </div>
+
+  </div>
+
+  <div id="toast"></div>
+
+  <script src="js/data.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
