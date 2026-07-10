@@ -43,8 +43,29 @@ const ResumesView = (() => {
       </div>`;
   }
 
+  function masterRow(m) {
+    if (!m) {
+      return `
+        <button class="gen-variant" style="margin-bottom:9px" onclick="MasterResume.pick()">
+          <span class="plus">+</span> Import master resume (PDF or DOCX)
+        </button>`;
+    }
+    return `
+      <div class="mfile mfile-compact">
+        <div class="mfile-ic ${m.kind}">${m.kind.toUpperCase()}</div>
+        <div class="mfile-info">
+          <b>${esc(m.name)}</b>
+          <span>MASTER SOURCE · ${MasterResume.fmtSize(m.size)} · ${MasterResume.fmtDate(m.uploadedAt)}</span>
+        </div>
+        <div class="mfile-btns">
+          <button class="vload" onclick="MasterResume.pick()">Replace</button>
+          <button class="vload" onclick="MasterResume.remove()">Remove</button>
+        </div>
+      </div>`;
+  }
+
   function workbench(state) {
-    const { apps, appId, app, sugg, docs, activeVariantId } = state;
+    const { apps, appId, app, sugg, docs, activeVariantId, master } = state;
     return `
       <section class="card pcard">
         <header class="phead">
@@ -69,10 +90,11 @@ const ResumesView = (() => {
           <div class="ptile">${Icons.get('file')}</div>
           <div>
             <div class="pnum">02 / LIBRARY</div>
-            <h3>Tailored variants</h3>
-            <p>Generated from the master, never overwriting it. Load one into the preview.</p>
+            <h3>Master &amp; variants</h3>
+            <p>The uploaded master is the source document; variants never overwrite it.</p>
           </div>
         </header>
+        ${masterRow(master)}
         <div class="variant-list">
           ${docs.variants.map(v => `
             <div class="vrow ${v.id === activeVariantId ? 'active' : ''}">
@@ -165,10 +187,30 @@ const ResumesView = (() => {
   /* ---------- preview panel (right column) ---------- */
 
   function preview(state) {
-    const { tab, profile, app, variant, sugg, letter } = state;
+    const { tab, profile, app, variant, sugg, letter, master } = state;
     const banner = variant
       ? `<div class="doc-banner">${Icons.get('zap', 12)} Tailored for <b>&nbsp;${esc(variant.company)} · ${esc(variant.title)}</b><span class="ats" style="margin-left:auto; background:var(--green-soft); color:var(--green-ink)">ATS ${variant.ats}</span></div>`
-      : `<div class="doc-banner neutral">${Icons.get('file', 12)} Master resume — rendered live from your <a href="#/profile" style="color:var(--accent); font-weight:600">&nbsp;Profile</a></div>`;
+      : master
+        ? `<div class="doc-banner">${Icons.get('file', 12)} Master resume — imported from&nbsp;<b>${esc(master.name)}</b><button class="mlink" onclick="MasterResume.download()">Download original</button></div>`
+        : `<div class="doc-banner neutral">${Icons.get('file', 12)} Master resume — rendered live from your <a href="#/profile" style="color:var(--accent); font-weight:600">&nbsp;Profile</a></div>`;
+
+    /* primary source: an uploaded PDF master is shown as-is;
+       DOCX can't render in-browser, so the generated paper stands
+       in with a note; tailored variants always use the paper */
+    let resumeBody;
+    if (!variant && master && master.kind === 'pdf') {
+      resumeBody = `
+        <div class="pdf-frame">
+          <object data="${MasterResume.blobUrl()}" type="application/pdf">
+            <div class="empty" style="border:none"><b>Inline PDF preview unavailable</b>Use “Download original” above to open the file.</div>
+          </object>
+        </div>`;
+    } else {
+      const docxNote = (!variant && master && master.kind === 'docx')
+        ? `<div class="doc-banner neutral" style="margin-bottom:12px">${Icons.get('alert', 12)} DOCX can't be previewed in-browser — showing the profile-generated approximation. Use “Download original” above for the exact file.</div>`
+        : '';
+      resumeBody = docxNote + resumePaper(profile, variant, sugg ? sugg.matched : []);
+    }
 
     return `
       <section class="card doc-main">
@@ -183,9 +225,7 @@ const ResumesView = (() => {
           </div>
         </div>
         ${tab === 'resume' ? banner : ''}
-        ${tab === 'resume'
-          ? resumePaper(profile, variant, sugg ? sugg.matched : [])
-          : coverPaper(letter, app)}
+        ${tab === 'resume' ? resumeBody : coverPaper(letter, app)}
       </section>`;
   }
 

@@ -156,6 +156,43 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .doc-actions .btn{ flex:1; justify-content:center; }
 }
 
+/* ============ master resume import (Sprint 6) ============ */
+.dropzone.drag-over{ background:var(--accent-soft); border-color:var(--accent); color:var(--accent-ink); }
+
+.mfile{
+  display:flex; align-items:center; gap:12px;
+  border:1px solid var(--divider); background:var(--subtle);
+  border-radius:11px; padding:12px 14px;
+}
+.mfile-ic{
+  width:38px; height:44px; border-radius:8px; flex:none;
+  display:flex; align-items:center; justify-content:center;
+  font:700 9.5px var(--mono); letter-spacing:.04em; color:#fff;
+}
+.mfile-ic.pdf{ background:#B23A2E; }
+.mfile-ic.docx{ background:#2B579A; }
+.mfile-info{ min-width:0; }
+.mfile-info b{ font-size:13px; display:block; overflow-wrap:anywhere; }
+.mfile-info span{ font:400 9.5px var(--mono); color:var(--muted); }
+.mfile-actions{ display:flex; gap:7px; margin-top:10px; flex-wrap:wrap; }
+.mfile-actions .btn{ font-size:11px; padding:7px 11px; }
+
+.mfile-compact{ margin-bottom:9px; padding:9px 11px; }
+.mfile-compact .mfile-ic{ width:30px; height:36px; }
+.mfile-btns{ margin-left:auto; display:flex; gap:6px; flex:none; }
+
+.pdf-frame{
+  border:1px solid var(--border); border-radius:9px; overflow:hidden;
+  background:#525659;
+}
+.pdf-frame object{ width:100%; height:640px; display:block; }
+
+.doc-banner .mlink{
+  margin-left:auto; background:none; border:none; cursor:pointer;
+  font:600 11px var(--sans); color:var(--accent-ink); padding:0;
+}
+.doc-banner .mlink:hover{ text-decoration:underline; }
+
 /* ============ accent themes ============ */
 :root[data-accent="forest"]{
   --accent:#1E7A4D; --accent-soft:#E3F2E9; --accent-border:#BFE3CF; --accent-ink:#175A3A;

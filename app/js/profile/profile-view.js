@@ -105,15 +105,33 @@ const ProfileView = (() => {
       ${selectField({ path: 'employment.noticePeriod', label: 'Notice period', value: p.employment.noticePeriod, options: ['Immediate', '2 weeks', '1 month', '2 months', '3+ months'], half: true })}
       ${switchRow({ path: 'employment.current', title: 'Currently employed here', desc: 'Shown as “present” on generated resumes', checked: p.employment.current })}`),
 
-    resume: () => card('resume', 'file', '08 / RESUME LIBRARY', 'Resume library',
-      'Documents live in their own module — this is the door to it.', `
-      <div class="dropzone" onclick="toast('Resume upload arrives with the backend (Sprint 3)')">
-        ${Icons.get('upload', 18)}
-        <div><b>Upload master resume</b><span>PDF or DOCX · parsing arrives with the backend</span></div>
-      </div>
-      <a class="btn btn-ghost" href="#/resumes" style="display:inline-flex; align-items:center; gap:7px; margin-top:11px">
-        ${Icons.get('file', 13)} Open Resume Library
-      </a>`),
+    resume: () => {
+      const m = MasterResume.get();
+      const body = m ? `
+        <div class="mfile">
+          <div class="mfile-ic ${m.kind}">${m.kind.toUpperCase()}</div>
+          <div class="mfile-info">
+            <b>${esc(m.name)}</b>
+            <span>${MasterResume.fmtSize(m.size)} · Uploaded ${MasterResume.fmtDate(m.uploadedAt)}</span>
+          </div>
+        </div>
+        <div class="mfile-actions">
+          <button class="btn btn-ghost" onclick="MasterResume.download()">Download</button>
+          <button class="btn btn-ghost" onclick="MasterResume.pick()">Replace Resume</button>
+          <button class="btn btn-ghost btn-danger" onclick="MasterResume.remove()">Remove Resume</button>
+        </div>` : `
+        <div class="dropzone" onclick="MasterResume.pick()"
+             ondragover="MasterResume.dragOver(event)" ondragleave="MasterResume.dragLeave(event)"
+             ondrop="MasterResume.drop(event)">
+          ${Icons.get('upload', 18)}
+          <div><b>Upload master resume</b><span>PDF or DOCX · up to 2.5 MB · drag &amp; drop or click</span></div>
+        </div>`;
+      return card('resume', 'file', '08 / RESUME LIBRARY', 'Resume library',
+        'Your uploaded master is the source document behind every tailored variant.', body + `
+        <a class="btn btn-ghost" href="#/resumes" style="display:inline-flex; align-items:center; gap:7px; margin-top:11px">
+          ${Icons.get('file', 13)} Open Resume Library
+        </a>`);
+    },
 
     skills: (p) => card('skills', 'zap', '05 / SKILLS', 'Skills',
       'Every match score starts from this list. Press Enter to add.', `

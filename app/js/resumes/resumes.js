@@ -56,6 +56,7 @@ const Resumes = (() => {
       variant: docs.variants.find(v => v.id === ui.activeVariantId) || null,
       profile: Profile.getState(),
       letter: app ? docs.coverLetters[app.id] : null,
+      master: MasterResume.get(),
     };
   }
 
@@ -238,6 +239,13 @@ ${p.contact.email}${p.links.linkedin ? '\n' + p.links.linkedin : ''}`;
   }
 
   function download() {
+    /* un-tailored master with an uploaded PDF: the original file
+       IS the resume — download it directly instead of printing */
+    const m = MasterResume.get();
+    if (ui.tab === 'resume' && !ui.activeVariantId && m && m.kind === 'pdf') {
+      MasterResume.download();
+      return;
+    }
     const frame = document.createElement('iframe');
     frame.style.cssText = 'position:fixed; right:0; bottom:0; width:0; height:0; border:0;';
     document.body.appendChild(frame);

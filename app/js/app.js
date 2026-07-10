@@ -584,6 +584,7 @@ const LOCAL_STORES = () => [
   { key: ProfileStore.KEY,      label: 'Career profile' },
   { key: ApplicationsStore.KEY, label: 'Applications board' },
   { key: ResumesStore.KEY,      label: 'Generated documents' },
+  { key: MasterResume.KEY,      label: 'Master resume file' },
   { key: Activity.KEY,          label: 'Activity log' },
   { key: Theme.KEY,             label: 'Theme & UI preferences' },
 ];
