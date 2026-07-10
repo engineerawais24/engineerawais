@@ -25,10 +25,12 @@ const Jobs = (() => {
     const companiesCfg = (typeof CompaniesStore !== 'undefined') ? CompaniesStore.load() : null;
     return list.map(job => {
       const res = MatchEngine.evaluate(job, snap);
+      const rank = (companiesCfg && typeof RankEngine !== 'undefined') ? RankEngine.rank(job, res, companiesCfg) : null;
       return {
         job,
         res,
-        rank: (companiesCfg && typeof RankEngine !== 'undefined') ? RankEngine.rank(job, res, companiesCfg) : null,
+        rank,
+        decision: (typeof DecisionEngine !== 'undefined') ? DecisionEngine.decide(job, res, rank, snap) : null,
         status: state.decisions[job.id] || 'pending',
       };
     });

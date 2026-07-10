@@ -150,6 +150,7 @@ const MatchEngine = (() => {
         AED: Number(p.preferences.monthlyMinAED) || 0,
       },
       workMode: p.preferences.workMode,
+      jobType: p.preferences.jobType,
       outsideGccMode: p.preferences.outsideGccMode || GCC_MODES.SPONSORED,
       relocation: !!p.preferences.relocation,
       authorizedIn: p.authorization.authorizedIn.split(',').map(norm).filter(Boolean),

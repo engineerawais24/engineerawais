@@ -53,6 +53,26 @@ const JobsView = (() => {
       : `${cur}${job.salary}k`;
   }
 
+  const REC_CLASS = {
+    'Must Apply': 'must', 'Strong Match': 'strong', 'Good Match': 'good',
+    'Review Manually': 'review', 'Skip': 'skip',
+  };
+
+  /* decision block — outcome + confidence + ✓/✗ explanation */
+  function decisionSection(item) {
+    const d = item.decision;
+    if (!d) return '';
+    const because = d.outcome === 'reject' ? 'Rejected because:'
+      : d.outcome === 'auto_approve' ? 'Accepted because:'
+        : 'Sent for manual review because:';
+    return `
+      <div class="dec-sec ${d.outcome}">
+        <div class="dec-line"><b>${d.outcomeLabel}</b> · ${d.recommendation} · ${d.confidence} confidence · Decision score ${d.score}</div>
+        <div class="dec-because">${because}</div>
+        ${d.reasons.map(r => `<div class="dec-row ${r.ok ? 'ok' : 'bad'}">${r.ok ? '✓' : '✗'} ${esc(r.text)}</div>`).join('')}
+      </div>`;
+  }
+
   /* the "Why ranked here?" panel — tier + adjustments + factors */
   function rankSection(item) {
     const { res, rank } = item;
@@ -74,6 +94,7 @@ const JobsView = (() => {
     const { job, res } = item;
     return `
       <div class="why-panel" id="why-${job.id}" hidden>
+        ${decisionSection(item)}
         ${rankSection(item)}
         ${res.factors.map(f => `
           <div class="wf">
@@ -90,7 +111,10 @@ const JobsView = (() => {
   }
 
   function jobCard(item, hiddenGroup) {
-    const { job, res, rank, status } = item;
+    const { job, res, rank, decision, status } = item;
+    const recBadge = decision
+      ? `<span class="rec-badge ${REC_CLASS[decision.recommendation] || 'review'}" title="${esc(decision.outcomeLabel)} · ${esc(decision.confidence)} confidence — open “Why ranked here?” for the full explanation">${esc(decision.recommendation)}</span>`
+      : '';
     const rankBadges = rank ? (
       (rank.tier < 3 ? `<span class="tier-badge t${rank.tier}" title="${esc(rank.tierLabel)}">T${rank.tier}</span>` : '') +
       (rank.boost ? `<span class="boost-badge ${rank.boost < 0 ? 'neg' : ''}" title="Ranking boost applied on top of the match score">${rank.boost > 0 ? '▲ +' : '▼ −'}${Math.abs(rank.boost)}</span>` : '')
@@ -134,7 +158,7 @@ const JobsView = (() => {
               <span class="jt">${esc(job.title)}</span>
               <span class="jc">· ${esc(job.company)}</span>
               <span class="src-badge ${SRC_CLASS[job.source] || ''}">${esc(job.source)}</span>
-              ${rankBadges}
+              ${recBadge}${rankBadges}
               <span class="jposted">${postedRel(job.postedDate)}</span>
               ${statusPill}${salaryPill}
             </div>
