@@ -53,11 +53,28 @@ const JobsView = (() => {
       : `${cur}${job.salary}k`;
   }
 
-  /* the "why" — per-factor breakdown behind each score */
+  /* the "Why ranked here?" panel — tier + adjustments + factors */
+  function rankSection(item) {
+    const { res, rank } = item;
+    if (!rank) return '';
+    const sign = n => (n > 0 ? '+' : '−') + Math.abs(n);
+    return `
+      <div class="rank-sec">
+        <div class="rank-line"><b>Why ranked here?</b> Match ${res.score}${rank.boost ? ` · Boost ${sign(rank.boost)}` : ''} → Rank score ${rank.rankScore} · ${rank.tierLabel}</div>
+        ${rank.adjustments.map(a => `
+          <div class="rank-row">
+            <span class="rl">${a.label}</span>
+            <span class="rp ${a.pts >= 0 ? 'pos' : 'neg'}">${sign(a.pts)}</span>
+          </div>`).join('')}
+        ${!rank.adjustments.length ? '<div class="rank-row"><span class="rl">No ranking adjustments — ordered by match score alone</span></div>' : ''}
+      </div>`;
+  }
+
   function whyPanel(item) {
     const { job, res } = item;
     return `
       <div class="why-panel" id="why-${job.id}" hidden>
+        ${rankSection(item)}
         ${res.factors.map(f => `
           <div class="wf">
             <div class="wf-top">
@@ -73,7 +90,11 @@ const JobsView = (() => {
   }
 
   function jobCard(item, hiddenGroup) {
-    const { job, res, status } = item;
+    const { job, res, rank, status } = item;
+    const rankBadges = rank ? (
+      (rank.tier < 3 ? `<span class="tier-badge t${rank.tier}" title="${esc(rank.tierLabel)}">T${rank.tier}</span>` : '') +
+      (rank.boost ? `<span class="boost-badge ${rank.boost < 0 ? 'neg' : ''}" title="Ranking boost applied on top of the match score">${rank.boost > 0 ? '▲ +' : '▼ −'}${Math.abs(rank.boost)}</span>` : '')
+    ) : '';
     const decided = status !== 'pending';
     const statusPill = {
       approved: '<span class="pill pill-green">Approved → tailoring queued</span>',
@@ -113,6 +134,7 @@ const JobsView = (() => {
               <span class="jt">${esc(job.title)}</span>
               <span class="jc">· ${esc(job.company)}</span>
               <span class="src-badge ${SRC_CLASS[job.source] || ''}">${esc(job.source)}</span>
+              ${rankBadges}
               <span class="jposted">${postedRel(job.postedDate)}</span>
               ${statusPill}${salaryPill}
             </div>
@@ -120,7 +142,7 @@ const JobsView = (() => {
             <div class="job-desc">${esc(job.description)}</div>
             <div class="job-chips">${chips}</div>
             <div class="job-foot">
-              <button class="why-btn" id="whyb-${job.id}" onclick="Jobs.toggleWhy('${job.id}')">Why ${res.score}?</button>
+              <button class="why-btn" id="whyb-${job.id}" onclick="Jobs.toggleWhy('${job.id}')">Why ranked here?</button>
               <a class="apply-link" href="${esc(job.applyUrl)}" target="_blank" rel="noopener">View posting ↗</a>
             </div>
             ${whyPanel(item)}
@@ -131,8 +153,11 @@ const JobsView = (() => {
   }
 
   function render({ items, ui, minSalary, summaryHtml }) {
-    const visible = items.filter(x => !x.res.filtered);
-    const hidden = items.filter(x => x.res.filtered);
+    /* priority ranking: order by rankScore (match score + boosts) */
+    const byRank = (a, b) =>
+      ((b.rank ? b.rank.rankScore : b.res.score) - (a.rank ? a.rank.rankScore : a.res.score));
+    const visible = items.filter(x => !x.res.filtered).slice().sort(byRank);
+    const hidden = items.filter(x => x.res.filtered).slice().sort(byRank);
     const bySource = s => (s === 'All' ? visible : visible.filter(x => x.job.source === s));
     const shown = bySource(ui.source);
 

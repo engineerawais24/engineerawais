@@ -22,11 +22,16 @@ const Jobs = (() => {
   function evaluated() {
     const snap = snapshot();
     const list = state.discovered || JobsStore.jobs();
-    return list.map(job => ({
-      job,
-      res: MatchEngine.evaluate(job, snap),
-      status: state.decisions[job.id] || 'pending',
-    }));
+    const companiesCfg = (typeof CompaniesStore !== 'undefined') ? CompaniesStore.load() : null;
+    return list.map(job => {
+      const res = MatchEngine.evaluate(job, snap);
+      return {
+        job,
+        res,
+        rank: (companiesCfg && typeof RankEngine !== 'undefined') ? RankEngine.rank(job, res, companiesCfg) : null,
+        status: state.decisions[job.id] || 'pending',
+      };
+    });
   }
 
   /* re-read persisted state after a daily-search run publishes */
@@ -77,12 +82,7 @@ const Jobs = (() => {
     panel.hidden = !panel.hidden;
     const btn = document.getElementById('whyb-' + id);
     if (btn) {
-      if (panel.hidden) {
-        const item = evaluated().find(x => x.job.id === id);
-        btn.textContent = `Why ${item ? item.res.score : ''}?`;
-      } else {
-        btn.textContent = 'Hide breakdown';
-      }
+      btn.textContent = panel.hidden ? 'Why ranked here?' : 'Hide breakdown';
     }
   }
 

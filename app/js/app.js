@@ -432,6 +432,7 @@ function renderSettings() {
       <div style="display:flex; flex-direction:column; gap:12px">
         ${profilePrefs}
         ${SourcesView.settingsCards()}
+        ${CompaniesView.settingsCard()}
         <div class="card card-pad">
           <p class="card-title">AI &amp; autonomy</p>
           <div class="field"><label>LLM provider</label>
@@ -486,6 +487,7 @@ const LOCAL_STORES = () => [
   { key: ResumesStore.KEY,      label: 'Generated documents' },
   { key: MasterResume.KEY,      label: 'Master resume file' },
   { key: SourcesStore.KEY,      label: 'Job sources & search config' },
+  { key: CompaniesStore.KEY,    label: 'Company priority tiers' },
   { key: Activity.KEY,          label: 'Activity log' },
   { key: Theme.KEY,             label: 'Theme & UI preferences' },
 ];
