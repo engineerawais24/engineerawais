@@ -74,6 +74,8 @@ const ProfileStore = (() => {
         monthlyMinSAR: 30000,      // monthly-quoted Gulf roles compare locally
         monthlyMinAED: 25000,
         workMode: 'Remote',
+        /* GCC-first: how to treat non-remote roles OUTSIDE the GCC */
+        outsideGccMode: 'Remote + relocation-sponsored',
         jobType: 'Full-time',
         relocation: true,
       },

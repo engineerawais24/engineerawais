@@ -84,6 +84,8 @@ const JobsView = (() => {
     const chips =
       res.matched.slice(0, 4).map(r => `<span class="chip chip-yes">✓ ${esc(r)}</span>`).join('') +
       res.missing.slice(0, 2).map(m => `<span class="chip chip-no">△ ${esc(m)}</span>`).join('') +
+      (res.region && !res.region.gcc && res.region.includeReason
+        ? `<span class="chip chip-region" title="Why this non-GCC role is included">🌍 ${esc(res.region.includeReason)}</span>` : '') +
       (job.visaSponsorship ? '<span class="chip chip-visa">🛂 Visa sponsorship</span>' : '') +
       ((job.duplicates || []).length ? `<span class="chip chip-dup">≈ Also on ${esc(job.duplicates.join(', '))}</span>` : '');
 
@@ -94,7 +96,10 @@ const JobsView = (() => {
          <button class="btn btn-red" onclick="Jobs.reject('${job.id}')">Reject</button>`;
 
     const salaryPill = res.filtered
-      ? `<span class="pill pill-red">Below salary preference</span>` : '';
+      ? (res.filterReason === 'region'
+        ? `<span class="pill pill-amber">Outside GCC — no relocation/sponsorship</span>`
+        : `<span class="pill pill-red">Below salary preference</span>`)
+      : '';
 
     return `
       <div class="card job-card ${decided || hiddenGroup ? 'decided' : ''}" data-job="${job.id}">
@@ -140,10 +145,16 @@ const JobsView = (() => {
         ${s} · ${s === 'All' ? visible.length : bySource(s).length}
       </button>`).join('');
 
+    const hiddenSalary = hidden.filter(x => x.res.filterReason === 'salary').length;
+    const hiddenRegion = hidden.filter(x => x.res.filterReason === 'region').length;
+    const hiddenWhy = [
+      hiddenSalary ? `${hiddenSalary} below your $${minSalary}k minimum` : '',
+      hiddenRegion ? `${hiddenRegion} outside the GCC without relocation support or visa sponsorship` : '',
+    ].filter(Boolean).join(' · ');
     const hiddenBlock = hidden.length ? `
       <div class="card hidden-note">
         <div class="hn-row">
-          <span class="hn-txt"><b>${hidden.length} job${hidden.length > 1 ? 's' : ''} hidden by your salary rule</b> — disclosed pay below your $${minSalary}k minimum. Undisclosed or “negotiable” salaries are never filtered.</span>
+          <span class="hn-txt"><b>${hidden.length} job${hidden.length > 1 ? 's' : ''} hidden by your rules</b> — ${hiddenWhy}. Undisclosed or “negotiable” salaries are never filtered.</span>
           <button class="btn btn-ghost" onclick="Jobs.toggleHidden()">${ui.showHidden ? 'Hide' : 'Show anyway'}</button>
         </div>
       </div>

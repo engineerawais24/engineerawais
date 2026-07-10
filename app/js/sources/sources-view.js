@@ -74,6 +74,7 @@ const SourcesView = (() => {
     return stat(s.found, 'jobs found')
       + stat('−' + s.duplicatesRemoved, 'duplicates removed')
       + stat('−' + s.salaryFiltered, 'salary-filtered', 'bad')
+      + stat('−' + (s.regionFiltered || 0), 'outside GCC rules', 'bad')
       + stat(s.qualified, 'qualified matches', 'good')
       + stat(s.undisclosed, 'undisclosed salary')
       + stat(s.sentForReview, 'sent for review', 'good');

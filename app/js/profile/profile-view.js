@@ -218,6 +218,8 @@ const ProfileView = (() => {
       ${textField({ path: 'preferences.monthlyMinSAR', label: 'Monthly min — SAR', value: p.preferences.monthlyMinSAR, half: true, type: 'number', hint: 'Monthly-quoted Gulf roles compare locally' })}
       ${textField({ path: 'preferences.monthlyMinAED', label: 'Monthly min — AED', value: p.preferences.monthlyMinAED, half: true, type: 'number' })}
       ${selectField({ path: 'preferences.jobType', label: 'Job type', value: p.preferences.jobType, options: ['Full-time', 'Contract', 'Part-time', 'Freelance'], half: true })}
+      ${selectField({ path: 'preferences.outsideGccMode', label: 'Outside GCC work mode', value: p.preferences.outsideGccMode, options: ['Remote only', 'Remote + relocation-sponsored', 'All work modes'] })}
+      <div class="hint" style="margin:-6px 0 10px">GCC roles (Saudi, UAE, Qatar, Bahrain, Kuwait, Oman) always allow on-site, hybrid and remote. This controls everywhere else.</div>
       ${switchRow({ path: 'preferences.relocation', title: 'Open to relocation', desc: 'Includes on-site roles in other cities', checked: p.preferences.relocation })}`),
 
     authorization: (p) => card('authorization', 'shield', '11 / AUTHORIZATION', 'Work authorization',

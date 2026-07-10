@@ -385,6 +385,7 @@ function renderSettings() {
       <div class="pref-row"><span>Locations</span><b>${escS(pp.locations) || '—'}</b></div>
       <div class="pref-row"><span>Minimum salary</span><b>$${escS(pp.minSalary)}k</b></div>
       <div class="pref-row"><span>Work mode</span><b>${escS(pp.workMode)} · ${escS(pp.jobType)}</b></div>
+      <div class="pref-row"><span>Outside GCC</span><b>${escS(pp.outsideGccMode)}</b></div>
       <a class="btn btn-ghost" href="#/profile" style="margin-top:12px; display:inline-block">Edit on Profile page →</a>
     </div>`;
 
@@ -416,6 +417,11 @@ function renderSettings() {
           <div class="hint" style="margin-bottom:10px">Reads and writes the same persisted preferences as your Profile.</div>
           <div class="field"><label>Locations</label><input type="text" id="set-locations" value="${escS(pp.locations)}"></div>
           <div class="field"><label>Minimum base salary ($k)</label><input type="number" id="set-salary" value="${escS(pp.minSalary)}"></div>
+          <div class="field"><label>Outside GCC work mode</label>
+            <select id="set-gccmode">
+              ${['Remote only', 'Remote + relocation-sponsored', 'All work modes'].map(o => `<option ${o === pp.outsideGccMode ? 'selected' : ''}>${o}</option>`).join('')}
+            </select>
+            <div class="hint">GCC roles always allow every work mode; this governs the rest of the world.</div></div>
           <div class="field"><label>Daily search runs at</label>
             <select id="set-time">
               ${['05:00', '06:00', '07:00', '08:00'].map(t => `<option ${t === s.searchTime ? 'selected' : ''}>${t}</option>`).join('')}
@@ -461,6 +467,7 @@ function saveSettings() {
     targetRoles: document.getElementById('set-roles').value,
     locations: document.getElementById('set-locations').value,
     minSalary: Number(document.getElementById('set-salary').value) || 0,
+    outsideGccMode: document.getElementById('set-gccmode').value,
   });
   document.querySelectorAll('input[type=checkbox][data-group]').forEach(cb => {
     if (cb.disabled) return;

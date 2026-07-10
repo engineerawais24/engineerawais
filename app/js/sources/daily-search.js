@@ -52,19 +52,22 @@ const DailySearch = (() => {
     });
     const duplicatesRemoved = found - kept.length;
 
-    /* 4+5 — match (read-only snapshot) + salary rules */
+    /* 4+5 — match (read-only snapshot) + salary and GCC region rules */
     const snap = MatchEngine.snapshotFromProfile(Profile.getState(), MasterResume.get());
     let salaryFiltered = 0;
+    let regionFiltered = 0;
     let undisclosed = 0;
     kept.forEach(j => {
-      if (MatchEngine.evaluate(j, snap).filtered) salaryFiltered++;
+      const reason = MatchEngine.evaluate(j, snap).filterReason;
+      if (reason === 'salary') salaryFiltered++;
+      if (reason === 'region') regionFiltered++;
       if (!j.salaryDisclosed) undisclosed++;
     });
-    const qualified = kept.length - salaryFiltered;
+    const qualified = kept.length - salaryFiltered - regionFiltered;
 
     const summary = {
       ranAt: Date.now(),
-      found, duplicatesRemoved, salaryFiltered,
+      found, duplicatesRemoved, salaryFiltered, regionFiltered,
       qualified, undisclosed, sentForReview: qualified,
       perBoard,
     };
@@ -96,7 +99,7 @@ const DailySearch = (() => {
       `Normalized ${summary.found} postings into the unified job model`,
       `Removed duplicates — ${summary.duplicatesRemoved} merged across boards`,
       'Matched against profile & master resume (read-only)',
-      `Applied salary rules — ${summary.salaryFiltered} filtered out, ${summary.undisclosed} undisclosed kept`,
+      `Applied salary + GCC region rules — ${summary.salaryFiltered} salary-filtered, ${summary.regionFiltered} region-filtered, ${summary.undisclosed} undisclosed kept`,
       `Published ${summary.sentForReview} qualified jobs to Today's Jobs`,
     ];
     screen.innerHTML = `

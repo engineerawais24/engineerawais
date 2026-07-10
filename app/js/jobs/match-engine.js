@@ -37,6 +37,73 @@ const MatchEngine = (() => {
 
   const USD_RATE = { USD: 1, AED: 0.2723, SAR: 0.2666, PKR: 0.0036, GBP: 1.27, EUR: 1.09 };
 
+  /* GCC-first region rules: Saudi Arabia, UAE, Qatar, Bahrain,
+     Kuwait, Oman — matched by country or major-city markers. */
+  const GCC_MARKERS = [
+    'saudi', 'riyadh', 'jeddah', 'dammam', 'khobar',        // Saudi Arabia
+    'uae', 'united arab emirates', 'dubai', 'abu dhabi', 'sharjah', 'ajman',
+    'qatar', 'doha',
+    'bahrain', 'manama',
+    'kuwait',
+    'oman', 'muscat',
+  ];
+
+  function isGCC(location) {
+    const l = String(location || '').toLowerCase();
+    return GCC_MARKERS.some(m => l.includes(m));
+  }
+
+  const GCC_MODES = {
+    REMOTE: 'Remote only',
+    SPONSORED: 'Remote + relocation-sponsored',
+    ALL: 'All work modes',
+  };
+
+  /* Regional work-mode rule:
+     · GCC job              → on-site, hybrid, remote all allowed
+     · non-GCC remote       → always allowed (labeled Remote)
+     · non-GCC local        → allowed where you're already authorized
+     · non-GCC on-site/hyb. → per outsideGccMode: needs explicit
+       relocation support or visa sponsorship (default), everything
+       (All work modes), or nothing (Remote only) */
+  function regionEval(job, snap, remoteJob, jloc) {
+    if (isGCC(job.location)) {
+      return { gcc: true, filtered: false, includeReason: null,
+        note: 'GCC role — on-site, hybrid and remote all allowed' };
+    }
+    if (remoteJob) {
+      return { gcc: false, filtered: false, includeReason: 'Remote',
+        note: 'Outside GCC — included because the role is remote' };
+    }
+    const local = snap.authorizedIn.some(c => c && jloc.includes(c))
+      || (snap.homeCity && jloc.includes(snap.homeCity) && snap.authorizedIn.includes(snap.homeCountry));
+    if (local) {
+      return { gcc: false, filtered: false, includeReason: 'Local · authorized',
+        note: 'Outside GCC — included because you\'re already authorized to work here' };
+    }
+    const mode = snap.outsideGccMode;
+    if (mode === GCC_MODES.ALL) {
+      return { gcc: false, filtered: false,
+        includeReason: job.relocationSupport ? 'Relocation support' : job.visaSponsorship ? 'Visa sponsorship' : 'All work modes',
+        note: 'Outside GCC — included by your “All work modes” setting' };
+    }
+    if (mode === GCC_MODES.REMOTE) {
+      return { gcc: false, filtered: true, includeReason: null,
+        note: 'Outside GCC and not remote — filtered by your “Remote only” setting' };
+    }
+    /* default: Remote + relocation-sponsored */
+    if (job.relocationSupport) {
+      return { gcc: false, filtered: false, includeReason: 'Relocation support',
+        note: 'Outside GCC — included because relocation support is offered' };
+    }
+    if (job.visaSponsorship) {
+      return { gcc: false, filtered: false, includeReason: 'Visa sponsorship',
+        note: 'Outside GCC — included because the employer sponsors visas' };
+    }
+    return { gcc: false, filtered: true, includeReason: null,
+      note: 'Outside GCC without relocation support or visa sponsorship — filtered by your work-mode setting' };
+  }
+
   const STOP = new Set(['and', 'the', 'for', 'with', 'of', 'to', 'a', 'an',
     'senior', 'staff', 'sr', 'jr', 'lead', 'principal', 'junior', 'ii', 'iii']);
 
@@ -83,6 +150,7 @@ const MatchEngine = (() => {
         AED: Number(p.preferences.monthlyMinAED) || 0,
       },
       workMode: p.preferences.workMode,
+      outsideGccMode: p.preferences.outsideGccMode || GCC_MODES.SPONSORED,
       relocation: !!p.preferences.relocation,
       authorizedIn: p.authorization.authorizedIn.split(',').map(norm).filter(Boolean),
       needsSponsorship: !!p.authorization.sponsorship,
@@ -136,19 +204,17 @@ const MatchEngine = (() => {
       `${histHits} posting keyword${histHits === 1 ? '' : 's'} appear in your work history${snap.master ? ' · master resume on file (read-only)' : ''}`,
       expRatio < 0.2);
 
-    /* 4 — location & work mode */
+    /* 4 — location & work mode (GCC-first regional rules) */
     const jloc = (job.location || '').toLowerCase();
     const remoteJob = job.workMode === 'Remote' || /remote/.test(jloc);
+    const region = regionEval(job, snap, remoteJob, jloc);
     const modeOk = snap.workMode === 'Flexible' || job.workMode === snap.workMode;
     const locOk = remoteJob
       ? snap.locations.some(l => /remote/.test(l))
       : snap.locations.some(l => l && (jloc.includes(l.split(' ')[0]) || l.includes(jloc.split(' ')[0])));
-    const locPts = (modeOk ? 8 : 3) + (locOk ? 7 : (snap.relocation ? 4 : 1));
-    add('Location & work mode', locPts, WEIGHTS.location,
-      locOk ? `${remoteJob ? 'Remote' : job.location} is on your preferred list`
-        : snap.relocation ? 'Not a preferred location — but you\'re open to relocation'
-          : 'Outside your preferred locations',
-      !modeOk && !locOk);
+    const locPts = region.filtered ? 2 : (modeOk ? 8 : 3) + (locOk ? 7 : (snap.relocation ? 4 : 1));
+    add('Location & work mode', locPts, WEIGHTS.location, region.note,
+      region.filtered || (!modeOk && !locOk));
 
     /* 5 — salary alignment (the hard filter rules live here).
        Monthly-quoted roles compare against the user's local monthly
@@ -156,7 +222,7 @@ const MatchEngine = (() => {
        they annualize into the yearly USD comparison. */
     const k = usdK(job);
     const fmtN = n => Number(n).toLocaleString('en-US');
-    let filtered = false;
+    let salaryBelow = false;
     let salaryNote;
     let salaryPts;
     const monthlyThr = job.salaryPeriod === 'month' ? (snap.monthlyMin[job.currency] || 0) : 0;
@@ -172,7 +238,7 @@ const MatchEngine = (() => {
         salaryNote = `${job.currency} ${fmtN(v)}/mo meets your ${job.currency} ${fmtN(monthlyThr)}/mo minimum`;
       } else {
         salaryPts = 0;
-        filtered = true;
+        salaryBelow = true;
         salaryNote = `${job.currency} ${fmtN(v)}/mo is below your ${job.currency} ${fmtN(monthlyThr)}/mo minimum`;
       }
     } else if (k >= snap.minSalaryK) {
@@ -180,10 +246,10 @@ const MatchEngine = (() => {
       salaryNote = `≈$${Math.round(k)}k meets your $${snap.minSalaryK}k minimum`;
     } else {
       salaryPts = 0;
-      filtered = true;
+      salaryBelow = true;
       salaryNote = `≈$${Math.round(k)}k is below your $${snap.minSalaryK}k minimum`;
     }
-    add('Salary alignment', salaryPts, WEIGHTS.salary, salaryNote, filtered);
+    add('Salary alignment', salaryPts, WEIGHTS.salary, salaryNote, salaryBelow);
 
     /* 6 — work authorization & visa. Job locations name cities, the
        authorization list names countries — so the user's own city
@@ -210,11 +276,15 @@ const MatchEngine = (() => {
 
     const score = Math.max(0, Math.min(100, factors.reduce((n, f) => n + f.points, 0)));
     return {
-      score, factors, matched, missing, filtered,
+      score, factors, matched, missing,
+      /* salary and region are independent hard filters */
+      filtered: salaryBelow || region.filtered,
+      filterReason: salaryBelow ? 'salary' : (region.filtered ? 'region' : null),
+      region,
       reasons: factors.filter(f => !f.gap && f.points >= f.max * 0.6).map(f => f.note),
       gaps: factors.filter(f => f.gap).map(f => f.note),
     };
   }
 
-  return { WEIGHTS, evaluate, snapshotFromProfile, usdK, tokens };
+  return { WEIGHTS, GCC_MODES, isGCC, evaluate, snapshotFromProfile, usdK, tokens };
 })();

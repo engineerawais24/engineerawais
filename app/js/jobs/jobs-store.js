@@ -25,6 +25,9 @@
      applyUrl:        string          — original posting URL
      postedDate:      'YYYY-MM-DD'
      visaSponsorship: boolean
+     relocationSupport: boolean       — employer explicitly offers
+                                        relocation assistance (GCC-first
+                                        regional work-mode rules)
      companyLogo:     string|null     — logo URL once the backend serves
                                         them; UI falls back to a monogram
      languagesRequired: string[]      — languages named by the posting
@@ -59,6 +62,7 @@ const JobsStore = (() => {
   function enrich(j) {
     return Object.assign({
       salaryPeriod: 'year',
+      relocationSupport: false,
       originalSource: j.source,
       sourceJobId: (SRC_PREFIX[j.source] || 'xx') + '-' + j.id.replace('job', '9'),
       canonicalUrl: (j.applyUrl || '').split(/[?#]/)[0],
@@ -137,7 +141,7 @@ const JobsStore = (() => {
       location: 'San Francisco · On-site', workMode: 'On-site', employmentType: 'Full-time',
       salary: 125, salaryMax: 150, currency: 'USD', salaryDisclosed: true,
       source: 'LinkedIn', applyUrl: 'https://retool.com/careers/implementation-engineer',
-      postedDate: '2026-07-05', visaSponsorship: false, companyLogo: null,
+      postedDate: '2026-07-05', visaSponsorship: false, relocationSupport: true, companyLogo: null,
       languagesRequired: ['English'],
     },
     {
