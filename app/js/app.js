@@ -174,7 +174,8 @@ function renderApprovals() {
       <div class="pkg-docs">
         <div class="pkg-doc">
           <div class="dk">TAILORED RESUME</div>
-          <div class="dv"><b>${p.resume}</b> — generated from master, master untouched.</div>
+          <div class="dv"><b>${p.resume}</b> — generated copy, master untouched.</div>
+          ${p.resumeVersion ? `<div class="dv" style="margin-top:5px; font-size:10px; color:var(--faint); font-family:var(--mono)">Version recorded: ${p.resumeVersion.label} · from ${p.resumeVersion.from}</div>` : ''}
         </div>
         <div class="pkg-doc">
           <div class="dk">COVER LETTER · EXCERPT</div>
@@ -423,13 +424,7 @@ function renderSettings() {
       </div>
       <div style="display:flex; flex-direction:column; gap:12px">
         ${profilePrefs}
-        <div class="card card-pad">
-          <p class="card-title">Job sources</p>
-          ${sw('sources', 'greenhouse', 'Greenhouse', 'Direct ATS boards', s.sources.greenhouse)}
-          ${sw('sources', 'lever', 'Lever', 'Direct ATS boards', s.sources.lever)}
-          ${sw('sources', 'ashby', 'Ashby', 'Direct ATS boards', s.sources.ashby)}
-          ${sw('sources', 'rss', 'RSS / aggregators', 'Lower reply rate — off by default', s.sources.rss)}
-        </div>
+        ${SourcesView.settingsCards()}
         <div class="card card-pad">
           <p class="card-title">AI &amp; autonomy</p>
           <div class="field"><label>LLM provider</label>
@@ -464,7 +459,6 @@ function saveSettings() {
   s.llm = document.getElementById('set-llm').value;
   document.querySelectorAll('input[type=checkbox][data-group]').forEach(cb => {
     if (cb.disabled) return;
-    if (cb.dataset.group === 'sources') s.sources[cb.dataset.key] = cb.checked;
     if (cb.dataset.group === 'notif')   s.notif[cb.dataset.key] = cb.checked;
     if (cb.dataset.group === 'ai' && cb.dataset.key === 'autoTailor') s.autoTailor = cb.checked;
   });
@@ -479,6 +473,7 @@ const LOCAL_STORES = () => [
   { key: ApplicationsStore.KEY, label: 'Applications board' },
   { key: ResumesStore.KEY,      label: 'Generated documents' },
   { key: MasterResume.KEY,      label: 'Master resume file' },
+  { key: SourcesStore.KEY,      label: 'Job sources & search config' },
   { key: Activity.KEY,          label: 'Activity log' },
   { key: Theme.KEY,             label: 'Theme & UI preferences' },
 ];
@@ -547,12 +542,9 @@ function skeletonHtml() {
 }
 
 function runDailySearch() {
-  const screen = document.getElementById('screen');
-  if (screen) screen.innerHTML = skeletonHtml();
-  setTimeout(() => {
-    navigate();
-    toast('Daily search complete — 6 matches waiting on Today’s Jobs (mock)', 'info');
-  }, 800);
+  /* Sprint 8B: the real pipeline — sources → normalize → dedupe →
+     match → salary rules → Today's Jobs (Approvals only on action) */
+  DailySearch.runWithUI();
 }
 
 window.addEventListener('hashchange', navigate);

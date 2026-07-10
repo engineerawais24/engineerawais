@@ -218,7 +218,7 @@ const DB = {
     email: 'engineer.awais24@gmail.com',
     targetRoles: 'Solutions Engineer, Solutions Architect, Technical Consultant',
     locations: 'Remote (US/EU), Dubai, Karachi',
-    minSalary: 140,
+    minSalary: 110,
     searchTime: '06:00',
     llm: 'Claude (Anthropic)',
     sources: { greenhouse: true, lever: true, ashby: true, rss: false },

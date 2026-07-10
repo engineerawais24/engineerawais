@@ -53,12 +53,15 @@ const MatchEngine = (() => {
   }
 
   /* Effective annual salary in USD-thousands, or null when the
-     job must never be filtered (undisclosed / text / unknown). */
+     job must never be filtered (undisclosed / text / unknown).
+     Yearly salaries are stored in thousands; monthly-quoted roles
+     (salaryPeriod:'month') are absolute per-month amounts. */
   function usdK(job) {
     if (!job.salaryDisclosed) return null;
     const s = job.salaryMax != null ? job.salaryMax : job.salary;
     if (s == null || typeof s !== 'number') return null;
-    return s * (USD_RATE[job.currency] || 1);
+    const annualK = job.salaryPeriod === 'month' ? (s * 12) / 1000 : s;
+    return annualK * (USD_RATE[job.currency] || 1);
   }
 
   /* READ-ONLY view of the candidate. Built once per render from
@@ -75,6 +78,10 @@ const MatchEngine = (() => {
       locations: p.preferences.locations.split(',')
         .map(s => norm(s).replace(/\(.*?\)/g, '').trim()).filter(Boolean),
       minSalaryK: Number(p.preferences.minSalary) || 0,
+      monthlyMin: {
+        SAR: Number(p.preferences.monthlyMinSAR) || 0,
+        AED: Number(p.preferences.monthlyMinAED) || 0,
+      },
       workMode: p.preferences.workMode,
       relocation: !!p.preferences.relocation,
       authorizedIn: p.authorization.authorizedIn.split(',').map(norm).filter(Boolean),
@@ -143,16 +150,31 @@ const MatchEngine = (() => {
           : 'Outside your preferred locations',
       !modeOk && !locOk);
 
-    /* 5 — salary alignment (the hard filter rules live here) */
+    /* 5 — salary alignment (the hard filter rules live here).
+       Monthly-quoted roles compare against the user's local monthly
+       threshold when one is configured for that currency; otherwise
+       they annualize into the yearly USD comparison. */
     const k = usdK(job);
+    const fmtN = n => Number(n).toLocaleString('en-US');
     let filtered = false;
     let salaryNote;
     let salaryPts;
+    const monthlyThr = job.salaryPeriod === 'month' ? (snap.monthlyMin[job.currency] || 0) : 0;
     if (k === null) {
       salaryPts = WEIGHTS.salary / 2;
       salaryNote = typeof job.salary === 'string'
         ? `“${job.salary}” — never filtered, per your salary rules`
-        : 'Salary not disclosed — never filtered, per your salary rules';
+        : 'Not disclosed — never filtered, per your salary rules';
+    } else if (monthlyThr) {
+      const v = job.salaryMax != null ? job.salaryMax : job.salary;
+      if (v >= monthlyThr) {
+        salaryPts = WEIGHTS.salary;
+        salaryNote = `${job.currency} ${fmtN(v)}/mo meets your ${job.currency} ${fmtN(monthlyThr)}/mo minimum`;
+      } else {
+        salaryPts = 0;
+        filtered = true;
+        salaryNote = `${job.currency} ${fmtN(v)}/mo is below your ${job.currency} ${fmtN(monthlyThr)}/mo minimum`;
+      }
     } else if (k >= snap.minSalaryK) {
       salaryPts = WEIGHTS.salary;
       salaryNote = `≈$${Math.round(k)}k meets your $${snap.minSalaryK}k minimum`;

@@ -28,10 +28,23 @@
      companyLogo:     string|null     — logo URL once the backend serves
                                         them; UI falls back to a monogram
      languagesRequired: string[]      — languages named by the posting
+     salaryPeriod:    'year'|'month'  — yearly figures are in thousands;
+                                        monthly figures are absolute
+                                        (e.g. SAR 38,000/month)
+
+     — source & duplicate metadata (Sprint 8B) —
+     originalSource:  string          — board this record came from
+     sourceJobId:     string          — the board's own posting id
+     canonicalUrl:    string          — applyUrl stripped of tracking
+     duplicateGroupId: string|null    — shared id across duplicates
+     duplicates:      string[]        — other boards this job was seen on
+     firstDiscovered: 'YYYY-MM-DD'
+     lastChecked:     'YYYY-MM-DD'
    }
 
-   Decisions (approve / reject / later) persist per job id.
-   No live scraping here — SAMPLE_JOBS stands in for the crawlers.
+   Decisions (approve / reject / later) persist per job id, and a
+   daily-search run persists its normalized result as `discovered`
+   (until then SAMPLE_JOBS stands in for the crawlers).
    ============================================================ */
 
 const JobsStore = (() => {
@@ -40,7 +53,23 @@ const JobsStore = (() => {
 
   const SOURCES = ['LinkedIn', 'Bayt', 'GulfTalent', 'Company Careers'];
 
-  const SAMPLE_JOBS = [
+  const SRC_PREFIX = { 'LinkedIn': 'li', 'Bayt': 'bt', 'GulfTalent': 'gt', 'Company Careers': 'cc' };
+
+  /* fill in derivable metadata so every job satisfies the full model */
+  function enrich(j) {
+    return Object.assign({
+      salaryPeriod: 'year',
+      originalSource: j.source,
+      sourceJobId: (SRC_PREFIX[j.source] || 'xx') + '-' + j.id.replace('job', '9'),
+      canonicalUrl: (j.applyUrl || '').split(/[?#]/)[0],
+      duplicateGroupId: null,
+      duplicates: [],
+      firstDiscovered: j.postedDate,
+      lastChecked: '2026-07-10',
+    }, j);
+  }
+
+  const BASE_JOBS = [
     {
       id: 'job1', company: 'Stripe', title: 'Staff Solutions Architect',
       description: 'Own the technical architecture for enterprise payment migrations and partner with sales on complex evaluations.',
@@ -66,7 +95,7 @@ const JobsStore = (() => {
       description: 'Advise on Azure landing zones and migration factories for the bank\'s digital transformation.',
       skills: ['Azure', 'Terraform', 'Requirements discovery', 'Banking'],
       location: 'Dubai · On-site', workMode: 'On-site', employmentType: 'Full-time',
-      salary: 440, salaryMax: 480, currency: 'AED', salaryDisclosed: true,
+      salary: 340, salaryMax: 380, currency: 'AED', salaryDisclosed: true,
       source: 'GulfTalent', applyUrl: 'https://www.gulftalent.com/uae/jobs/cloud-solutions-consultant-enbd',
       postedDate: '2026-07-07', visaSponsorship: true, companyLogo: null,
       languagesRequired: ['English'],
@@ -116,7 +145,7 @@ const JobsStore = (() => {
       description: 'Pre-sales consulting for cloud and IoT offerings to government and enterprise clients.',
       skills: ['Requirements discovery', 'Workshops', 'Cloud fundamentals'],
       location: 'Riyadh · On-site', workMode: 'On-site', employmentType: 'Full-time',
-      salary: 380, salaryMax: 420, currency: 'SAR', salaryDisclosed: true,
+      salary: 350, salaryMax: 390, currency: 'SAR', salaryDisclosed: true,
       source: 'Bayt', applyUrl: 'https://www.bayt.com/en/saudi-arabia/jobs/solutions-consultant-stc',
       postedDate: '2026-07-04', visaSponsorship: true, companyLogo: null,
       languagesRequired: ['English', 'Arabic'],
@@ -163,21 +192,32 @@ const JobsStore = (() => {
     },
   ];
 
+  const SAMPLE_JOBS = BASE_JOBS.map(enrich);
+
   function jobs() {
     return SAMPLE_JOBS;
   }
 
-  /* ---------- persisted decisions ---------- */
+  /* ---------- persisted decisions + discovered jobs ---------- */
 
   function load() {
-    const base = { decisions: {} };
+    const base = { decisions: {}, discovered: null };
     try {
       const raw = localStorage.getItem(KEY);
       if (!raw) return base;
       const saved = JSON.parse(raw);
       if (saved && typeof saved.decisions === 'object') base.decisions = saved.decisions;
+      if (Array.isArray(saved.discovered) && saved.discovered.length) base.discovered = saved.discovered;
     } catch (e) { /* fall through to defaults */ }
     return base;
+  }
+
+  /* persist the normalized result of a daily-search run */
+  function setDiscovered(list) {
+    const state = load();
+    state.discovered = Array.isArray(list) && list.length ? list : null;
+    save(state);
+    return state;
   }
 
   function save(state) {
@@ -193,5 +233,5 @@ const JobsStore = (() => {
     try { localStorage.removeItem(KEY); } catch (e) { /* ignore */ }
   }
 
-  return { KEY, SOURCES, jobs, load, save, clear };
+  return { KEY, SOURCES, jobs, load, save, clear, setDiscovered, enrich };
 })();

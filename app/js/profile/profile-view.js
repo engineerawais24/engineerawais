@@ -213,8 +213,10 @@ const ProfileView = (() => {
       'The daily search only sources jobs inside these bounds.', `
       ${textField({ path: 'preferences.targetRoles', label: 'Target roles', value: p.preferences.targetRoles, hint: 'Comma-separated' })}
       ${textField({ path: 'preferences.locations', label: 'Preferred locations', value: p.preferences.locations, hint: 'Comma-separated' })}
-      ${textField({ path: 'preferences.minSalary', label: 'Minimum base salary ($k)', value: p.preferences.minSalary, half: true, type: 'number' })}
+      ${textField({ path: 'preferences.minSalary', label: 'Minimum base salary ($k / year)', value: p.preferences.minSalary, half: true, type: 'number' })}
       ${selectField({ path: 'preferences.workMode', label: 'Work mode', value: p.preferences.workMode, options: ['Remote', 'Hybrid', 'On-site', 'Flexible'], half: true })}
+      ${textField({ path: 'preferences.monthlyMinSAR', label: 'Monthly min — SAR', value: p.preferences.monthlyMinSAR, half: true, type: 'number', hint: 'Monthly-quoted Gulf roles compare locally' })}
+      ${textField({ path: 'preferences.monthlyMinAED', label: 'Monthly min — AED', value: p.preferences.monthlyMinAED, half: true, type: 'number' })}
       ${selectField({ path: 'preferences.jobType', label: 'Job type', value: p.preferences.jobType, options: ['Full-time', 'Contract', 'Part-time', 'Freelance'], half: true })}
       ${switchRow({ path: 'preferences.relocation', title: 'Open to relocation', desc: 'Includes on-site roles in other cities', checked: p.preferences.relocation })}`),
 

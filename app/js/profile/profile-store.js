@@ -70,7 +70,9 @@ const ProfileStore = (() => {
       preferences: {
         targetRoles: 'Solutions Engineer, Solutions Architect, Technical Consultant',
         locations: 'Remote (US/EU), Dubai, Karachi',
-        minSalary: 140,
+        minSalary: 110,            // yearly minimum, USD thousands
+        monthlyMinSAR: 30000,      // monthly-quoted Gulf roles compare locally
+        monthlyMinAED: 25000,
         workMode: 'Remote',
         jobType: 'Full-time',
         relocation: true,

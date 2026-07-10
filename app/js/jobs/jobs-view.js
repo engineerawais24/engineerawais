@@ -32,11 +32,21 @@ const JobsView = (() => {
       : new Date(iso + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   }
 
+  /* returns HTML: monthly amounts are absolute, yearly in thousands;
+     a null undisclosed salary gets an explicit "Not disclosed" pill */
   function salaryDisplay(job) {
     if (!job.salaryDisclosed) {
-      return typeof job.salary === 'string' ? job.salary : 'Salary not disclosed';
+      return typeof job.salary === 'string'
+        ? esc(job.salary)
+        : '<span class="nd-pill">Not disclosed</span>';
     }
     const cur = job.currency === 'USD' ? '$' : job.currency + ' ';
+    if (job.salaryPeriod === 'month') {
+      const fmtN = n => Number(n).toLocaleString('en-US');
+      return job.salaryMax != null
+        ? `${cur}${fmtN(job.salary)}–${fmtN(job.salaryMax)}/mo`
+        : `${cur}${fmtN(job.salary)}/mo`;
+    }
     const sep = job.currency === 'USD' ? '–$' : '–';   // $185k–$215k · AED 540k–600k
     return job.salaryMax != null
       ? `${cur}${job.salary}k${sep}${job.salaryMax}k`
@@ -58,6 +68,7 @@ const JobsView = (() => {
             <div class="wf-note">${esc(f.note)}</div>
           </div>`).join('')}
         <div class="why-foot">Compared read-only against your master resume, employment history, skills, certifications, languages, preferences and work authorization.</div>
+        <div class="why-meta">${esc(job.originalSource)} · id ${esc(job.sourceJobId)} · ${esc(job.canonicalUrl)}${job.duplicateGroupId ? ' · dedupe ' + esc(job.duplicateGroupId) : ''} · first seen ${esc(job.firstDiscovered)} · last checked ${esc(job.lastChecked)}</div>
       </div>`;
   }
 
@@ -73,7 +84,8 @@ const JobsView = (() => {
     const chips =
       res.matched.slice(0, 4).map(r => `<span class="chip chip-yes">✓ ${esc(r)}</span>`).join('') +
       res.missing.slice(0, 2).map(m => `<span class="chip chip-no">△ ${esc(m)}</span>`).join('') +
-      (job.visaSponsorship ? '<span class="chip chip-visa">🛂 Visa sponsorship</span>' : '');
+      (job.visaSponsorship ? '<span class="chip chip-visa">🛂 Visa sponsorship</span>' : '') +
+      ((job.duplicates || []).length ? `<span class="chip chip-dup">≈ Also on ${esc(job.duplicates.join(', '))}</span>` : '');
 
     const actions = decided
       ? `<button class="btn btn-ghost" onclick="Jobs.undo('${job.id}')">Undo</button>`
@@ -99,7 +111,7 @@ const JobsView = (() => {
               <span class="jposted">${postedRel(job.postedDate)}</span>
               ${statusPill}${salaryPill}
             </div>
-            <div class="job-meta">${esc(job.location)}${job.location.toLowerCase().includes(job.workMode.toLowerCase()) ? '' : ' · ' + esc(job.workMode)} · ${esc(job.employmentType)} · ${esc(salaryDisplay(job))}</div>
+            <div class="job-meta">${esc(job.location)}${job.location.toLowerCase().includes(job.workMode.toLowerCase()) ? '' : ' · ' + esc(job.workMode)} · ${esc(job.employmentType)} · ${salaryDisplay(job)}</div>
             <div class="job-desc">${esc(job.description)}</div>
             <div class="job-chips">${chips}</div>
             <div class="job-foot">
@@ -113,7 +125,7 @@ const JobsView = (() => {
       </div>`;
   }
 
-  function render({ items, ui, minSalary }) {
+  function render({ items, ui, minSalary, summaryHtml }) {
     const visible = items.filter(x => !x.res.filtered);
     const hidden = items.filter(x => x.res.filtered);
     const bySource = s => (s === 'All' ? visible : visible.filter(x => x.job.source === s));
@@ -140,6 +152,7 @@ const JobsView = (() => {
 
     return `
       <p class="screen-intro">Sourced from LinkedIn, Bayt, GulfTalent and company career pages, normalized into one job model and scored 0–100 by the match engine against your full profile. Live crawling connects in the backend sprint. Your master resume is read <b>only</b> — approving queues a tailored <i>copy</i> for your sign-off.</p>
+      ${summaryHtml || ''}
       <div class="jobs-summary">
         <span class="t">Today's jobs · ${items.length} sourced from ${JobsStore.SOURCES.length} boards</span>
         <div class="counts">

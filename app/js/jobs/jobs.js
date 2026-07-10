@@ -21,11 +21,17 @@ const Jobs = (() => {
 
   function evaluated() {
     const snap = snapshot();
-    return JobsStore.jobs().map(job => ({
+    const list = state.discovered || JobsStore.jobs();
+    return list.map(job => ({
       job,
       res: MatchEngine.evaluate(job, snap),
       status: state.decisions[job.id] || 'pending',
     }));
+  }
+
+  /* re-read persisted state after a daily-search run publishes */
+  function reload() {
+    state = JobsStore.load();
   }
 
   function statusOf(id) {
@@ -39,10 +45,12 @@ const Jobs = (() => {
   /* ---------- rendering ---------- */
 
   function render() {
+    const summary = (typeof SourcesStore !== 'undefined') ? SourcesStore.load().lastSummary : null;
     return JobsView.render({
       items: evaluated(),
       ui,
       minSalary: Profile.getState().preferences.minSalary,
+      summaryHtml: (summary && typeof SourcesView !== 'undefined') ? SourcesView.summaryStrip(summary) : '',
     });
   }
 
@@ -90,13 +98,22 @@ const Jobs = (() => {
     if (!item) return;
     decide(id, 'approved');
     /* tailored COPY into the approvals queue — master stays locked,
-       and the application still needs explicit user approval there */
+       and the application still needs explicit user approval there.
+       resumeVersion records the EXACT document version this
+       application will use (requirement: never lose provenance). */
+    const master = MasterResume.get();
     DB.approvals.push({
       id: 'a-' + id,
       fromJob: id,
       company: item.job.company,
       title: item.job.title,
       resume: item.job.company + ' v1',
+      resumeVersion: {
+        id: 'var-' + id + '-' + Date.now(),
+        label: item.job.company + ' v1',
+        from: master ? `${master.name} (locked master — copied, never modified)` : 'profile-generated master',
+        generatedAt: Date.now(),
+      },
       ats: 82 + (item.res.score % 12),
       cover: `Draft generated from a copy of your master resume, tuned to the ${item.job.title} posting at ${item.job.company}. Review wording before it goes out…`,
       changes: [`+${item.res.matched.length + 6} keywords matched`, 'Impact bullets reordered'],
@@ -130,7 +147,7 @@ const Jobs = (() => {
   }
 
   return {
-    render, evaluated, statusOf, pendingCount,
+    render, evaluated, statusOf, pendingCount, reload,
     setSource, toggleHidden, toggleWhy,
     approve, reject, later, undo,
   };
