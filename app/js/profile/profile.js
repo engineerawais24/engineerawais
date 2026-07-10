@@ -40,6 +40,7 @@ const Profile = (() => {
       p.contact.city.trim() && p.contact.country.trim(),
       p.links.linkedin.trim(),
       p.employment.title.trim() && p.employment.company.trim(),
+      p.history.some(h => h.company.trim()),
       p.skills.length >= 3,
       p.certifications.some(c => c.name.trim()),
       p.languages.some(l => l.name.trim()),
@@ -121,6 +122,39 @@ const Profile = (() => {
     refreshSection('skills');
   }
 
+  /* ---------- employment history ----------
+     The array the future AI parser fills from the uploaded master
+     resume (entries arrive with source:'ai-parse'). Manual editing
+     below uses the exact same structure. */
+
+  function addEmployer() {
+    working.history.push({
+      id: 'emp-' + Date.now(),
+      company: '', title: '', location: '',
+      startDate: '', endDate: '', current: false,
+      highlights: '',
+      source: 'manual',
+    });
+    refreshSection('history');
+  }
+
+  function setEmployer(el, i, key) {
+    working.history[i][key] = el.value;
+    updateDirtyUI();
+  }
+
+  function setEmployerCurrent(el, i) {
+    const h = working.history[i];
+    h.current = el.checked;
+    if (el.checked) h.endDate = '';   // "Present" — end date no longer applies
+    refreshSection('history');
+  }
+
+  function removeEmployer(i) {
+    working.history.splice(i, 1);
+    refreshSection('history');
+  }
+
   /* ---------- certifications ---------- */
 
   function addCert() {
@@ -194,6 +228,7 @@ const Profile = (() => {
   return {
     render, isDirty, getState, completeness, setField,
     input, check,
+    addEmployer, setEmployer, setEmployerCurrent, removeEmployer,
     addSkill, skillKey, removeSkill,
     addCert, setCert, removeCert,
     addLang, setLang, removeLang,

@@ -32,12 +32,33 @@ const ProfileStore = (() => {
       },
       employment: {
         title: 'Solutions Engineer',
-        company: '',
-        startDate: '',
+        company: 'TechVantage Systems',
+        startDate: '2023-01',
         type: 'Full-time',
         current: true,
         noticePeriod: '1 month',
+        highlights: 'Own technical evaluations for enterprise prospects across the Gulf region — 14 PoCs delivered, 9 converted.\nDesigned Azure landing zones with Terraform, cutting client onboarding from 3 weeks to 4 days.\nBuilt the internal demo platform (Python + FastAPI) now used by the entire pre-sales team.',
       },
+
+      /* Employment history — the structure the future AI parser fills.
+         Each entry has a stable `id` (so backend sync can reconcile)
+         and a `source` marking provenance: 'manual' now, 'ai-parse'
+         once uploaded resumes are parsed server-side. `highlights`
+         is newline-separated; each line becomes a resume bullet. */
+      history: [
+        {
+          id: 'emp-1', company: 'Netsol Technologies', title: 'Cloud Engineer',
+          location: 'Karachi, Pakistan', startDate: '2021-03', endDate: '2023-01', current: false,
+          highlights: 'Migrated 40+ production workloads to Kubernetes with zero-downtime cutovers.\nIntroduced infrastructure-as-code review gates, cutting config-drift incidents by 70%.',
+          source: 'manual',
+        },
+        {
+          id: 'emp-2', company: 'Systems Ltd', title: 'Systems Analyst',
+          location: 'Karachi, Pakistan', startDate: '2019-06', endDate: '2021-03', current: false,
+          highlights: 'Automated reporting pipelines in SQL and Python, saving ~20 analyst-hours per week.',
+          source: 'manual',
+        },
+      ],
       skills: ['Terraform', 'Kubernetes', 'Python', 'Client delivery', 'Azure', 'SQL'],
       certifications: [
         { name: 'AZ-104 Azure Administrator', issuer: 'Microsoft', year: '2024' },

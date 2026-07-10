@@ -71,6 +71,40 @@ const ProfileView = (() => {
       </section>`;
   }
 
+  /* One previous-employer row inside the Employment history card.
+     Mirrors the ProfileStore.history structure the AI parser fills. */
+  function empRow(h, i) {
+    return `
+      <div class="emp-row">
+        <div class="emp-head">
+          <span class="pnum">EMPLOYER ${String(i + 1).padStart(2, '0')}</span>
+          <span class="src-chip ${h.source === 'manual' ? '' : 'ai'}">${h.source === 'manual' ? 'MANUAL' : 'AI PARSED'}</span>
+          <button class="rep-remove" title="Remove employer" onclick="Profile.removeEmployer(${i})">×</button>
+        </div>
+        <div class="emp-grid">
+          <div class="field half"><label>Company</label>
+            <input value="${esc(h.company)}" placeholder="Company name" oninput="Profile.setEmployer(this,${i},'company')"></div>
+          <div class="field half"><label>Job title</label>
+            <input value="${esc(h.title)}" placeholder="Role" oninput="Profile.setEmployer(this,${i},'title')"></div>
+          <div class="field half"><label>Location</label>
+            <input value="${esc(h.location)}" placeholder="City, Country / Remote" oninput="Profile.setEmployer(this,${i},'location')"></div>
+          <div class="field half"><label>Start date</label>
+            <input type="month" value="${esc(h.startDate)}" onchange="Profile.setEmployer(this,${i},'startDate')"></div>
+          <div class="field half"><label>End date</label>
+            <input type="month" value="${esc(h.endDate)}" ${h.current ? 'disabled' : ''} onchange="Profile.setEmployer(this,${i},'endDate')"></div>
+          <div class="switch-row">
+            <div class="sw-txt"><b>Current employer</b><span>Shown as “Present” on documents</span></div>
+            <label class="switch">
+              <input type="checkbox" ${h.current ? 'checked' : ''} onchange="Profile.setEmployerCurrent(this,${i})">
+              <span class="track"></span>
+            </label>
+          </div>
+          <div class="field"><label>Responsibilities / Achievements</label>
+            <textarea rows="3" placeholder="One per line — each becomes a resume bullet" oninput="Profile.setEmployer(this,${i},'highlights')">${esc(h.highlights)}</textarea></div>
+        </div>
+      </div>`;
+  }
+
   /* ---------- sections ---------- */
 
   const SECTIONS = {
@@ -97,13 +131,20 @@ const ProfileView = (() => {
       ${textField({ path: 'links.other', label: 'Other', value: p.links.other, err: e['links.other'], ph: 'https://…' })}`),
 
     employment: (p, e) => card('employment', 'briefcase', '04 / EMPLOYMENT', 'Current employment',
-      'Sets seniority context and availability for the matcher.', `
+      'Your primary active role — previous roles live in Employment history below.', `
       ${textField({ path: 'employment.title', label: 'Job title', value: p.employment.title, half: true })}
       ${textField({ path: 'employment.company', label: 'Company', value: p.employment.company, half: true })}
       ${textField({ path: 'employment.startDate', label: 'Started', value: p.employment.startDate, half: true, type: 'month' })}
       ${selectField({ path: 'employment.type', label: 'Employment type', value: p.employment.type, options: ['Full-time', 'Contract', 'Part-time', 'Freelance'], half: true })}
       ${selectField({ path: 'employment.noticePeriod', label: 'Notice period', value: p.employment.noticePeriod, options: ['Immediate', '2 weeks', '1 month', '2 months', '3+ months'], half: true })}
-      ${switchRow({ path: 'employment.current', title: 'Currently employed here', desc: 'Shown as “present” on generated resumes', checked: p.employment.current })}`),
+      ${switchRow({ path: 'employment.current', title: 'Currently employed here', desc: 'Shown as “present” on generated resumes', checked: p.employment.current })}
+      ${textArea({ path: 'employment.highlights', label: 'Responsibilities / achievements', value: p.employment.highlights, ph: 'One per line — these become your top resume bullets…' })}`),
+
+    history: (p) => card('history', 'briefcase', '05 / HISTORY', 'Employment history',
+      'Previous roles. Once AI parsing is enabled, your uploaded master resume fills this automatically — you review before it lands on documents.', `
+      ${p.history.map((h, i) => empRow(h, i)).join('')
+        || '<div class="hint" style="margin-bottom:11px">No previous employers yet — add your most recent first.</div>'}
+      <button class="gen-variant" onclick="Profile.addEmployer()"><span class="plus">+</span> Add Previous Employer</button>`),
 
     resume: () => {
       const m = MasterResume.get();
@@ -126,14 +167,14 @@ const ProfileView = (() => {
           ${Icons.get('upload', 18)}
           <div><b>Upload master resume</b><span>PDF or DOCX · up to 2.5 MB · drag &amp; drop or click</span></div>
         </div>`;
-      return card('resume', 'file', '08 / RESUME LIBRARY', 'Resume library',
+      return card('resume', 'file', '09 / RESUME LIBRARY', 'Resume library',
         'Your uploaded master is the source document behind every tailored variant.', body + `
         <a class="btn btn-ghost" href="#/resumes" style="display:inline-flex; align-items:center; gap:7px; margin-top:11px">
           ${Icons.get('file', 13)} Open Resume Library
         </a>`);
     },
 
-    skills: (p) => card('skills', 'zap', '05 / SKILLS', 'Skills',
+    skills: (p) => card('skills', 'zap', '06 / SKILLS', 'Skills',
       'Every match score starts from this list. Press Enter to add.', `
       <div class="tags">
         ${p.skills.map((s, i) => `
@@ -145,7 +186,7 @@ const ProfileView = (() => {
         <button class="btn btn-ghost" onclick="Profile.addSkill()">+ Add</button>
       </div>`),
 
-    certifications: (p) => card('certifications', 'award', '06 / CERTIFICATIONS', 'Certifications',
+    certifications: (p) => card('certifications', 'award', '07 / CERTIFICATIONS', 'Certifications',
       'Surfaced automatically when a job description asks for them.', `
       ${p.certifications.map((c, i) => `
         <div class="rep-row rep-cert">
@@ -156,7 +197,7 @@ const ProfileView = (() => {
         </div>`).join('')}
       <button class="gen-variant" onclick="Profile.addCert()"><span class="plus">+</span> Add certification</button>`),
 
-    languages: (p) => card('languages', 'globe', '07 / LANGUAGES', 'Languages',
+    languages: (p) => card('languages', 'globe', '08 / LANGUAGES', 'Languages',
       'Used for jobs with language requirements.', `
       ${p.languages.map((l, i) => `
         <div class="rep-row rep-lang">
@@ -168,7 +209,7 @@ const ProfileView = (() => {
         </div>`).join('')}
       <button class="gen-variant" onclick="Profile.addLang()"><span class="plus">+</span> Add language</button>`),
 
-    preferences: (p) => card('preferences', 'target', '09 / PREFERENCES', 'Career preferences',
+    preferences: (p) => card('preferences', 'target', '10 / PREFERENCES', 'Career preferences',
       'The daily search only sources jobs inside these bounds.', `
       ${textField({ path: 'preferences.targetRoles', label: 'Target roles', value: p.preferences.targetRoles, hint: 'Comma-separated' })}
       ${textField({ path: 'preferences.locations', label: 'Preferred locations', value: p.preferences.locations, hint: 'Comma-separated' })}
@@ -177,14 +218,14 @@ const ProfileView = (() => {
       ${selectField({ path: 'preferences.jobType', label: 'Job type', value: p.preferences.jobType, options: ['Full-time', 'Contract', 'Part-time', 'Freelance'], half: true })}
       ${switchRow({ path: 'preferences.relocation', title: 'Open to relocation', desc: 'Includes on-site roles in other cities', checked: p.preferences.relocation })}`),
 
-    authorization: (p) => card('authorization', 'shield', '10 / AUTHORIZATION', 'Work authorization',
+    authorization: (p) => card('authorization', 'shield', '11 / AUTHORIZATION', 'Work authorization',
       'Filters out jobs you legally can’t take — before you see them.', `
       ${selectField({ path: 'authorization.status', label: 'Status', value: p.authorization.status, options: ['Citizen', 'Permanent resident', 'Work visa', 'Student visa', 'No current authorization'], half: true })}
       ${textField({ path: 'authorization.authorizedIn', label: 'Authorized to work in', value: p.authorization.authorizedIn, half: true, hint: 'Comma-separated countries' })}
       ${switchRow({ path: 'authorization.sponsorship', title: 'Needs visa sponsorship abroad', desc: 'Jobs marked “no sponsorship” will be down-ranked', checked: p.authorization.sponsorship })}`),
   };
 
-  const LEFT_COL  = ['personal', 'contact', 'links', 'employment', 'resume'];
+  const LEFT_COL  = ['personal', 'contact', 'links', 'employment', 'history', 'resume'];
   const RIGHT_COL = ['skills', 'certifications', 'languages', 'preferences', 'authorization'];
 
   function section(id, state, errors) {

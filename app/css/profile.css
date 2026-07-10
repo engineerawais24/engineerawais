@@ -118,10 +118,28 @@
 /* ---- amber nav badge for unsaved state ---- */
 .nav-item .badge.amber{ background:var(--amber); }
 
+/* ---- employment history (Sprint 7) ---- */
+.emp-row{
+  border:1px solid var(--divider); background:var(--subtle);
+  border-radius:11px; padding:12px 13px 4px; margin-bottom:10px;
+}
+.emp-head{ display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+.emp-head .rep-remove{ margin-left:auto; }
+.src-chip{
+  font:600 8.5px var(--mono); letter-spacing:.08em; color:var(--muted);
+  background:var(--panel); border:1px solid var(--border);
+  padding:2px 6px; border-radius:5px;
+}
+.src-chip.ai{ color:var(--accent-ink); background:var(--accent-soft); border-color:var(--accent-border); }
+.emp-grid{ display:grid; grid-template-columns:1fr 1fr; gap:0 12px; }
+.emp-grid > *{ grid-column:1 / -1; min-width:0; }
+.emp-grid > .field.half{ grid-column:auto; }
+
 /* ---- responsive ---- */
 @media (max-width:920px){
   .profile-cols{ grid-template-columns:1fr; }
   .pbody{ grid-template-columns:1fr; }
+  .emp-grid{ grid-template-columns:1fr; }
   .rep-cert{ grid-template-columns:1fr 1fr .6fr auto; }
   .save-bar{ bottom:8px; }
 }

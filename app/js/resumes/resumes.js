@@ -165,8 +165,8 @@ ${p.contact.email}${p.links.linkedin ? '\n' + p.links.linkedin : ''}`;
       'SUMMARY', p.personal.summary, '',
       'SKILLS', p.skills.join(' · '), '',
       'EXPERIENCE',
-      ...ResumesStore.EXPERIENCE.flatMap(x => [
-        `${x.title} — ${x.company} (${x.period})`,
+      ...ResumesView.rolesFrom(p).flatMap(x => [
+        `${x.title} — ${x.company}${x.location ? ' · ' + x.location : ''} (${x.period})`,
         ...x.bullets.map(b => `- ${b}`), '',
       ]),
       'CERTIFICATIONS',

@@ -95,6 +95,7 @@ const ResumesView = (() => {
           </div>
         </header>
         ${masterRow(master)}
+        <div class="ai-note">${Icons.get('zap', 12)} <span>Once AI parsing is enabled (backend sprint), uploaded master resumes will populate your <a href="#/profile">Employment History</a> automatically — you review everything before it lands on documents.</span></div>
         <div class="variant-list">
           ${docs.variants.map(v => `
             <div class="vrow ${v.id === activeVariantId ? 'active' : ''}">
@@ -116,6 +117,37 @@ const ResumesView = (() => {
   }
 
   /* ---------- resume paper ---------- */
+
+  /* 'YYYY-MM' → 'Jan 2023' */
+  function mon(ym) {
+    if (!ym) return '';
+    const d = new Date(ym + '-01T00:00:00');
+    return isNaN(d) ? ym : d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+  }
+
+  /* Experience for the paper, built from the live profile:
+     current employment first, then employment history entries.
+     Falls back to the sample data when the profile has none. */
+  function rolesFrom(p) {
+    const roles = [];
+    const e = p.employment;
+    if ((e.title || '').trim() && (e.company || '').trim()) {
+      roles.push({
+        title: e.title, company: e.company, location: '',
+        period: (mon(e.startDate) || '—') + ' — ' + (e.current ? 'Present' : '—'),
+        bullets: (e.highlights || '').split('\n').map(s => s.trim()).filter(Boolean),
+      });
+    }
+    (p.history || []).forEach(h => {
+      if (!(h.company || '').trim() && !(h.title || '').trim()) return;
+      roles.push({
+        title: h.title || '—', company: h.company, location: h.location || '',
+        period: (mon(h.startDate) || '—') + ' — ' + (h.current ? 'Present' : (mon(h.endDate) || '—')),
+        bullets: (h.highlights || '').split('\n').map(s => s.trim()).filter(Boolean),
+      });
+    });
+    return roles.length ? roles : ResumesStore.EXPERIENCE;
+  }
 
   function resumePaper(profile, variant, matchedKws) {
     const p = profile;
@@ -142,13 +174,13 @@ const ResumesView = (() => {
         </div>
 
         <div class="rp-sec">EXPERIENCE</div>
-        ${ResumesStore.EXPERIENCE.map(x => `
+        ${rolesFrom(p).map(x => `
           <div class="rp-job">
             <div class="rp-job-head">
-              <b>${esc(x.title)}</b> — ${esc(x.company)}
+              <b>${esc(x.title)}</b> — ${esc(x.company)}${x.location ? ' · ' + esc(x.location) : ''}
               <span class="rp-period">${esc(x.period)}</span>
             </div>
-            <ul>${x.bullets.map(b => `<li>${esc(b)}</li>`).join('')}</ul>
+            ${x.bullets.length ? `<ul>${x.bullets.map(b => `<li>${esc(b)}</li>`).join('')}</ul>` : ''}
           </div>`).join('')}
 
         ${p.certifications.some(c => c.name) ? `
@@ -238,5 +270,5 @@ const ResumesView = (() => {
       </div>`;
   }
 
-  return { render, resumePaper, coverPaper };
+  return { render, resumePaper, coverPaper, rolesFrom };
 })();
