@@ -152,7 +152,7 @@ const ProfileView = (() => {
         <div class="mfile">
           <div class="mfile-ic ${m.kind}">${m.kind.toUpperCase()}</div>
           <div class="mfile-info">
-            <b>${esc(m.name)}</b>
+            <b>${esc(m.name)} <span class="src-chip" title="The system reads this file but never modifies it — every tailored resume is a copy">🔒 LOCKED</span></b>
             <span>${MasterResume.fmtSize(m.size)} · Uploaded ${MasterResume.fmtDate(m.uploadedAt)}</span>
           </div>
         </div>

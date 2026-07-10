@@ -15,7 +15,7 @@ const UI = {
 const SCREENS = {
   dashboard: { label: 'Dashboard',       title: 'Dashboard',            render: renderDashboard },
   profile:   { label: 'Profile',         title: 'Career Profile',       render: () => Profile.render(), badge: () => Profile.isDirty() ? '•' : 0 },
-  jobs:      { label: "Today's Jobs",    title: "Today's Jobs",         render: renderJobs,      badge: () => DB.jobs.filter(j => j.status === 'pending').length },
+  jobs:      { label: "Today's Jobs",    title: "Today's Jobs",         render: () => Jobs.render(), badge: () => Jobs.pendingCount() },
   approvals: { label: 'Approvals',       title: 'Approvals',            render: renderApprovals, badge: () => DB.approvals.filter(a => a.status === 'awaiting').length },
   applications: { label: 'Applications', title: 'Applications Board',   render: () => Applications.render() },
   resumes:   { label: 'Resume Library',  title: 'Resume Library',       render: () => Resumes.render() },
@@ -154,112 +154,6 @@ function renderDashboard() {
         <div class="tline">${timeline}</div>
       </div>
     </div>`;
-}
-
-/* ============================================================
-   TODAY'S JOBS
-   ============================================================ */
-function scoreClass(score) {
-  return score >= 85 ? 'hi' : score >= 72 ? 'mid' : 'low';
-}
-
-function renderJobs() {
-  const approved = DB.jobs.filter(j => j.status === 'approved').length;
-  const rejected = DB.jobs.filter(j => j.status === 'rejected').length;
-  const later    = DB.jobs.filter(j => j.status === 'later').length;
-  const pending  = DB.jobs.filter(j => j.status === 'pending').length;
-
-  const cards = DB.jobs.map(job => {
-    const decided = job.status !== 'pending';
-    const statusPill = {
-      approved: '<span class="pill pill-green">Approved → tailoring queued</span>',
-      rejected: '<span class="pill pill-red">Rejected</span>',
-      later:    '<span class="pill pill-amber">Saved for later</span>',
-    }[job.status] || '';
-
-    const chips =
-      job.reasons.map(r => `<span class="chip chip-yes">✓ ${r}</span>`).join('') +
-      job.missing.map(m => `<span class="chip chip-no">△ ${m}</span>`).join('');
-
-    const actionBtns = decided
-      ? `<button class="btn btn-ghost" onclick="undoJob('${job.id}')">Undo</button>`
-      : `<button class="btn btn-green" onclick="approveJob('${job.id}')">Approve</button>
-         <button class="btn btn-amber" onclick="laterJob('${job.id}')">Later</button>
-         <button class="btn btn-red" onclick="rejectJob('${job.id}')">Reject</button>`;
-
-    return `
-      <div class="card job-card ${decided ? 'decided' : ''}">
-        <div class="row">
-          <div class="job-score ${scoreClass(job.score)}">
-            <span class="n">${job.score}</span><span class="m">MATCH</span>
-          </div>
-          <div style="flex:1; min-width:180px">
-            <div class="job-head">
-              <span class="jt">${job.title}</span>
-              <span class="jc">· ${job.company}</span>
-              ${statusPill}
-            </div>
-            <div class="job-meta">${job.salary} · ${job.loc} · ${job.mode}</div>
-            <div class="job-chips">${chips}</div>
-            <div class="job-prob">Est. interview probability ${job.prob}</div>
-          </div>
-          <div class="job-actions">${actionBtns}</div>
-        </div>
-      </div>`;
-  }).join('');
-
-  return `
-    <p class="screen-intro">Sourced overnight and scored against your master profile. Approving a job queues resume tailoring — the finished package lands in <a href="#/approvals" style="color:var(--accent); font-weight:600">Approvals</a> for final sign-off.</p>
-    <div class="jobs-summary">
-      <span class="t">Today's jobs · ${DB.jobs.length} sourced</span>
-      <div class="counts">
-        <span style="color:var(--green)">✓ ${approved} approved</span>
-        <span style="color:var(--red)">✕ ${rejected} rejected</span>
-        <span style="color:var(--amber)">◷ ${later + pending} pending</span>
-      </div>
-    </div>
-    <div style="display:flex; flex-direction:column; gap:11px">${cards}</div>`;
-}
-
-function approveJob(id) {
-  const job = DB.jobs.find(j => j.id === id);
-  job.status = 'approved';
-  DB.approvals.push({
-    id: 'a-' + id,
-    fromJob: id,
-    company: job.company,
-    title: job.title,
-    resume: job.company + ' v1',
-    ats: 82 + (job.score % 12),
-    cover: `Draft generated from your master resume, tuned to the ${job.title} posting at ${job.company}. Review wording before it goes out…`,
-    changes: [`+${8 + (job.score % 9)} keywords matched`, 'Impact bullets reordered'],
-    when: 'Tailored just now',
-    status: 'awaiting',
-  });
-  toast(`Approved — ${job.company} package added to Approvals`);
-  navigate();
-}
-
-function rejectJob(id) {
-  DB.jobs.find(j => j.id === id).status = 'rejected';
-  toast('Rejected — the matcher learns from this (Sprint 3)');
-  navigate();
-}
-
-function laterJob(id) {
-  DB.jobs.find(j => j.id === id).status = 'later';
-  toast('Saved for later');
-  navigate();
-}
-
-function undoJob(id) {
-  const job = DB.jobs.find(j => j.id === id);
-  if (job.status === 'approved') {
-    DB.approvals = DB.approvals.filter(a => a.fromJob !== id);
-  }
-  job.status = 'pending';
-  toast('Decision undone');
-  navigate();
 }
 
 /* ============================================================

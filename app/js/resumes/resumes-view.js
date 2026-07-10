@@ -54,7 +54,7 @@ const ResumesView = (() => {
       <div class="mfile mfile-compact">
         <div class="mfile-ic ${m.kind}">${m.kind.toUpperCase()}</div>
         <div class="mfile-info">
-          <b>${esc(m.name)}</b>
+          <b>${esc(m.name)} <span class="src-chip" title="The system reads this file but never modifies it — every tailored resume is a copy">🔒 LOCKED</span></b>
           <span>MASTER SOURCE · ${MasterResume.fmtSize(m.size)} · ${MasterResume.fmtDate(m.uploadedAt)}</span>
         </div>
         <div class="mfile-btns">

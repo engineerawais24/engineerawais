@@ -1,0 +1,73 @@
+/* ============================================================
+   CareerPilot AI — Job Discovery & Matching styles (Sprint 8A)
+   Loads after styles.css; only discovery-specific components.
+   Reuses .job-card / .job-score / .chip / .filter-chip bases.
+   ============================================================ */
+
+/* ---- company monogram (companyLogo fallback) ---- */
+.jlogo{
+  width:34px; height:34px; border-radius:9px; flex:none;
+  display:flex; align-items:center; justify-content:center;
+  color:#fff; font:700 14px var(--disp);
+}
+
+/* ---- source badges ---- */
+.src-badge{
+  font:600 8.5px var(--mono); letter-spacing:.06em;
+  padding:2.5px 7px; border-radius:5px; white-space:nowrap;
+}
+.src-badge.linkedin{   background:#E8F0FA; color:#0A66C2; }
+.src-badge.bayt{       background:#E3F2F2; color:#0E7C7B; }
+.src-badge.gulftalent{ background:#EDEAFB; color:#5B44D8; }
+.src-badge.careers{    background:#EFEBE2; color:#57503F; }
+:root[data-theme="dark"] .src-badge.linkedin{   background:#16253A; color:#7AB4EC; }
+:root[data-theme="dark"] .src-badge.bayt{       background:#12312F; color:#6FCBC8; }
+:root[data-theme="dark"] .src-badge.gulftalent{ background:#241E45; color:#A99AF0; }
+:root[data-theme="dark"] .src-badge.careers{    background:#2A2D3A; color:#C4C5D4; }
+
+.jposted{ font:400 10px var(--mono); color:var(--faint); white-space:nowrap; }
+.job-desc{ font-size:12px; color:var(--body); line-height:1.5; margin-top:6px; max-width:74ch; }
+
+.chip-visa{ background:var(--accent-soft); color:var(--accent-ink); }
+
+/* ---- card footer: why + apply ---- */
+.job-foot{ display:flex; align-items:center; gap:16px; margin-top:9px; }
+.why-btn{
+  background:none; border:none; padding:0; cursor:pointer;
+  font:600 11px var(--sans); color:var(--accent);
+}
+.why-btn:hover{ text-decoration:underline; }
+.apply-link{ font:600 11px var(--sans); color:var(--muted); }
+.apply-link:hover{ color:var(--accent); }
+
+/* ---- "why this score" factor breakdown ---- */
+.why-panel{
+  margin-top:11px; padding-top:11px; border-top:1px solid var(--divider);
+  display:flex; flex-direction:column; gap:8px; animation:cp_fade .2s ease;
+}
+.wf-top{ display:flex; align-items:center; gap:10px; }
+.wf-label{ width:170px; flex:none; font:600 10.5px var(--sans); color:var(--body); }
+.wf-label.gap{ color:var(--red); }
+.wf-bar{
+  flex:1; height:6px; background:var(--panel); border-radius:999px; overflow:hidden;
+}
+.wf-bar i{ display:block; height:100%; background:var(--accent); border-radius:999px; }
+.wf-bar i.bad{ background:var(--red); }
+.wf-pts{ width:42px; flex:none; text-align:right; font:500 10px var(--mono); color:var(--muted); }
+.wf-note{ font-size:10.5px; color:var(--muted); margin:2px 0 0 180px; line-height:1.45; }
+.why-foot{
+  font:400 9.5px var(--mono); color:var(--faint); line-height:1.6;
+  border-top:1px dashed var(--divider); padding-top:8px; margin-top:2px;
+}
+
+/* ---- hidden-by-salary-rule group ---- */
+.hidden-note{ padding:13px 16px; border-style:dashed; }
+.hn-row{ display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+.hn-txt{ flex:1; min-width:220px; font-size:12px; color:var(--body); line-height:1.5; }
+
+/* ---- responsive ---- */
+@media (max-width:700px){
+  .wf-label{ width:120px; }
+  .wf-note{ margin-left:0; }
+  .jlogo{ display:none; }
+}
