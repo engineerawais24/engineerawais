@@ -8,18 +8,76 @@
 
 const SourcesView = (() => {
 
-  function statusChip(b) {
-    if (!b.enabled) return '<span class="src-status off">Off</span>';
-    if (b.lastRun) return '<span class="src-status ok">OK · connected (mock)</span>';
-    return '<span class="src-status ready">Ready · mock connector</span>';
+  const esc = s => String(s ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+  /* effective connector state for display (7-state machine + off) */
+  function stateOf(id, b) {
+    if (!b.enabled) return 'off';
+    const cc = ConnectorConfig.get(id);
+    if (cc.simulate && cc.simulate !== 'none') return cc.simulate;
+    if (!cc.useDemo && !Connectors.isConfigured(id)) return 'not_configured';
+    return b.state === 'ready' && cc.useDemo ? 'ready' : (b.state || 'ready');
   }
 
-  function lastRunText(b) {
+  function stateChip(id, b) {
+    const st = stateOf(id, b);
+    const demo = ConnectorConfig.get(id).useDemo;
+    const label = ConnectorBase.STATE_LABELS[st] + (st === 'ready' ? (demo ? ' · demo' : ' · live') : '');
+    return `<span class="src-status ${st}">${label}</span>`;
+  }
+
+  /* diagnostics line: last run · jobs found · errors · rate limit */
+  function diagLine(id, b) {
     if (!b.enabled) return 'disabled';
-    return b.lastRun ? 'Last successful search ' + Activity.rel(b.lastRun) : 'No successful search yet';
+    const bits = [];
+    bits.push(b.lastRun ? `Last run ${Activity.rel(b.lastRun)}` : 'No run yet');
+    if (b.jobsFound != null) bits.push(`${b.jobsFound} jobs found`);
+    if (b.runs) bits.push(`${b.runs} run${b.runs > 1 ? 's' : ''}`);
+    if (b.rateLimitedUntil && b.rateLimitedUntil > Date.now()) {
+      bits.push(`rate-limited until ${new Date(b.rateLimitedUntil).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`);
+    }
+    let line = bits.join(' · ');
+    if (b.lastError) line += `<br><span class="src-err">⚠ ${esc(b.lastError)}</span>`;
+    return line;
   }
 
-  function boardRow(meta, b) {
+  /* expandable per-connector configuration (references only —
+     real credentials live in the backend environment) */
+  function configPanel(meta, b) {
+    const cc = ConnectorConfig.get(meta.id);
+    const adapter = Connectors.get(meta.id);
+    const req = f => adapter.requires.includes(f) ? ' <b class="req">*</b>' : '';
+    return `
+      <div class="src-cfg" id="cfg-${meta.id}">
+        <div class="switch-row" style="border-top:none; padding-top:0">
+          <div class="sw-txt"><b>Demo data fallback</b><span>Serve sample postings until the live backend is connected</span></div>
+          <label class="switch">
+            <input type="checkbox" id="cfg-demo-${meta.id}" ${cc.useDemo ? 'checked' : ''}>
+            <span class="track"></span>
+          </label>
+        </div>
+        <div class="field"><label>Backend endpoint${req('endpoint')}</label>
+          <input type="text" id="cfg-endpoint-${meta.id}" placeholder="https://api.yourbackend.com" value="${esc(cc.endpoint)}"></div>
+        <div class="field"><label>API key reference${req('apiKeyRef')}</label>
+          <input type="text" id="cfg-key-${meta.id}" placeholder="env:${meta.id.toUpperCase()}_API_KEY" value="${esc(cc.apiKeyRef)}">
+          <div class="hint">Reference only (env:/secret:/vault:) — credentials never live in the browser.</div></div>
+        <div class="field"><label>Session / login reference${req('sessionRef')}</label>
+          <input type="text" id="cfg-session-${meta.id}" placeholder="env:${meta.id.toUpperCase()}_SESSION" value="${esc(cc.sessionRef)}"></div>
+        <div class="field"><label>Simulate state (diagnostics testing)</label>
+          <select id="cfg-sim-${meta.id}">
+            ${ConnectorConfig.SIMULATE.map(s => `<option value="${s}" ${s === cc.simulate ? 'selected' : ''}>${s === 'none' ? 'None' : ConnectorBase.STATE_LABELS[s]}</option>`).join('')}
+          </select></div>
+        <div class="src-cfg-actions">
+          <button class="btn btn-primary" onclick="Sources.saveConfig('${meta.id}')">Save</button>
+          <button class="btn btn-ghost" onclick="Sources.test('${meta.id}')">Test connection</button>
+          <button class="btn btn-ghost" onclick="Sources.retry('${meta.id}')">↻ Retry run</button>
+        </div>
+      </div>`;
+  }
+
+  function boardRow(meta, b, openCfg) {
     return `
       <div class="srow">
         <label class="switch">
@@ -27,8 +85,8 @@ const SourcesView = (() => {
           <span class="track"></span>
         </label>
         <div class="srow-main">
-          <div class="srow-top"><b>${meta.label}</b>${statusChip(b)}</div>
-          <div class="srow-meta">${lastRunText(b)}</div>
+          <div class="srow-top"><b>${meta.label}</b>${stateChip(meta.id, b)}</div>
+          <div class="srow-meta">${diagLine(meta.id, b)}</div>
         </div>
         <div class="srow-ctl">
           <label>Frequency
@@ -41,16 +99,18 @@ const SourcesView = (() => {
               ${[1, 2, 3, 4].map(n => `<option ${n === b.priority ? 'selected' : ''}>${n}</option>`).join('')}
             </select>
           </label>
+          <button class="src-gear ${openCfg === meta.id ? 'active' : ''}" title="Configure connector" onclick="Sources.toggleConfig('${meta.id}')">⚙</button>
         </div>
-      </div>`;
+      </div>
+      ${openCfg === meta.id ? configPanel(meta, b) : ''}`;
   }
 
   function sourcesCard(cfg) {
     return `
       <div class="card card-pad" id="card-sources">
         <p class="card-title">Job sources</p>
-        <div class="hint" style="margin-bottom:8px">Priority decides which copy of a duplicate job wins. Connectors are mocks until live integrations land.</div>
-        ${SourcesStore.BOARDS.map(meta => boardRow(meta, cfg.boards[meta.id])).join('')}
+        <div class="hint" style="margin-bottom:8px">Adapter-based connectors — demo fallback today, live via the backend contract. Priority decides which copy of a duplicate wins.</div>
+        ${SourcesStore.BOARDS.map(meta => boardRow(meta, cfg.boards[meta.id], Sources.openConfig())).join('')}
       </div>`;
   }
 
@@ -114,17 +174,59 @@ const SourcesView = (() => {
 
 const Sources = (() => {
 
+  let openCfgId = null;   // which connector's config panel is open
+
   function update(fn) {
     const state = SourcesStore.load();
     fn(state);
     SourcesStore.save(state);
+    refresh();
+  }
+
+  function refresh() {
     if (typeof currentRoute === 'function' && currentRoute() === 'settings') navigate();
+  }
+
+  function openConfig() {
+    return openCfgId;
+  }
+
+  function toggleConfig(id) {
+    openCfgId = openCfgId === id ? null : id;
+    refresh();
+  }
+
+  function saveConfig(id) {
+    const val = suffix => (document.getElementById(`cfg-${suffix}-${id}`) || {});
+    const res = ConnectorConfig.set(id, {
+      useDemo: !!val('demo').checked,
+      endpoint: val('endpoint').value || '',
+      apiKeyRef: val('key').value || '',
+      sessionRef: val('session').value || '',
+      simulate: val('sim').value || 'none',
+    });
+    if (!res.ok) {
+      toast(res.error, 'error');
+      return false;
+    }
+    toast('Connector configuration saved — references only, no credentials stored');
+    refresh();
+    return true;
+  }
+
+  function test(id) {
+    DailySearch.retryBoard(id, { probe: true });
+    refresh();
+  }
+
+  function retry(id) {
+    DailySearch.retryBoard(id);
+    refresh();
   }
 
   function toggleBoard(id) {
     update(s => {
       s.boards[id].enabled = !s.boards[id].enabled;
-      s.boards[id].status = s.boards[id].enabled ? (s.boards[id].lastRun ? 'ok' : 'ready') : 'off';
     });
   }
 
@@ -140,5 +242,8 @@ const Sources = (() => {
     update(s => { s.portals[id] = !s.portals[id]; });
   }
 
-  return { toggleBoard, setFreq, setPriority, togglePortal };
+  return {
+    toggleBoard, setFreq, setPriority, togglePortal,
+    openConfig, toggleConfig, saveConfig, test, retry,
+  };
 })();

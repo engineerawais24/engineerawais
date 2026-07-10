@@ -487,6 +487,7 @@ const LOCAL_STORES = () => [
   { key: ResumesStore.KEY,      label: 'Generated documents' },
   { key: MasterResume.KEY,      label: 'Master resume file' },
   { key: SourcesStore.KEY,      label: 'Job sources & search config' },
+  { key: ConnectorConfig.KEY,   label: 'Connector configuration (references only)' },
   { key: CompaniesStore.KEY,    label: 'Company priority tiers' },
   { key: Activity.KEY,          label: 'Activity log' },
   { key: Theme.KEY,             label: 'Theme & UI preferences' },

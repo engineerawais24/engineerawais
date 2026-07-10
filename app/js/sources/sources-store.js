@@ -47,7 +47,14 @@ const SourcesStore = (() => {
   function defaults() {
     const boards = {};
     BOARDS.forEach((b, i) => {
-      boards[b.id] = { enabled: true, frequency: 'Daily', priority: i + 1, lastRun: null, status: 'ready' };
+      boards[b.id] = {
+        enabled: true, frequency: 'Daily', priority: i + 1,
+        /* connector diagnostics (Sprint 9A) */
+        state: 'ready',          // ConnectorBase.STATES
+        lastRun: null, lastSuccess: null,
+        jobsFound: null, lastError: null,
+        rateLimitedUntil: null, runs: 0,
+      };
     });
     const portals = {};
     PORTALS.forEach(p => { portals[p.id] = true; });
@@ -62,7 +69,14 @@ const SourcesStore = (() => {
       const saved = JSON.parse(raw);
       if (saved.boards) {
         for (const id of Object.keys(base.boards)) {
-          if (saved.boards[id]) Object.assign(base.boards[id], saved.boards[id]);
+          if (saved.boards[id]) {
+            Object.assign(base.boards[id], saved.boards[id]);
+            /* migrate pre-9A status field to the state machine */
+            if (saved.boards[id].status === 'ok' && !saved.boards[id].state) {
+              base.boards[id].state = 'success';
+            }
+            delete base.boards[id].status;
+          }
         }
       }
       if (saved.portals) {

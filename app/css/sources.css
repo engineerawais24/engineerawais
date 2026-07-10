@@ -27,12 +27,44 @@
 
 .src-status{
   font:600 8.5px var(--mono); letter-spacing:.06em;
-  padding:2.5px 7px; border-radius:5px;
+  padding:2.5px 7px; border-radius:5px; white-space:nowrap;
 }
-.src-status.ok{    background:var(--green-soft); color:var(--green-ink); }
-.src-status.ready{ background:var(--accent-soft); color:var(--accent-ink); }
-.src-status.off{   background:#EFEBE2; color:var(--muted); }
-:root[data-theme="dark"] .src-status.off{ background:#2A2D3A; }
+.src-status.success{        background:var(--green-soft); color:var(--green-ink); }
+.src-status.ready{          background:var(--accent-soft); color:var(--accent-ink); }
+.src-status.running{        background:var(--accent-soft); color:var(--accent-ink); }
+.src-status.failed{         background:var(--red-soft); color:var(--red-ink); }
+.src-status.rate_limited{   background:var(--amber-soft); color:var(--amber); }
+.src-status.auth_required{  background:var(--amber-soft); color:var(--amber); }
+.src-status.not_configured{ background:#EFEBE2; color:var(--muted); border:1px dashed var(--border); }
+.src-status.off{            background:#EFEBE2; color:var(--muted); }
+:root[data-theme="dark"] .src-status.off,
+:root[data-theme="dark"] .src-status.not_configured{ background:#2A2D3A; }
+
+.src-err{ color:var(--red); font-size:9.5px; }
+
+/* ---- connector config panel (Sprint 9A) ---- */
+.src-gear{
+  border:1px solid var(--border); background:var(--card); color:var(--muted);
+  width:28px; height:28px; border-radius:8px; cursor:pointer; font-size:13px;
+  align-self:flex-end;
+}
+.src-gear:hover{ border-color:var(--accent-border); color:var(--accent); }
+.src-gear.active{ background:var(--accent-soft); border-color:var(--accent-border); color:var(--accent-ink); }
+.src-cfg{
+  border:1px dashed var(--accent-border); background:var(--accent-soft);
+  border-radius:11px; padding:13px 14px 11px; margin:2px 0 10px 48px;
+  animation:cp_fade .2s ease;
+}
+.src-cfg .field input, .src-cfg .field select{
+  width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:8px;
+  background:var(--card); font:500 12px var(--sans); color:var(--ink);
+}
+.src-cfg .field{ margin-bottom:10px; }
+.src-cfg .field label{ display:block; font:600 10.5px var(--sans); color:var(--accent-ink); margin-bottom:4px; }
+.src-cfg .hint{ font-size:10px; margin-top:3px; }
+.src-cfg-actions{ display:flex; gap:7px; flex-wrap:wrap; margin-top:4px; }
+.src-cfg-actions .btn{ font-size:11px; padding:7px 12px; }
+@media (max-width:700px){ .src-cfg{ margin-left:0; } }
 
 /* ---- target company portal chips ---- */
 .portal-grid{ display:flex; flex-wrap:wrap; gap:7px; }

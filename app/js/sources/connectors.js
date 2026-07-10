@@ -1,11 +1,13 @@
 /* ============================================================
-   Connectors — mock job-board connectors (Sprint 8B).
+   Connectors — real connector foundation (Sprint 9A).
 
-   Each board returns RAW postings in its own vocabulary (the
-   shapes real crawlers/APIs produce), and a per-board normalizer
-   maps them into the unified Job model from jobs-store.js.
-   When live integrations land, only the fetch internals change —
-   the normalizers and everything downstream stay identical.
+   Four adapters (LinkedIn Jobs, Bayt, GulfTalent, Company
+   Career Portals) built on the ConnectorBase adapter interface.
+   Each supports query / location / work-mode / posted-date
+   filtering and pagination against its DEMO feed today; live
+   mode routes through the backend integration contract in
+   connector-base.js. The raw feeds below stay as the demo
+   fallback and double as the normalizer fixtures.
 
    No scraping, browser automation or external APIs here.
    ============================================================ */
@@ -215,20 +217,60 @@ const Connectors = (() => {
     };
   }
 
-  /* ---------- fetch (mock) ---------- */
+  /* ---------- adapters (ConnectorBase interface) ---------- */
 
-  function fetchBoard(boardId, cfg) {
-    switch (boardId) {
-      case 'linkedin':   return LINKEDIN_RAW.map(fromLinkedIn);
-      case 'bayt':       return BAYT_RAW.map(fromBayt);
-      case 'gulftalent': return GULFTALENT_RAW.map(fromGulfTalent);
-      case 'careers':
-        return CAREERS_RAW
-          .filter(r => cfg.portals[r.portal])   // only enabled target portals
-          .map(fromCareersPortal);
-      default: return [];
-    }
+  const CAPABILITIES = {
+    query: true, location: true, workMode: true, postedSince: true,
+    pagination: true, salary: true, sponsorshipFlags: true,
+  };
+
+  /* enabled target portals gate the careers demo feed */
+  function enabledPortals() {
+    return (typeof SourcesStore !== 'undefined') ? SourcesStore.load().portals : {};
   }
 
-  return { fetchBoard, fromLinkedIn, fromBayt, fromGulfTalent, fromCareersPortal };
+  const ADAPTERS = {
+    linkedin: ConnectorBase.createAdapter({
+      id: 'linkedin', label: 'LinkedIn Jobs',
+      capabilities: CAPABILITIES,
+      requires: ['endpoint', 'sessionRef'],
+      demoFeed: () => LINKEDIN_RAW.map(fromLinkedIn),
+    }),
+    bayt: ConnectorBase.createAdapter({
+      id: 'bayt', label: 'Bayt',
+      capabilities: CAPABILITIES,
+      requires: ['endpoint', 'apiKeyRef'],
+      demoFeed: () => BAYT_RAW.map(fromBayt),
+    }),
+    gulftalent: ConnectorBase.createAdapter({
+      id: 'gulftalent', label: 'GulfTalent',
+      capabilities: CAPABILITIES,
+      requires: ['endpoint', 'apiKeyRef'],
+      demoFeed: () => GULFTALENT_RAW.map(fromGulfTalent),
+    }),
+    careers: ConnectorBase.createAdapter({
+      id: 'careers', label: 'Company Career Portals',
+      capabilities: CAPABILITIES,
+      requires: ['endpoint'],
+      demoFeed: () => {
+        const portals = enabledPortals();
+        return CAREERS_RAW.filter(r => portals[r.portal]).map(fromCareersPortal);
+      },
+    }),
+  };
+
+  function get(id) {
+    return ADAPTERS[id] || null;
+  }
+
+  function all() {
+    return Object.values(ADAPTERS);
+  }
+
+  function isConfigured(id) {
+    const a = get(id);
+    return a ? a.isConfigured() : false;
+  }
+
+  return { get, all, isConfigured, fromLinkedIn, fromBayt, fromGulfTalent, fromCareersPortal };
 })();

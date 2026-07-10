@@ -1,23 +1,66 @@
 /* ============================================================
-   DailySearch — the daily discovery workflow (Sprint 8B).
+   DailySearch — the daily discovery workflow (Sprint 8B → 9A).
 
-   Pipeline (run once per day, or on demand):
-     1. run every ENABLED source, ordered by priority
-     2. normalize raw postings into the unified Job model
-     3. remove duplicates (lowest priority number wins; losers
-        recorded on the winner's duplicates/duplicateGroupId)
-     4. match every job against the profile + master resume
-        (read-only) via MatchEngine
-     5. apply salary rules (below-threshold disclosed pay filters;
-        undisclosed / text pay never filters)
-     6. publish qualified jobs to Today's Jobs
-   Jobs only ever reach Approvals through explicit user action.
+   9A: boards run through the ConnectorBase adapter interface.
+   Each enabled connector is executed with SearchParams, paged
+   until exhausted, and its DIAGNOSTICS recorded (state, last
+   run, jobs found, error, rate-limit). A failed connector never
+   aborts the run — the pipeline degrades gracefully and every
+   other source still publishes.
 
-   run() is synchronous and pure-ish (persists results) so tests
-   can assert on it; runWithUI() replays the pipeline visually.
+   Pipeline stays: collect → normalize (inside adapters) →
+   dedupe by priority → match (read-only) → salary + GCC rules →
+   publish to Today's Jobs. Approvals only via explicit action.
    ============================================================ */
 
 const DailySearch = (() => {
+
+  const MAX_PAGES = 5;
+
+  /* default SearchParams — deliberately broad; per-user narrowing
+     arrives with saved searches. postedSince keeps feeds fresh. */
+  function baseParams() {
+    const since = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);
+    return { query: '', location: '', workMode: '', postedSince: since, pageSize: 25 };
+  }
+
+  /* run one connector through the adapter interface, recording
+     diagnostics. probe=true fetches a single small page only. */
+  function runBoard(boardId, opts = {}) {
+    const adapter = Connectors.get(boardId);
+    const state = SourcesStore.load();
+    const diag = state.boards[boardId];
+    if (!adapter || !diag) return { ok: false, jobs: [], state: 'failed', error: 'Unknown connector' };
+
+    diag.state = 'running';
+    diag.lastRun = Date.now();
+    diag.runs = (diag.runs || 0) + 1;
+    SourcesStore.save(state);
+
+    let jobs = [];
+    let page = 1;
+    let last;
+    do {
+      last = adapter.fetch(Object.assign(baseParams(), opts.probe ? { pageSize: 1 } : {}, { page }));
+      if (last.ok) jobs = jobs.concat(last.jobs);
+      page++;
+    } while (last.ok && last.hasMore && !opts.probe && page <= MAX_PAGES);
+
+    /* persist diagnostics */
+    const after = SourcesStore.load();
+    const d = after.boards[boardId];
+    d.lastRun = Date.now();
+    d.state = last.state;
+    d.lastError = last.ok ? null : (last.error || 'Unknown error');
+    d.rateLimitedUntil = last.retryAfter ? Date.now() + last.retryAfter : null;
+    if (last.ok) {
+      d.lastSuccess = Date.now();
+      d.jobsFound = jobs.length;
+    }
+    SourcesStore.save(after);
+
+    return { ok: last.ok, jobs, state: last.state, error: last.ok ? null : last.error };
+  }
 
   function run() {
     const cfg = SourcesStore.load();
@@ -25,13 +68,13 @@ const DailySearch = (() => {
       .filter(b => cfg.boards[b.id].enabled)
       .sort((a, b) => cfg.boards[a.id].priority - cfg.boards[b.id].priority);
 
-    /* 1+2 — collect normalized jobs per board, in priority order */
+    /* 1+2 — collect via adapters (normalized inside), in priority order */
     let jobs = [];
     const perBoard = [];
     enabledBoards.forEach(b => {
-      const list = Connectors.fetchBoard(b.id, cfg);
-      perBoard.push({ id: b.id, label: b.label, count: list.length });
-      jobs = jobs.concat(list);
+      const r = runBoard(b.id);
+      perBoard.push({ id: b.id, label: b.label, count: r.jobs.length, state: r.state, error: r.error });
+      jobs = jobs.concat(r.jobs);
     });
     const found = jobs.length;
 
@@ -75,18 +118,27 @@ const DailySearch = (() => {
     /* 6 — publish + persist run state */
     JobsStore.setDiscovered(kept);
     const state = SourcesStore.load();
-    enabledBoards.forEach(b => {
-      state.boards[b.id].lastRun = summary.ranAt;
-      state.boards[b.id].status = 'ok';
-    });
     state.lastSummary = summary;
     SourcesStore.save(state);
 
     if (typeof Jobs !== 'undefined') Jobs.reload();
     if (typeof Activity !== 'undefined') {
-      Activity.log('info', `Daily search: ${found} found, ${duplicatesRemoved} duplicates removed, ${qualified} sent for review`);
+      const failures = perBoard.filter(p => p.state !== 'success').length;
+      Activity.log('info', `Daily search: ${found} found, ${duplicatesRemoved} duplicates removed, ${qualified} sent for review${failures ? `, ${failures} connector${failures > 1 ? 's' : ''} degraded` : ''}`);
     }
     return { jobs: kept, summary };
+  }
+
+  /* per-connector retry / test-connection (diagnostics buttons) */
+  function retryBoard(boardId, opts = {}) {
+    const r = runBoard(boardId, opts);
+    if (typeof toast === 'function') {
+      const label = (Connectors.get(boardId) || {}).label || boardId;
+      toast(r.ok
+        ? `${label}: ${opts.probe ? 'connection OK' : r.jobs.length + ' jobs fetched'} (${ConnectorBase.STATE_LABELS[r.state]})`
+        : `${label}: ${r.error}`, r.ok ? 'success' : 'error');
+    }
+    return r;
   }
 
   /* visual replay of the pipeline in the screen area */
@@ -95,7 +147,9 @@ const DailySearch = (() => {
     if (!screen) { run(); return; }
     const { summary } = run();
     const steps = [
-      ...summary.perBoard.map(b => `Queried ${b.label} (mock connector) — ${b.count} posting${b.count === 1 ? '' : 's'}`),
+      ...summary.perBoard.map(b => b.state === 'success'
+        ? `Queried ${b.label} — ${b.count} posting${b.count === 1 ? '' : 's'}`
+        : `⚠ ${b.label}: ${ConnectorBase.STATE_LABELS[b.state]} — skipped (${b.error || 'see diagnostics'})`),
       `Normalized ${summary.found} postings into the unified job model`,
       `Removed duplicates — ${summary.duplicatesRemoved} merged across boards`,
       'Matched against profile & master resume (read-only)',
@@ -112,7 +166,7 @@ const DailySearch = (() => {
     (function tick() {
       if (!box || !box.isConnected) return;     // user navigated away
       if (i < steps.length) {
-        box.insertAdjacentHTML('beforeend', `<div class="ds-step">✓ ${steps[i]}</div>`);
+        box.insertAdjacentHTML('beforeend', `<div class="ds-step">${steps[i].startsWith('⚠') ? '' : '✓ '}${steps[i]}</div>`);
         i++;
         setTimeout(tick, 260);
       } else {
@@ -125,5 +179,5 @@ const DailySearch = (() => {
     })();
   }
 
-  return { run, runWithUI };
+  return { run, runBoard, retryBoard, runWithUI, baseParams };
 })();
