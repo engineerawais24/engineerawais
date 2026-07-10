@@ -210,6 +210,20 @@ const Profile = (() => {
     return true;
   }
 
+  /* Update preference keys in the SHARED persisted profile —
+     used by the Settings screen so both screens read and write
+     the same source. Persists only the given keys: unrelated
+     unsaved profile edits stay unsaved, saved data stays intact. */
+  function updatePreferences(partial) {
+    const saved = ProfileStore.load();          // persisted profile (or defaults)
+    Object.assign(saved.preferences, partial);
+    ProfileStore.save(saved);
+    Object.assign(working.preferences, partial); // mirror into the live copy
+    savedSnap = JSON.stringify(saved);           // dirty = only other pending edits
+    updateDirtyUI();
+    return saved.preferences;
+  }
+
   function reset(force) {
     if (!force && !confirm('Reset profile to defaults? Saved data in this browser will be cleared.')) return;
     ProfileStore.clear();
@@ -226,7 +240,7 @@ const Profile = (() => {
   });
 
   return {
-    render, isDirty, getState, completeness, setField,
+    render, isDirty, getState, completeness, setField, updatePreferences,
     input, check,
     addEmployer, setEmployer, setEmployerCurrent, removeEmployer,
     addSkill, skillKey, removeSkill,

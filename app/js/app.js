@@ -353,7 +353,7 @@ function renderSettings() {
     </div>`;
 
   /* live pieces: theme state, profile summary, storage sizes */
-  const escS = v => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const escS = v => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const th = Theme.get();
   const pcm = Profile.completeness();
   const pp = Profile.getState().preferences;
@@ -408,13 +408,14 @@ function renderSettings() {
           <p class="card-title">Account</p>
           <div class="field"><label>Full name</label><input type="text" id="set-name" value="${s.name}"></div>
           <div class="field"><label>Email</label><input type="text" id="set-email" value="${s.email}"></div>
-          <div class="field"><label>Target roles</label><input type="text" id="set-roles" value="${s.targetRoles}">
-            <div class="hint">Comma-separated. The matcher scores against these.</div></div>
+          <div class="field"><label>Target roles</label><input type="text" id="set-roles" value="${escS(pp.targetRoles)}">
+            <div class="hint">Comma-separated. Shared with your Profile — the matcher scores against these.</div></div>
         </div>
         <div class="card card-pad">
           <p class="card-title">Job preferences</p>
-          <div class="field"><label>Locations</label><input type="text" id="set-locations" value="${s.locations}"></div>
-          <div class="field"><label>Minimum base salary ($k)</label><input type="number" id="set-salary" value="${s.minSalary}"></div>
+          <div class="hint" style="margin-bottom:10px">Reads and writes the same persisted preferences as your Profile.</div>
+          <div class="field"><label>Locations</label><input type="text" id="set-locations" value="${escS(pp.locations)}"></div>
+          <div class="field"><label>Minimum base salary ($k)</label><input type="number" id="set-salary" value="${escS(pp.minSalary)}"></div>
           <div class="field"><label>Daily search runs at</label>
             <select id="set-time">
               ${['05:00', '06:00', '07:00', '08:00'].map(t => `<option ${t === s.searchTime ? 'selected' : ''}>${t}</option>`).join('')}
@@ -452,17 +453,21 @@ function saveSettings() {
   const s = DB.settings;
   s.name = document.getElementById('set-name').value;
   s.email = document.getElementById('set-email').value;
-  s.targetRoles = document.getElementById('set-roles').value;
-  s.locations = document.getElementById('set-locations').value;
-  s.minSalary = Number(document.getElementById('set-salary').value);
   s.searchTime = document.getElementById('set-time').value;
   s.llm = document.getElementById('set-llm').value;
+  /* shared preferences persist through the SAME source the Profile
+     uses (ProfileStore) — never through the seeded DB.settings */
+  Profile.updatePreferences({
+    targetRoles: document.getElementById('set-roles').value,
+    locations: document.getElementById('set-locations').value,
+    minSalary: Number(document.getElementById('set-salary').value) || 0,
+  });
   document.querySelectorAll('input[type=checkbox][data-group]').forEach(cb => {
     if (cb.disabled) return;
     if (cb.dataset.group === 'notif')   s.notif[cb.dataset.key] = cb.checked;
     if (cb.dataset.group === 'ai' && cb.dataset.key === 'autoTailor') s.autoTailor = cb.checked;
   });
-  toast('Settings saved (in-memory only — resets on refresh)');
+  toast('Settings saved — preferences synced with your Profile');
 }
 
 /* ============================================================
