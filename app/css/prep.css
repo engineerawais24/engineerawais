@@ -52,3 +52,22 @@
   padding:12px 14px; margin:0; max-height:420px; overflow-y:auto;
 }
 @media (max-width:1100px){ .rev-grid{ grid-template-columns:1fr; } }
+
+/* ---- submission panel (Sprint 12) ---- */
+.sub-panel{ border:1px solid var(--accent-border); }
+.sub-checks{
+  background:var(--subtle); border:1px solid var(--divider); border-radius:9px;
+  padding:9px 11px; margin-bottom:10px;
+}
+.sub-warn{ font-size:11px; line-height:1.55; color:var(--amber); margin-top:4px; }
+.sub-warn:first-child{ margin-top:0; }
+.sub-warn.ok{ color:var(--green); background:var(--green-soft); border:1px solid var(--green-soft);
+  border-radius:9px; padding:9px 11px; margin-bottom:10px; }
+.sub-attempt{
+  font-size:11px; line-height:1.5; color:var(--body);
+  border-top:1px solid var(--divider); padding:6px 0;
+}
+.sub-attempt:first-of-type{ border-top:none; }
+.sub-attempt.ok b{ color:var(--green); }
+.sub-attempt.bad b{ color:var(--red); }
+.sub-attempt .ans-src{ display:block; }

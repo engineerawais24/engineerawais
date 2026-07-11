@@ -6,8 +6,9 @@
      shown at the top of the existing Approvals screen
    • reviewScreen(pkg) — the final review screen (#/review):
      resume version, cover letter, answers, safety score,
-     missing information, and the exact source job details.
-     There is deliberately NO submit control anywhere.
+     missing information, the exact source job details, and
+     (Sprint 12) the SubmissionView panel — a gated, mock-only
+     submit control that needs an explicit human confirmation.
    ============================================================ */
 
 const PrepView = (() => {
@@ -87,7 +88,7 @@ const PrepView = (() => {
     ].join('');
 
     return `
-      <p class="screen-intro">The complete application package — review every document before anything moves. Submission does not exist in this build; “Ready to Apply” is a status you set, not a send button.</p>
+      <p class="screen-intro">The complete application package — review every document before anything moves. Submission runs through a mock adapter only and always needs your explicit approval below; no login or live send occurs in this build.</p>
 
       <div class="card card-pad">
         <div class="prep-top" style="flex-wrap:wrap">
@@ -106,6 +107,8 @@ const PrepView = (() => {
           <span class="hint" style="margin:0">${pkg.status === 'blocked_manual_review' ? 'Blocked — resolve the manual-review items below first.' : pkg.status === 'ready_to_apply' ? 'Ready — submission stays manual by design.' : 'Your explicit action is required; nothing is ever sent automatically.'}</span>
         </div>
       </div>
+
+      ${typeof SubmissionView !== 'undefined' ? SubmissionView.panel(pkg) : ''}
 
       <div class="card card-pad">
         <p class="card-title">Preparation & safety</p>

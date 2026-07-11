@@ -11,7 +11,7 @@
        resume       — { label, base, plan, safety, interviewCheck,
                         audit, interviewConfidence, matched }
        coverLetter  — full draft text
-       answers      — AnswersEngine output (8 questions)
+       answers      — AnswersEngine output (13 questions, Sprint 12)
        matchScore   — MatchEngine score at approval time
        decision     — DecisionEngine explanation (reasons ✓/✗)
        missingInfo  — facts the posting wants that we can't prove
