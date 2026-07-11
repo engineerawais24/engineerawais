@@ -13,6 +13,8 @@ const Resumes = (() => {
     tab: 'resume',            // 'resume' | 'cover'
     appId: docs.lastAppId,    // selected application
     activeVariantId: null,    // variant loaded into the preview
+    showChanges: false,       // "Changes made" panel (Sprint 9C)
+    showDiff: false,          // master vs tailored difference viewer
   };
 
   /* ---------- state assembly ---------- */
@@ -43,18 +45,38 @@ const Resumes = (() => {
     return { kws, matched, missing, tips };
   }
 
+  /* prefer the matching DISCOVERY job (real skills + description)
+     over the role-keyword fallback when tailoring */
+  function jobLikeFor(app) {
+    if (!app) return null;
+    const list = (typeof JobsStore !== 'undefined')
+      ? (JobsStore.load().discovered || JobsStore.jobs()) : [];
+    const hit = list.find(j => j.company.toLowerCase() === app.company.toLowerCase());
+    if (hit) return { company: hit.company, title: hit.title, skills: hit.skills, description: hit.description };
+    return { company: app.company, title: app.position, skills: ResumesStore.keywordsFor(app.position), description: '' };
+  }
+
   function state() {
     const app = currentApp();
+    const profile = Profile.getState();
+    const variant = docs.variants.find(v => v.id === ui.activeVariantId) || null;
+    const jobLike = jobLikeFor(app);
+    const masterC = (typeof TailorEngine !== 'undefined') ? TailorEngine.masterContent(profile) : null;
     return {
       apps: apps(),
       appId: app ? app.id : null,
       app,
       sugg: suggestionsFor(app),
+      intel: (masterC && jobLike) ? TailorEngine.analyze(masterC, jobLike, profile) : null,
+      masterContent: masterC,
       docs,
       tab: ui.tab,
       activeVariantId: ui.activeVariantId,
-      variant: docs.variants.find(v => v.id === ui.activeVariantId) || null,
-      profile: Profile.getState(),
+      variant,
+      plan: variant ? (variant.plan || null) : null,
+      showChanges: ui.showChanges,
+      showDiff: ui.showDiff,
+      profile,
       letter: app ? docs.coverLetters[app.id] : null,
       master: MasterResume.get(),
     };
@@ -73,6 +95,8 @@ const Resumes = (() => {
   function selectApp(id) {
     ui.appId = id;
     ui.activeVariantId = null;      // suggestions now target the new job
+    ui.showChanges = false;
+    ui.showDiff = false;
     docs.lastAppId = id;
     ResumesStore.save(docs);
     refresh();
@@ -86,6 +110,8 @@ const Resumes = (() => {
   function loadVariant(id) {
     ui.activeVariantId = id;
     ui.tab = 'resume';
+    ui.showChanges = false;
+    ui.showDiff = false;
     const v = docs.variants.find(x => x.id === id);
     if (v && v.appId && apps().some(a => a.id === v.appId)) ui.appId = v.appId;
     refresh();
@@ -99,6 +125,18 @@ const Resumes = (() => {
     const sugg = suggestionsFor(app);
     const ats = Math.min(96, 82 + sugg.matched.length * 3);
     const version = docs.variants.filter(v => v.appId === app.id).length + 1;
+
+    /* Sprint 9C: build the safe tailoring plan — reorder / hide /
+       emphasize ONLY. The Interview Safety Check blocks generation
+       if any content can't be traced to the master. */
+    const profile = Profile.getState();
+    const masterC = TailorEngine.masterContent(profile);
+    const plan = TailorEngine.tailor(masterC, jobLikeFor(app), profile);
+    if (!plan.interviewCheck.pass) {
+      toast('Generation blocked — Interview Safety Check failed: ' + (plan.interviewCheck.issues[0] || 'unverifiable content'), 'error');
+      return null;
+    }
+
     const variant = {
       id: 'var-' + Date.now(),
       company: app.company,
@@ -106,14 +144,39 @@ const Resumes = (() => {
       meta: `${sugg.matched.length + 8} keywords matched · v${version} · just now`,
       ats,
       appId: app.id,
+      plan,
     };
     docs.variants.unshift(variant);
     ui.activeVariantId = variant.id;
     ui.tab = 'resume';
+    ui.showChanges = true;
+    ui.showDiff = false;
     ResumesStore.save(docs);
     refresh();
-    toast(`Tailored resume generated for ${app.company} — ATS ${ats} (mock)`);
+    toast(`Tailored resume generated for ${app.company} — Safety ${plan.safety.score}% · ATS ${ats}`);
     return variant;
+  }
+
+  /* ---------- Sprint 9C panel controls ---------- */
+
+  function toggleChanges() {
+    ui.showChanges = !ui.showChanges;
+    refresh();
+  }
+
+  function toggleDiff() {
+    ui.showDiff = !ui.showDiff;
+    refresh();
+  }
+
+  /* one click back to the untouched master rendering */
+  function resetToMaster() {
+    ui.activeVariantId = null;
+    ui.showChanges = false;
+    ui.showDiff = false;
+    ui.tab = 'resume';
+    refresh();
+    toast('Preview reset to your master resume', 'info');
   }
 
   function generateCover() {
@@ -265,7 +328,8 @@ ${p.contact.email}${p.links.linkedin ? '\n' + p.links.linkedin : ''}`;
     render,
     selectApp, setTab, loadVariant,
     generateResume, generateCover,
+    toggleChanges, toggleDiff, resetToMaster,
     copy, download,
-    plainText, printableHtml, suggestionsFor, getDocs: () => docs,
+    plainText, printableHtml, suggestionsFor, jobLikeFor, getDocs: () => docs,
   };
 })();

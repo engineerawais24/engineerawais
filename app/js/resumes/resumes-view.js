@@ -23,23 +23,31 @@ const ResumesView = (() => {
       </select>`;
   }
 
-  function suggestions(sugg, app) {
+  function suggestions(sugg, app, intel) {
     if (!app) return '';
+    const missing = intel ? intel.missing : sugg.missing;
+    const tips = intel ? intel.tips : sugg.tips;
     return `
       <div class="sugg">
         <div class="sugg-label">ON YOUR PROFILE</div>
         <div class="job-chips">
-          ${sugg.matched.map(k => `<span class="chip chip-yes">✓ ${esc(k)}</span>`).join('')
+          ${(intel ? intel.matched : sugg.matched).map(k => `<span class="chip chip-yes">✓ ${esc(k)}</span>`).join('')
             || '<span class="hint">No keyword overlap yet — grow your skills list on the Profile page.</span>'}
         </div>
-        ${sugg.missing.length ? `
-          <div class="sugg-label" style="margin-top:11px">WORTH ADDING — IF TRUE</div>
+        ${missing.length ? `
+          <div class="sugg-label" style="margin-top:11px">MISSING FROM YOUR MASTER</div>
           <div class="job-chips">
-            ${sugg.missing.map(k => `<span class="chip chip-no">△ ${esc(k)}</span>`).join('')}
+            ${missing.map(k => `<span class="chip chip-no">△ ${esc(k)}</span>`).join('')}
           </div>` : ''}
+        <div class="sugg-label" style="margin-top:11px">IMPROVEMENT SUGGESTIONS · NEVER INVENTS EXPERIENCE</div>
         <ul class="sugg-tips">
-          ${sugg.tips.map(t => `<li>${t}</li>`).join('')}
+          ${tips.map(t => `<li>${esc(t)}</li>`).join('') || '<li>Your master already leads with this job\'s keywords.</li>'}
         </ul>
+        ${intel && intel.missingInfo.length ? `
+          <div class="mi-block">
+            <div class="sugg-label" style="color:var(--amber)">MISSING INFORMATION · NEEDS MANUAL REVIEW</div>
+            ${intel.missingInfo.map(m => `<div class="mi-row">⚠ <b>${esc(m.item)}</b> — ${esc(m.note)}</div>`).join('')}
+          </div>` : ''}
       </div>`;
   }
 
@@ -78,7 +86,7 @@ const ResumesView = (() => {
         </header>
         ${appPicker(apps, appId)}
         ${app ? `<div class="sugg-status">${statusPill(app.status)} <span class="mono" style="font-size:10px; color:var(--faint)">Applied ${esc(app.applied)}</span></div>` : ''}
-        ${suggestions(sugg, app)}
+        ${suggestions(sugg, app, state.intel)}
         <div class="doc-actions">
           <button class="btn btn-primary" onclick="Resumes.generateResume()" style="display:inline-flex; align-items:center; gap:7px">${Icons.get('zap', 13)} Generate Resume</button>
           <button class="btn btn-ghost" onclick="Resumes.generateCover()" style="display:inline-flex; align-items:center; gap:7px">${Icons.get('mail', 13)} Generate Cover Letter</button>
@@ -149,14 +157,31 @@ const ResumesView = (() => {
     return roles.length ? roles : ResumesStore.EXPERIENCE;
   }
 
-  function resumePaper(profile, variant, matchedKws) {
+  function resumePaper(profile, variant, matchedKws, plan) {
     const p = profile;
     const name = `${p.personal.firstName} ${p.personal.lastName}`.trim() || 'Your Name';
     const contact = [p.contact.email, p.contact.phone, [p.contact.city, p.contact.country].filter(Boolean).join(', '), p.links.linkedin]
       .filter(Boolean).map(esc).join('  ·  ');
-    const matched = (matchedKws || []).map(k => k.toLowerCase());
-    const skills = [...p.skills].sort((a, b) =>
+    const matched = (plan ? plan.ops.highlights : (matchedKws || [])).map(k => k.toLowerCase());
+
+    /* Sprint 9C: a tailoring plan only reorders / hides / selects
+       existing master content — applied here at render time */
+    const skills = plan ? plan.ops.skills : [...p.skills].sort((a, b) =>
       (matched.includes(b.toLowerCase()) ? 1 : 0) - (matched.includes(a.toLowerCase()) ? 1 : 0));
+    const summaryText = plan ? plan.ops.summaryText : p.personal.summary;
+    const baseRoles = rolesFrom(p);
+    const roles = plan
+      ? baseRoles.map((x, i) => Object.assign({}, x, { bullets: plan.ops.roles[i] ? plan.ops.roles[i].order : x.bullets }))
+      : baseRoles;
+
+    const summaryBlock = summaryText ? `
+          <div class="rp-sec">SUMMARY</div>
+          <p class="rp-text">${esc(summaryText)}</p>` : '';
+    const skillsBlock = `
+        <div class="rp-sec">SKILLS</div>
+        <div class="rp-skills">
+          ${skills.map(s => `<span class="${matched.some(m => s.toLowerCase().includes(m) || m.includes(s.toLowerCase())) ? 'hl' : ''}">${esc(s)}</span>`).join('')}
+        </div>`;
 
     return `
       <div class="paper">
@@ -164,17 +189,10 @@ const ResumesView = (() => {
         <div class="rp-headline">${esc(variant ? variant.title : p.personal.headline)}</div>
         <div class="rp-contact">${contact}</div>
 
-        ${p.personal.summary ? `
-          <div class="rp-sec">SUMMARY</div>
-          <p class="rp-text">${esc(p.personal.summary)}</p>` : ''}
-
-        <div class="rp-sec">SKILLS</div>
-        <div class="rp-skills">
-          ${skills.map(s => `<span class="${matched.includes(s.toLowerCase()) ? 'hl' : ''}">${esc(s)}</span>`).join('')}
-        </div>
+        ${plan && plan.ops.skillsFirst ? skillsBlock + summaryBlock : summaryBlock + skillsBlock}
 
         <div class="rp-sec">EXPERIENCE</div>
-        ${rolesFrom(p).map(x => `
+        ${roles.map(x => `
           <div class="rp-job">
             <div class="rp-job-head">
               <b>${esc(x.title)}</b> — ${esc(x.company)}${x.location ? ' · ' + esc(x.location) : ''}
@@ -183,9 +201,9 @@ const ResumesView = (() => {
             ${x.bullets.length ? `<ul>${x.bullets.map(b => `<li>${esc(b)}</li>`).join('')}</ul>` : ''}
           </div>`).join('')}
 
-        ${p.certifications.some(c => c.name) ? `
+        ${(plan ? plan.ops.certs.length : p.certifications.some(c => c.name)) ? `
           <div class="rp-sec">CERTIFICATIONS</div>
-          <p class="rp-text">${p.certifications.filter(c => c.name).map(c => esc(`${c.name} — ${c.issuer} (${c.year})`)).join('<br>')}</p>` : ''}
+          <p class="rp-text">${(plan ? plan.ops.certs : p.certifications.filter(c => c.name).map(c => `${c.name} — ${c.issuer} (${c.year})`)).map(esc).join('<br>')}</p>` : ''}
 
         <div class="rp-cols">
           ${p.languages.some(l => l.name) ? `
@@ -216,12 +234,62 @@ const ResumesView = (() => {
       </div>`;
   }
 
+  /* ---------- Sprint 9C: changes panel + difference viewer ---------- */
+
+  const CHANGE_ICON = { promoted: '↑', hidden: '−', skills: '★', certs: '☆', summary: '¶', section: '⇅' };
+
+  function changesPanel(plan) {
+    return `
+      <div class="chg-panel">
+        <div class="sugg-label">CHANGES MADE · REORDER, EMPHASIS AND HIDING ONLY</div>
+        ${plan.changes.map(c => `<div class="chg-row"><span class="chg-ic">${CHANGE_ICON[c.type] || '✓'}</span> ✓ ${esc(c.text)}</div>`).join('')
+          || '<div class="chg-row">✓ No changes needed — the master already fits this role.</div>'}
+        <div class="chg-safety ${plan.safety.score === 100 ? 'ok' : 'warn'}">
+          ${plan.safety.score === 100
+            ? `Interview Safety Check passed — ${esc(plan.interviewCheck.note)}`
+            : `⚠ ${plan.safety.unsupported.length} unsupported item(s) — never inserted automatically: ${plan.safety.unsupported.map(esc).join('; ')}`}
+        </div>
+      </div>`;
+  }
+
+  function diffViewer(masterC, plan, profile) {
+    const hiddenAll = plan.ops.roles.flatMap(r => r.hidden);
+    const promotedTexts = plan.changes.filter(c => c.type === 'promoted').map(c => c.text);
+    const wasPromoted = b => promotedTexts.some(t => t.includes(b.slice(0, 40)));
+    const col = (title, roles, opts) => `
+      <div class="diff-col">
+        <div class="diff-title">${title}</div>
+        <div class="diff-skills">${(opts.skills).map(s =>
+          `<span class="${opts.surfaced && plan.ops.highlights.includes(s) ? 'diff-surfaced' : ''}">${esc(s)}</span>`).join('')}</div>
+        ${roles.map(r => `
+          <div class="diff-role"><b>${esc(r.title)}</b> — ${esc(r.company)}
+            <ul>${r.bullets.map(b => `<li class="${opts.markHidden && hiddenAll.includes(b) ? 'diff-hidden' : ''} ${opts.markPromoted && wasPromoted(b) ? 'diff-promoted' : ''}">${opts.markPromoted && wasPromoted(b) ? '↑ ' : ''}${esc(b)}</li>`).join('')}</ul>
+          </div>`).join('')}
+      </div>`;
+    const tailoredRoles = masterC.roles.map((r, i) => Object.assign({}, r, { bullets: plan.ops.roles[i] ? plan.ops.roles[i].order : r.bullets }));
+    return `
+      <div class="diff-view">
+        ${col('MASTER RESUME (SOURCE OF TRUTH)', masterC.roles, { skills: masterC.skills, markHidden: true })}
+        ${col('TAILORED RESUME (REORDERED + EMPHASIZED)', tailoredRoles, { skills: plan.ops.skills, markPromoted: true, surfaced: true })}
+      </div>`;
+  }
+
   /* ---------- preview panel (right column) ---------- */
 
   function preview(state) {
-    const { tab, profile, app, variant, sugg, letter, master } = state;
+    const { tab, profile, app, variant, sugg, letter, master, plan } = state;
     const banner = variant
-      ? `<div class="doc-banner">${Icons.get('zap', 12)} Tailored for <b>&nbsp;${esc(variant.company)} · ${esc(variant.title)}</b><span class="ats" style="margin-left:auto; background:var(--green-soft); color:var(--green-ink)">ATS ${variant.ats}</span></div>`
+      ? `<div class="doc-banner">${Icons.get('zap', 12)} Tailored for <b>&nbsp;${esc(variant.company)} · ${esc(variant.title)}</b>
+          ${plan ? `<span class="ats" style="background:${plan.safety.score === 100 ? 'var(--green-soft)' : 'var(--amber-soft)'}; color:${plan.safety.score === 100 ? 'var(--green-ink)' : 'var(--amber)'}" title="Resume Safety Score — % of content verified against your master">Safety ${plan.safety.score}%</span>` : ''}
+          <span class="ats" style="margin-left:auto; background:var(--green-soft); color:var(--green-ink)">ATS ${variant.ats}</span></div>`
+        + (plan ? `
+          <div class="tailor-actions">
+            <button class="btn btn-ghost ${state.showChanges ? 'active-tool' : ''}" onclick="Resumes.toggleChanges()">Changes made ${plan.changes.length ? '· ' + plan.changes.length : ''}</button>
+            <button class="btn btn-ghost ${state.showDiff ? 'active-tool' : ''}" onclick="Resumes.toggleDiff()">View differences</button>
+            <button class="btn btn-ghost btn-danger" onclick="Resumes.resetToMaster()">Reset to Master Resume</button>
+          </div>
+          ${state.showChanges ? changesPanel(plan) : ''}
+          ${state.showDiff ? diffViewer(state.masterContent, plan, profile) : ''}` : '')
       : master
         ? `<div class="doc-banner">${Icons.get('file', 12)} Master resume — imported from&nbsp;<b>${esc(master.name)}</b><button class="mlink" onclick="MasterResume.download()">Download original</button></div>`
         : `<div class="doc-banner neutral">${Icons.get('file', 12)} Master resume — rendered live from your <a href="#/profile" style="color:var(--accent); font-weight:600">&nbsp;Profile</a></div>`;
@@ -241,7 +309,7 @@ const ResumesView = (() => {
       const docxNote = (!variant && master && master.kind === 'docx')
         ? `<div class="doc-banner neutral" style="margin-bottom:12px">${Icons.get('alert', 12)} DOCX can't be previewed in-browser — showing the profile-generated approximation. Use “Download original” above for the exact file.</div>`
         : '';
-      resumeBody = docxNote + resumePaper(profile, variant, sugg ? sugg.matched : []);
+      resumeBody = docxNote + resumePaper(profile, variant, sugg ? sugg.matched : [], plan);
     }
 
     return `
@@ -260,6 +328,8 @@ const ResumesView = (() => {
         ${tab === 'resume' ? resumeBody : coverPaper(letter, app)}
       </section>`;
   }
+
+  /* keep tailored rendering consistent inside preview() */
 
   function render(state) {
     return `

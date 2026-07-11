@@ -76,7 +76,7 @@ const JobsStore = (() => {
   const BASE_JOBS = [
     {
       id: 'job1', company: 'Stripe', title: 'Staff Solutions Architect',
-      description: 'Own the technical architecture for enterprise payment migrations and partner with sales on complex evaluations.',
+      description: 'Own the technical architecture for enterprise payment migrations and partner with sales on complex evaluations. A portfolio of architecture write-ups is a plus.',
       skills: ['Terraform', 'Kubernetes', 'Python', 'Stakeholder management', 'Payments'],
       location: 'Remote · US', workMode: 'Remote', employmentType: 'Full-time',
       salary: 185, salaryMax: 215, currency: 'USD', salaryDisclosed: true,

@@ -99,6 +99,49 @@
 .ai-note svg{ flex:none; margin-top:2px; }
 .ai-note a{ font-weight:600; color:inherit; text-decoration:underline; }
 
+/* ---- resume intelligence (Sprint 9C) ---- */
+.mi-block{
+  margin-top:12px; padding:10px 12px;
+  background:var(--amber-soft); border:1px dashed var(--amber);
+  border-radius:9px;
+}
+.mi-row{ font-size:11px; line-height:1.55; color:var(--body); margin-top:4px; }
+
+.tailor-actions{ display:flex; gap:7px; flex-wrap:wrap; margin-bottom:12px; }
+.tailor-actions .btn{ font-size:11px; padding:7px 12px; }
+.tailor-actions .active-tool{ border-color:var(--accent); color:var(--accent); }
+
+.chg-panel{
+  border:1px solid var(--green-soft); background:var(--green-soft);
+  border-radius:10px; padding:11px 14px; margin-bottom:12px;
+}
+.chg-row{ font-size:11.5px; line-height:1.6; color:var(--green-ink); }
+.chg-ic{ display:inline-block; width:14px; font-family:var(--mono); }
+.chg-safety{ margin-top:9px; padding-top:8px; border-top:1px dashed rgba(30,107,68,.3); font-size:10.5px; }
+.chg-safety.ok{ color:var(--green-ink); }
+.chg-safety.warn{ color:var(--amber); }
+
+.diff-view{
+  display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px;
+}
+.diff-col{
+  border:1px solid var(--border); border-radius:10px; background:#fff;
+  padding:12px 14px; font-size:11px;
+  --ink:#1A1712; --body:#57503F; --muted:#8B8272; color:var(--body);
+}
+.diff-title{ font:600 9px var(--mono); letter-spacing:.12em; color:var(--muted); margin-bottom:8px; }
+.diff-skills{ display:flex; flex-wrap:wrap; gap:4px; margin-bottom:9px; }
+.diff-skills span{ font-size:9.5px; border:1px solid #E6E0D4; border-radius:4px; padding:2px 6px; }
+.diff-skills .diff-surfaced{ background:#ECEDFB; border-color:#D9DBF6; font-weight:700; }
+.diff-role{ margin-bottom:8px; }
+.diff-role b{ color:var(--ink); font-size:11px; }
+.diff-role ul{ margin:3px 0 0; padding-left:15px; line-height:1.5; }
+.diff-role li{ margin-bottom:2px; }
+.diff-role li.diff-hidden{ text-decoration:line-through; color:#B23A2E; opacity:.75; }
+.diff-role li.diff-promoted{ background:#E7F2EC; border-radius:4px; padding:1px 4px; color:#1E6B44; }
+
+@media (max-width:900px){ .diff-view{ grid-template-columns:1fr; } }
+
 /* ---- responsive ---- */
 @media (max-width:1100px){
   .doc-layout{ grid-template-columns:1fr; }
