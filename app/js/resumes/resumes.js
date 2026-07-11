@@ -15,6 +15,7 @@ const Resumes = (() => {
     activeVariantId: null,    // variant loaded into the preview
     showChanges: false,       // "Changes made" panel (Sprint 9C)
     showDiff: false,          // master vs tailored difference viewer
+    showAudit: false,         // per-bullet interview safety audit
   };
 
   /* ---------- state assembly ---------- */
@@ -74,8 +75,11 @@ const Resumes = (() => {
       activeVariantId: ui.activeVariantId,
       variant,
       plan: variant ? (variant.plan || null) : null,
+      audit: (variant && variant.plan && masterC && typeof TailorEngine.bulletAudit === 'function')
+        ? TailorEngine.bulletAudit(variant.plan, masterC, profile) : null,
       showChanges: ui.showChanges,
       showDiff: ui.showDiff,
+      showAudit: ui.showAudit,
       profile,
       letter: app ? docs.coverLetters[app.id] : null,
       master: MasterResume.get(),
@@ -110,10 +114,25 @@ const Resumes = (() => {
   function loadVariant(id) {
     ui.activeVariantId = id;
     ui.tab = 'resume';
-    ui.showChanges = false;
-    ui.showDiff = false;
+    /* loading a variant exposes the full intelligence surface too */
+    ui.showChanges = true;
+    ui.showDiff = true;
+    ui.showAudit = true;
     const v = docs.variants.find(x => x.id === id);
     if (v && v.appId && apps().some(a => a.id === v.appId)) ui.appId = v.appId;
+    /* Sprint 9C finish: legacy variants get a safe plan backfilled
+       so the safety/changes/diff/audit UI appears for EVERY variant */
+    if (v && !v.plan) {
+      const app = apps().find(a => a.id === v.appId) || { company: v.company, position: v.title };
+      const profile = Profile.getState();
+      const plan = TailorEngine.tailor(TailorEngine.masterContent(profile), jobLikeFor(app) || {
+        company: v.company, title: v.title, skills: ResumesStore.keywordsFor(v.title), description: '',
+      }, profile);
+      if (plan.interviewCheck.pass) {
+        v.plan = plan;
+        ResumesStore.save(docs);
+      }
+    }
     refresh();
   }
 
@@ -149,8 +168,11 @@ const Resumes = (() => {
     docs.variants.unshift(variant);
     ui.activeVariantId = variant.id;
     ui.tab = 'resume';
+    /* show the full intelligence surface immediately — safety,
+       changes, diff and audit are all visible without extra clicks */
     ui.showChanges = true;
-    ui.showDiff = false;
+    ui.showDiff = true;
+    ui.showAudit = true;
     ResumesStore.save(docs);
     refresh();
     toast(`Tailored resume generated for ${app.company} — Safety ${plan.safety.score}% · ATS ${ats}`);
@@ -169,14 +191,20 @@ const Resumes = (() => {
     refresh();
   }
 
+  function toggleAudit() {
+    ui.showAudit = !ui.showAudit;
+    refresh();
+  }
+
   /* one click back to the untouched master rendering */
   function resetToMaster() {
     ui.activeVariantId = null;
     ui.showChanges = false;
     ui.showDiff = false;
+    ui.showAudit = false;
     ui.tab = 'resume';
     refresh();
-    toast('Preview reset to your master resume', 'info');
+    toast('Preview reset to your master resume — the uploaded file was never touched', 'info');
   }
 
   function generateCover() {
@@ -328,7 +356,7 @@ ${p.contact.email}${p.links.linkedin ? '\n' + p.links.linkedin : ''}`;
     render,
     selectApp, setTab, loadVariant,
     generateResume, generateCover,
-    toggleChanges, toggleDiff, resetToMaster,
+    toggleChanges, toggleDiff, toggleAudit, resetToMaster,
     copy, download,
     plainText, printableHtml, suggestionsFor, jobLikeFor, getDocs: () => docs,
   };

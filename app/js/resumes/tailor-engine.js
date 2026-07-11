@@ -147,6 +147,7 @@ const TailorEngine = (() => {
 
     const plan = {
       company: jobLike.company, title: jobLike.title,
+      jobSkills: (jobLike.skills || []).slice(),
       ops: { skills: skillsOrdered, certs: certsOrdered, roles, summaryText, skillsFirst, highlights: surfaced },
       changes,
     };
@@ -194,5 +195,46 @@ const TailorEngine = (() => {
     };
   }
 
-  return { masterContent, analyze, tailor, verify, interviewCheck, INFO_MARKERS };
+  /* Per-bullet Interview Safety audit: every PROMOTED bullet is
+     marked Safe to discuss / Needs preparation / Unsupported and
+     blocked, each tracing back to the master resume role (which
+     itself derives from saved profile history). */
+  function bulletAudit(plan, master, profile) {
+    const skillsLc = profile.skills.map(lc);
+    const knows = k => skillsLc.some(s => s === lc(k) || s.includes(lc(k)) || lc(k).includes(s));
+    const audit = [];
+    plan.ops.roles.forEach((r, i) => {
+      const mRole = master.roles[i];
+      r.order.forEach(b => {
+        const isPromoted = plan.changes.some(c => c.type === 'promoted' && c.text.includes(b.slice(0, 40)));
+        if (!isPromoted) return;
+        const traces = !!mRole && mRole.bullets.includes(b);
+        if (!traces) {
+          audit.push({ text: b, status: 'blocked', source: 'no provenance',
+            note: 'Unsupported and blocked — this text does not trace to your master resume.' });
+          return;
+        }
+        const mentioned = (plan.jobSkills || []).filter(k => lc(b).includes(lc(k)));
+        const unfamiliar = mentioned.filter(k => !knows(k));
+        audit.push({
+          text: b,
+          status: unfamiliar.length ? 'prep' : 'safe',
+          source: `${mRole.company} · ${mRole.period}`,
+          note: unfamiliar.length
+            ? `Needs preparation — mentions ${unfamiliar.join(', ')}, which isn't on your skills list. Refresh your talking points.`
+            : `Safe to discuss — verbatim from your ${mRole.company} experience.`,
+        });
+      });
+    });
+    return audit;
+  }
+
+  /* overall interview confidence for the summary tiles */
+  function interviewConfidence(audit) {
+    if (audit.some(a => a.status === 'blocked')) return 'Blocked';
+    if (audit.some(a => a.status === 'prep')) return 'Medium';
+    return 'High';
+  }
+
+  return { masterContent, analyze, tailor, verify, interviewCheck, bulletAudit, interviewConfidence, INFO_MARKERS };
 })();

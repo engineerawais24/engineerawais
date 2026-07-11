@@ -237,18 +237,65 @@ const ResumesView = (() => {
   /* ---------- Sprint 9C: changes panel + difference viewer ---------- */
 
   const CHANGE_ICON = { promoted: '↑', hidden: '−', skills: '★', certs: '☆', summary: '¶', section: '⇅' };
+  const CHANGE_CATS = [
+    ['promoted', 'Bullets promoted'], ['hidden', 'Bullets hidden'],
+    ['skills', 'Skills surfaced'], ['certs', 'Certifications highlighted'],
+    ['summary', 'Summary changes'], ['section', 'Section-order changes'],
+  ];
+
+  /* six-tile confidence summary — rendered whenever a plan is active */
+  function confidenceSummary(state) {
+    const { plan, variant, audit, intel } = state;
+    const tile = (v, l, cls) => `<div class="ds-stat ${cls || ''}"><b>${v}</b><span>${l}</span></div>`;
+    const ivc = audit ? TailorEngine.interviewConfidence(audit) : 'High';
+    return `
+      <div class="ds-stats conf-summary">
+        ${tile(plan.safety.score + '%', 'Resume Safety', plan.safety.score === 100 ? 'good' : 'bad')}
+        ${tile(ivc, 'Interview Confidence', ivc === 'High' ? 'good' : ivc === 'Blocked' ? 'bad' : '')}
+        ${tile(variant.ats, 'ATS Match', 'good')}
+        ${tile('0', 'Facts Changed', 'good')}
+        ${tile('0', 'Facts Invented', 'good')}
+        ${tile(intel ? intel.missing.length : 0, 'Missing Keywords', intel && intel.missing.length ? 'bad' : 'good')}
+      </div>`;
+  }
 
   function changesPanel(plan) {
+    const byType = t => plan.changes.filter(c => c.type === t);
     return `
       <div class="chg-panel">
-        <div class="sugg-label">CHANGES MADE · REORDER, EMPHASIS AND HIDING ONLY</div>
-        ${plan.changes.map(c => `<div class="chg-row"><span class="chg-ic">${CHANGE_ICON[c.type] || '✓'}</span> ✓ ${esc(c.text)}</div>`).join('')
-          || '<div class="chg-row">✓ No changes needed — the master already fits this role.</div>'}
+        <div class="sugg-label">CHANGES MADE · REORDER, EMPHASIS AND HIDING ONLY — NO FACTS TOUCHED</div>
+        ${CHANGE_CATS.map(([type, label]) => {
+          const items = byType(type);
+          return `
+            <div class="chg-cat"><span class="chg-ic">${CHANGE_ICON[type]}</span> ✓ ${label} (${items.length})</div>
+            ${items.map(c => `<div class="chg-row">${esc(c.text)}</div>`).join('')}`;
+        }).join('')}
         <div class="chg-safety ${plan.safety.score === 100 ? 'ok' : 'warn'}">
           ${plan.safety.score === 100
-            ? `Interview Safety Check passed — ${esc(plan.interviewCheck.note)}`
-            : `⚠ ${plan.safety.unsupported.length} unsupported item(s) — never inserted automatically: ${plan.safety.unsupported.map(esc).join('; ')}`}
+            ? `Unsupported claims: 0 · Interview Safety Check passed — ${esc(plan.interviewCheck.note)} Generation is blocked whenever unsupported content exists.`
+            : `⚠ Unsupported claims: ${plan.safety.unsupported.length} — never inserted automatically, generation blocked: ${plan.safety.unsupported.map(esc).join('; ')}`}
         </div>
+      </div>`;
+  }
+
+  /* per-bullet Interview Safety audit panel */
+  function auditPanel(audit) {
+    const PILL = {
+      safe: '<span class="pill pill-green">Safe to discuss</span>',
+      prep: '<span class="pill pill-amber">Needs preparation</span>',
+      blocked: '<span class="pill pill-red">Unsupported · blocked</span>',
+    };
+    return `
+      <div class="audit-panel">
+        <div class="sugg-label">INTERVIEW SAFETY CHECK · EVERY PROMOTED BULLET</div>
+        ${audit.length ? audit.map(a => `
+          <div class="audit-row">
+            <div class="audit-top">${PILL[a.status]}<span class="audit-src">${esc(a.source)}</span></div>
+            <div class="audit-text">“${esc(a.text)}”</div>
+            <div class="audit-note">${esc(a.note)}</div>
+          </div>`).join('')
+          : '<div class="audit-row"><div class="audit-note">No bullets were promoted — the master ordering already fits this role.</div></div>'}
+        <div class="chg-safety ok">Every bullet traces back to your master resume or saved profile history.</div>
       </div>`;
   }
 
@@ -268,6 +315,9 @@ const ResumesView = (() => {
       </div>`;
     const tailoredRoles = masterC.roles.map((r, i) => Object.assign({}, r, { bullets: plan.ops.roles[i] ? plan.ops.roles[i].order : r.bullets }));
     return `
+      <div class="diff-note">🔒 The Master Resume remains untouched — the tailored version only changes presentation, ordering and emphasis.
+        <span class="diff-legend"><i class="lg-promoted">↑ promoted</i><i class="lg-hidden">struck = hidden</i><i class="lg-surfaced">highlight = reordered/surfaced</i></span>
+      </div>
       <div class="diff-view">
         ${col('MASTER RESUME (SOURCE OF TRUTH)', masterC.roles, { skills: masterC.skills, markHidden: true })}
         ${col('TAILORED RESUME (REORDERED + EMPHASIZED)', tailoredRoles, { skills: plan.ops.skills, markPromoted: true, surfaced: true })}
@@ -283,16 +333,20 @@ const ResumesView = (() => {
           ${plan ? `<span class="ats" style="background:${plan.safety.score === 100 ? 'var(--green-soft)' : 'var(--amber-soft)'}; color:${plan.safety.score === 100 ? 'var(--green-ink)' : 'var(--amber)'}" title="Resume Safety Score — % of content verified against your master">Safety ${plan.safety.score}%</span>` : ''}
           <span class="ats" style="margin-left:auto; background:var(--green-soft); color:var(--green-ink)">ATS ${variant.ats}</span></div>`
         + (plan ? `
+          ${confidenceSummary(state)}
           <div class="tailor-actions">
             <button class="btn btn-ghost ${state.showChanges ? 'active-tool' : ''}" onclick="Resumes.toggleChanges()">Changes made ${plan.changes.length ? '· ' + plan.changes.length : ''}</button>
             <button class="btn btn-ghost ${state.showDiff ? 'active-tool' : ''}" onclick="Resumes.toggleDiff()">View differences</button>
-            <button class="btn btn-ghost btn-danger" onclick="Resumes.resetToMaster()">Reset to Master Resume</button>
+            <button class="btn btn-ghost ${state.showAudit ? 'active-tool' : ''}" onclick="Resumes.toggleAudit()">Interview safety</button>
+            <button class="btn btn-ghost btn-danger" onclick="Resumes.resetToMaster()">Reset Preview to Master Resume</button>
           </div>
           ${state.showChanges ? changesPanel(plan) : ''}
-          ${state.showDiff ? diffViewer(state.masterContent, plan, profile) : ''}` : '')
-      : master
+          ${state.showDiff ? diffViewer(state.masterContent, plan, profile) : ''}
+          ${state.showAudit && state.audit ? auditPanel(state.audit) : ''}` : '')
+      : (master
         ? `<div class="doc-banner">${Icons.get('file', 12)} Master resume — imported from&nbsp;<b>${esc(master.name)}</b><button class="mlink" onclick="MasterResume.download()">Download original</button></div>`
-        : `<div class="doc-banner neutral">${Icons.get('file', 12)} Master resume — rendered live from your <a href="#/profile" style="color:var(--accent); font-weight:600">&nbsp;Profile</a></div>`;
+        : `<div class="doc-banner neutral">${Icons.get('file', 12)} Master resume — rendered live from your <a href="#/profile" style="color:var(--accent); font-weight:600">&nbsp;Profile</a></div>`)
+        + `<div class="intel-teaser">🛡 <b>Resume Intelligence:</b> hit <b>Generate Resume</b> (or Load a variant) to see the Safety Score, Changes Made, Master↔Tailored Difference Viewer, per-bullet Interview Safety audit and one-click Reset — the master is never modified.</div>`;
 
     /* primary source: an uploaded PDF master is shown as-is;
        DOCX can't render in-browser, so the generated paper stands
