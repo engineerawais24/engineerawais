@@ -33,6 +33,11 @@
    salaryPeriod, relocationSupport, companyLogo, languagesRequired,
    originalSource, canonicalUrl, duplicateGroupId, duplicates,
    firstDiscovered, lastChecked.
+
+   Sprint 10B adds `sources` — one provenance entry per copy of
+   the job seen across boards ({source, applyUrl, sourceJobId,
+   company, postedDate}), filled in by the pipeline merge so no
+   board's URL or posting id is ever lost to deduplication.
    ============================================================ */
 
 const JobSchema = (() => {
@@ -96,6 +101,7 @@ const JobSchema = (() => {
       canonicalUrl: r.canonicalUrl || canon(r.applyUrl),
       duplicateGroupId: r.duplicateGroupId || null,
       duplicates: arr(r.duplicates),
+      sources: arr(r.sources),
       firstDiscovered: r.firstDiscovered || posted,
       lastChecked: r.lastChecked || today(),
     };

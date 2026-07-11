@@ -1,5 +1,5 @@
 /* ============================================================
-   Pipeline — the production discovery pipeline (Sprint 10A).
+   Pipeline — the production discovery pipeline (Sprint 10A → 10B).
 
    One explicit, ordered flow — each stage is observable in the
    run trace and none of them may abort the run:
@@ -7,6 +7,20 @@
      Source → Normalize → Deduplicate → GCC Filter →
      Salary Filter → Company Ranking → Resume Match →
      Decision Engine → Approval Queue → Applications
+
+   10B: the pipeline is now a UNIFIED INTAKE. ingest(batches)
+   accepts result sets from ANY origin — today the demo adapters
+   via execute(), tomorrow live backend responses pushed straight
+   in — and runs stages 2–10 identically. A batch is:
+
+     { id, label, jobs: NormalizedJob[]|raw[], state?, error? }
+
+   Deduplication is a MERGE, not a drop (10B): the highest-
+   priority copy wins the feed slot, but every copy's provenance
+   (board, apply URL, posting id, company, date) is kept on the
+   winner's `sources` list, and the winner is enriched with facts
+   only a duplicate disclosed: a disclosed salary beats silence,
+   sponsorship/relocation flags OR together, skills union.
 
    RULES ENFORCED HERE (the engines stay untouched):
    • a connector failure is recorded (SyncLog + diagnostics) and
@@ -32,54 +46,97 @@ const Pipeline = (() => {
     'approvalQueue', 'applications',
   ];
 
-  let lastTrace = [];
+  let _lastTrace = [];
 
-  function execute() {
-    const trace = [];
-    const step = (stage, cIn, cOut, meta) => trace.push({ stage, in: cIn, out: cOut, meta: meta || {} });
+  /* ---------- merge helpers (10B) ---------- */
 
-    /* 1 — SOURCE: enabled boards in priority order; a failed
-       connector is logged and skipped, never fatal */
-    const cfg = SourcesStore.load();
-    const enabledBoards = SourcesStore.BOARDS
-      .filter(b => cfg.boards[b.id].enabled)
-      .sort((a, b) => cfg.boards[a.id].priority - cfg.boards[b.id].priority);
+  /* one provenance entry per copy of a job — never lost to dedupe */
+  const provenance = j => ({
+    source: j.source, applyUrl: j.applyUrl, sourceJobId: j.sourceJobId,
+    company: j.company, postedDate: j.postedDate,
+  });
 
-    let fetched = [];
-    const perBoard = [];
-    enabledBoards.forEach(b => {
-      const r = DailySearch.runBoard(b.id);          // diagnostics + SyncLog inside
-      perBoard.push({ id: b.id, label: b.label, count: r.jobs.length, state: r.state, error: r.error });
-      fetched = fetched.concat(r.jobs);
-    });
-    const errors = perBoard.filter(p => p.state !== 'success')
-      .map(p => ({ source: p.id, label: p.label, state: p.state, error: p.error }));
-    step('source', enabledBoards.length, fetched.length, { boards: enabledBoards.length, failed: errors.length });
+  /* the winner absorbs facts only a duplicate disclosed */
+  function enrichFromDuplicate(w, d) {
+    if (!w.salaryDisclosed && d.salaryDisclosed) {
+      w.salary = d.salary; w.salaryMax = d.salaryMax;
+      w.currency = d.currency; w.salaryPeriod = d.salaryPeriod;
+      w.salaryDisclosed = true;
+    }
+    w.visaSponsorship = w.visaSponsorship || d.visaSponsorship;
+    w.relocationSupport = w.relocationSupport || d.relocationSupport;
+    const union = (a, b) => {
+      const have = new Set(a.map(s => s.toLowerCase()));
+      b.forEach(s => { if (!have.has(s.toLowerCase())) { a.push(s); have.add(s.toLowerCase()); } });
+    };
+    union(w.skills, d.skills);
+    union(w.preferredSkills, d.preferredSkills);
+  }
 
-    /* 2 — NORMALIZE: every record through the JobSchema contract;
-       records without sound identity are dropped and counted */
-    const normalized = fetched.map(JobSchema.normalized);
-    const valid = normalized.filter(JobSchema.isValid);
-    const invalid = normalized.length - valid.length;
-    step('normalize', fetched.length, valid.length, { invalid });
-
-    /* 3 — DEDUPLICATE: company+title key; first seen (highest
-       priority board) wins, losers recorded on the winner */
+  /* dedupe on company+title; first seen (highest-priority batch)
+     wins, every copy's provenance is preserved on the winner */
+  function mergeJobs(list) {
     const seen = new Map();
     const kept = [];
     let groupN = 0;
-    valid.forEach(j => {
+    list.forEach(j => {
       const key = (j.company + '|' + j.title).toLowerCase().replace(/[^a-z0-9|]+/g, ' ').trim();
       const winner = seen.get(key);
       if (winner) {
         if (!winner.duplicateGroupId) winner.duplicateGroupId = 'dg-' + (++groupN);
         winner.duplicates.push(j.source);
+        winner.sources.push(provenance(j));
+        enrichFromDuplicate(winner, j);
       } else {
+        if (!j.sources.length) j.sources.push(provenance(j));
         seen.set(key, j);
         kept.push(j);
       }
     });
-    const duplicatesRemoved = valid.length - kept.length;
+    return { kept, removed: list.length - kept.length };
+  }
+
+  /* ---------- stage 1: collect from the enabled connectors ---------- */
+
+  function collectBatches() {
+    const cfg = SourcesStore.load();
+    return SourcesStore.BOARDS
+      .filter(b => cfg.boards[b.id].enabled)
+      .sort((a, b) => cfg.boards[a.id].priority - cfg.boards[b.id].priority)
+      .map(b => {
+        const r = DailySearch.runBoard(b.id);          // diagnostics + SyncLog inside
+        return { id: b.id, label: b.label, jobs: r.jobs, state: r.state, error: r.error };
+      });
+  }
+
+  /* ---------- stages 2–10: the unified intake ---------- */
+
+  function ingest(batches) {
+    const trace = [];
+    const step = (stage, cIn, cOut, meta) => trace.push({ stage, in: cIn, out: cOut, meta: meta || {} });
+
+    /* 1 — SOURCE: whatever origin the batches came from; a failed
+       batch is reported and skipped, never fatal */
+    const perBoard = batches.map(b => ({
+      id: b.id || 'external', label: b.label || b.id || 'External source',
+      count: (b.jobs || []).length, state: b.state || 'success', error: b.error || null,
+    }));
+    let fetched = [];
+    batches.forEach(b => { fetched = fetched.concat(b.jobs || []); });
+    const errors = perBoard.filter(p => p.state !== 'success')
+      .map(p => ({ source: p.id, label: p.label, state: p.state, error: p.error }));
+    step('source', batches.length, fetched.length, { boards: batches.length, failed: errors.length });
+
+    /* 2 — NORMALIZE: every record through the JobSchema contract
+       (idempotent for already-normalized records); records without
+       sound identity are dropped and counted */
+    const normalized = fetched.map(JobSchema.normalized);
+    const valid = normalized.filter(JobSchema.isValid);
+    const invalid = normalized.length - valid.length;
+    step('normalize', fetched.length, valid.length, { invalid });
+
+    /* 3 — DEDUPLICATE: merge, don't drop (10B) */
+    const { kept, removed: duplicatesRemoved } = mergeJobs(valid);
     step('dedupe', valid.length, kept.length, { removed: duplicatesRemoved });
 
     /* 4+5 — GCC FILTER, then SALARY FILTER (both verdicts come
@@ -147,7 +204,7 @@ const Pipeline = (() => {
     JobsStore.setDiscovered(kept);
     step('applications', sentForReview, 0, { autoApplied: 0, note: 'explicit approval required' });
 
-    lastTrace = trace;
+    _lastTrace = trace;
 
     const summary = {
       ranAt: Date.now(),
@@ -160,5 +217,10 @@ const Pipeline = (() => {
     return { jobs: kept, summary, trace };
   }
 
-  return { STAGES, execute, lastTrace: () => lastTrace.slice() };
+  /* full run: connectors → intake (the daily-search path) */
+  function execute() {
+    return ingest(collectBatches());
+  }
+
+  return { STAGES, execute, ingest, mergeJobs, collectBatches, lastTrace: () => _lastTrace.slice() };
 })();
