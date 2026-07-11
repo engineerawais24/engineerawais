@@ -3,6 +3,10 @@
    Source rows, portal chips, run summary, pipeline overlay.
    ============================================================ */
 
+/* ---- connector policy row (Sprint 11 config panel) ---- */
+.cfg-policy{ display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; }
+@media (max-width:560px){ .cfg-policy{ grid-template-columns:1fr; } }
+
 /* ---- source rows (Settings) ---- */
 .srow{
   display:flex; align-items:flex-start; gap:12px;

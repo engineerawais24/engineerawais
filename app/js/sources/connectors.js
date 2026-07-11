@@ -448,27 +448,31 @@ const Connectors = (() => {
 
   const ADAPTERS = {
     linkedin: ConnectorBase.createAdapter({
-      id: 'linkedin', label: 'LinkedIn Jobs',
+      id: 'linkedin', label: 'LinkedIn Jobs', authType: 'session',
       capabilities: CAPABILITIES,
       requires: ['endpoint', 'sessionRef'],
+      normalize: fromLinkedIn,
       demoFeed: () => LINKEDIN_RAW.map(fromLinkedIn),
     }),
     bayt: ConnectorBase.createAdapter({
-      id: 'bayt', label: 'Bayt',
+      id: 'bayt', label: 'Bayt', authType: 'api_key',
       capabilities: CAPABILITIES,
       requires: ['endpoint', 'apiKeyRef'],
+      normalize: fromBayt,
       demoFeed: () => BAYT_RAW.map(fromBayt),
     }),
     gulftalent: ConnectorBase.createAdapter({
-      id: 'gulftalent', label: 'GulfTalent',
+      id: 'gulftalent', label: 'GulfTalent', authType: 'api_key',
       capabilities: CAPABILITIES,
       requires: ['endpoint', 'apiKeyRef'],
+      normalize: fromGulfTalent,
       demoFeed: () => GULFTALENT_RAW.map(fromGulfTalent),
     }),
     careers: ConnectorBase.createAdapter({
-      id: 'careers', label: 'Company Career Portals',
+      id: 'careers', label: 'Company Career Portals', authType: 'none',
       capabilities: CAPABILITIES,
       requires: ['endpoint'],
+      normalize: fromCareersPortal,
       demoFeed: () => {
         const portals = enabledPortals();
         return CAREERS_RAW.filter(r => portals[r.portal]).map(fromCareersPortal);
@@ -476,27 +480,31 @@ const Connectors = (() => {
     }),
     /* — ATS providers (Sprint 10A) — */
     greenhouse: ConnectorBase.createAdapter({
-      id: 'greenhouse', label: 'Greenhouse',
+      id: 'greenhouse', label: 'Greenhouse', authType: 'none',
       capabilities: CAPABILITIES,
       requires: ['endpoint'],               // public Job Board API — no key
+      normalize: fromGreenhouse,
       demoFeed: () => GREENHOUSE_RAW.map(fromGreenhouse),
     }),
     lever: ConnectorBase.createAdapter({
-      id: 'lever', label: 'Lever',
+      id: 'lever', label: 'Lever', authType: 'none',
       capabilities: CAPABILITIES,
       requires: ['endpoint'],               // public Postings API — no key
+      normalize: fromLever,
       demoFeed: () => LEVER_RAW.map(fromLever),
     }),
     workday: ConnectorBase.createAdapter({
-      id: 'workday', label: 'Workday',
+      id: 'workday', label: 'Workday', authType: 'oauth2',
       capabilities: CAPABILITIES,
       requires: ['endpoint', 'apiKeyRef'],  // per-tenant CXS gateway
+      normalize: fromWorkday,
       demoFeed: () => WORKDAY_RAW.map(fromWorkday),
     }),
     smartrecruiters: ConnectorBase.createAdapter({
-      id: 'smartrecruiters', label: 'SmartRecruiters',
+      id: 'smartrecruiters', label: 'SmartRecruiters', authType: 'api_key',
       capabilities: CAPABILITIES,
       requires: ['endpoint', 'apiKeyRef'],
+      normalize: fromSmartRecruiters,
       demoFeed: () => SMARTRECRUITERS_RAW.map(fromSmartRecruiters),
     }),
   };

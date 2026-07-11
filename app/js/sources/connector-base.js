@@ -1,17 +1,36 @@
 /* ============================================================
-   ConnectorBase — the job-source ADAPTER INTERFACE (Sprint 9A).
+   ConnectorBase — the job-source ADAPTER INTERFACE (9A → 11).
 
-   Every job source (LinkedIn Jobs, Bayt, GulfTalent, Company
-   Career Portals) is an adapter with this exact shape:
+   Every job source (LinkedIn, Bayt, GulfTalent, Greenhouse,
+   Lever, Workday, SmartRecruiters, Generic Company Careers) is
+   an adapter with this exact shape:
 
      {
-       id, label,
+       id, label, authType,
        capabilities: { query, location, workMode, postedSince,
                        pagination, salary, sponsorshipFlags },
        requires:  string[]   — config fields live mode needs
                                ('endpoint' | 'apiKeyRef' | 'sessionRef'),
-       fetch(SearchParams) → ConnectorResult
+
+       — the Sprint 11 production contract (every adapter) —
+       authenticate()        → { ok, state, authType, mode, error }
+       searchJobs(params)    → ConnectorResult
+       normalize(raw)        → NormalizedJob (JobSchema contract)
+       validate(job)         → problems[]  ([] = valid)
+       healthCheck()         → { id, label, health, lastRun,
+                                 lastSuccess, jobsFound, retryCount,
+                                 rateLimitedUntil, error }
+         health ∈ healthy | disabled | not_configured |
+                  auth_required | rate_limited | error
+       shutdown()            → { ok, id, released, note }
+                               release resources at end of lifecycle
+
+       fetch(SearchParams) → ConnectorResult   (9A alias of
+                              searchJobs — kept for compatibility)
      }
+
+   Nothing calls an adapter directly from the UI — execution,
+   retries and logging are owned by ConnectorManager (Sprint 11).
 
    SearchParams (all optional):
      { query, location, workMode, postedSince: 'YYYY-MM-DD',
@@ -111,10 +130,65 @@ const ConnectorBase = (() => {
     return list;
   }
 
+  /* the core search — shared by fetch() (9A alias) and
+     searchJobs() (Sprint 11 name). Pure over ConnectorConfig +
+     the demo feed; live mode routes through the backend contract. */
+  function runSearch(spec, params) {
+    const cfg = ConnectorConfig.get(spec.id);
+
+    /* dev/testing state simulation — drives the diagnostics UI */
+    if (cfg.simulate === 'failed') {
+      return result(false, STATES.FAILED, { error: 'Simulated connector failure' });
+    }
+    if (cfg.simulate === 'rate_limited') {
+      return result(false, STATES.RATE_LIMITED, { error: 'Rate limited (simulated)', retryAfter: 15 * 60e3 });
+    }
+    if (cfg.simulate === 'auth_required') {
+      return result(false, STATES.AUTH_REQUIRED, { error: 'Authentication required (simulated) — session expired' });
+    }
+
+    if (!cfg.useDemo) {
+      const missing = missingConfig(spec, cfg);
+      if (missing.length) {
+        return result(false, STATES.NOT_CONFIGURED, { error: 'Missing configuration: ' + missing.join(', ') });
+      }
+      return liveFetch(spec, params, cfg);
+    }
+
+    /* demo fallback (mock jobs stay available by requirement) */
+    const all = applyParams(spec.demoFeed(), params);
+    const page = Math.max(1, Number(params.page) || 1);
+    const pageSize = Math.max(1, Number(params.pageSize) || 25);
+    const jobs = all.slice((page - 1) * pageSize, page * pageSize);
+    return result(true, STATES.SUCCESS, {
+      jobs, page, pageSize, total: all.length,
+      hasMore: page * pageSize < all.length,
+    });
+  }
+
+  /* healthCheck derives the connector's health from its config,
+     the persisted board diagnostics and the sync log (Sprint 11
+     diagnostics requirement: healthy / disabled / auth_required /
+     rate_limited / error + last run / jobs found / retry count). */
+  function deriveHealth(spec, cfg, board) {
+    if (board && board.enabled === false) return 'disabled';
+    if (cfg.simulate === 'rate_limited') return 'rate_limited';
+    if (cfg.simulate === 'auth_required') return 'auth_required';
+    if (cfg.simulate === 'failed') return 'error';
+    if (!cfg.useDemo && missingConfig(spec, cfg).length) return 'not_configured';
+    if (board) {
+      if (board.state === 'failed') return 'error';
+      if (board.state === 'rate_limited') return 'rate_limited';
+      if (board.state === 'auth_required') return 'auth_required';
+    }
+    return 'healthy';
+  }
+
   function createAdapter(spec) {
     return {
       id: spec.id,
       label: spec.label,
+      authType: spec.authType || 'none',
       capabilities: spec.capabilities,
       requires: spec.requires,
 
@@ -122,40 +196,93 @@ const ConnectorBase = (() => {
         return missingConfig(spec, ConnectorConfig.get(spec.id)).length === 0;
       },
 
-      fetch(params = {}) {
+      /* ---- Sprint 11 production contract (every adapter) ---- */
+
+      /* authenticate() — resolve the connector's auth posture.
+         Demo mode needs no auth; live mode reports whether the
+         backend could authenticate (it never runs in the browser). */
+      authenticate() {
         const cfg = ConnectorConfig.get(spec.id);
-
-        /* dev/testing state simulation — drives the diagnostics UI */
-        if (cfg.simulate === 'failed') {
-          return result(false, STATES.FAILED, { error: 'Simulated connector failure' });
-        }
-        if (cfg.simulate === 'rate_limited') {
-          return result(false, STATES.RATE_LIMITED, { error: 'Rate limited (simulated)', retryAfter: 15 * 60e3 });
-        }
+        /* the adapter's intrinsic auth type is authoritative unless
+           the user explicitly overrode it to another real type */
+        const authType = (cfg.authType && cfg.authType !== 'none')
+          ? cfg.authType : (spec.authType || 'none');
         if (cfg.simulate === 'auth_required') {
-          return result(false, STATES.AUTH_REQUIRED, { error: 'Authentication required (simulated) — session expired' });
+          return { ok: false, state: STATES.AUTH_REQUIRED, authType, mode: 'live',
+            error: 'Authentication required (simulated) — session expired' };
         }
-
-        if (!cfg.useDemo) {
-          const missing = missingConfig(spec, cfg);
-          if (missing.length) {
-            return result(false, STATES.NOT_CONFIGURED, { error: 'Missing configuration: ' + missing.join(', ') });
-          }
-          return liveFetch(spec, params, cfg);
+        if (cfg.useDemo) {
+          return { ok: true, state: STATES.READY, authType, mode: 'demo', error: null };
         }
+        const missing = missingConfig(spec, cfg);
+        if (missing.length) {
+          return { ok: false, state: STATES.NOT_CONFIGURED, authType, mode: 'live',
+            error: 'Missing configuration: ' + missing.join(', ') };
+        }
+        return { ok: false, state: STATES.AUTH_REQUIRED, authType, mode: 'live',
+          error: 'Live authentication is performed by the backend — not reachable from the UI-only build' };
+      },
 
-        /* demo fallback (mock jobs stay available by requirement) */
-        const all = applyParams(spec.demoFeed(), params);
-        const page = Math.max(1, Number(params.page) || 1);
-        const pageSize = Math.max(1, Number(params.pageSize) || 25);
-        const jobs = all.slice((page - 1) * pageSize, page * pageSize);
-        return result(true, STATES.SUCCESS, {
-          jobs, page, pageSize, total: all.length,
-          hasMore: page * pageSize < all.length,
-        });
+      /* searchJobs(params) → ConnectorResult (the production name) */
+      searchJobs(params = {}) {
+        return runSearch(spec, params);
+      },
+
+      /* fetch(params) — 9A alias of searchJobs, kept for compatibility */
+      fetch(params = {}) {
+        return runSearch(spec, params);
+      },
+
+      /* normalize(raw) → NormalizedJob. Each adapter maps its
+         board-native record with its own normalizer; the fallback
+         is the schema's generic normalizer. */
+      normalize(raw) {
+        if (typeof spec.normalize === 'function') return spec.normalize(raw);
+        return (typeof JobSchema !== 'undefined') ? JobSchema.normalized(raw) : raw;
+      },
+
+      /* validate(job) → problems[] ([] = valid) against JobSchema */
+      validate(job) {
+        return (typeof JobSchema !== 'undefined') ? JobSchema.validate(job) : [];
+      },
+
+      /* healthCheck() → structured diagnostics for this connector */
+      healthCheck() {
+        const cfg = ConnectorConfig.get(spec.id);
+        const board = (typeof SourcesStore !== 'undefined')
+          ? (SourcesStore.load().boards[spec.id] || null) : null;
+        const retryCount = (typeof SyncLog !== 'undefined') ? SyncLog.retryCountOf(spec.id) : 0;
+        return {
+          id: spec.id,
+          label: spec.label,
+          health: deriveHealth(spec, cfg, board),
+          lastRun: board ? board.lastRun : null,
+          lastSuccess: board ? board.lastSuccess
+            : ((typeof SyncLog !== 'undefined') ? SyncLog.lastSuccessOf(spec.id) : null),
+          jobsFound: board && board.jobsFound != null ? board.jobsFound : null,
+          retryCount,
+          rateLimitedUntil: board ? (board.rateLimitedUntil || null) : null,
+          error: board ? (board.lastError || null) : null,
+        };
+      },
+
+      /* shutdown() — release the connector's resources at the end
+         of its lifecycle (close a live backend session / drop a
+         cached token). In the UI-only demo build there is no live
+         session to release, so this is a safe no-op that reports a
+         clean teardown — the contract a live connector will honour. */
+      shutdown() {
+        const cfg = ConnectorConfig.get(spec.id);
+        const live = !cfg.useDemo;
+        return {
+          ok: true, id: spec.id, released: live,
+          note: live
+            ? 'Live session release is performed by the backend on shutdown'
+            : 'No live session in demo mode — nothing to release',
+        };
       },
     };
   }
 
-  return { STATES, STATE_LABELS, result, createAdapter };
+  return { STATES, STATE_LABELS, result, createAdapter, deriveHealth };
 })();

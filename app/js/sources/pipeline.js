@@ -96,9 +96,17 @@ const Pipeline = (() => {
     return { kept, removed: list.length - kept.length };
   }
 
-  /* ---------- stage 1: collect from the enabled connectors ---------- */
+  /* ---------- stage 1: collect from the enabled connectors ----------
+     Execution is owned by ConnectorManager (Sprint 11): it drains
+     the enabled-connector queue, applies each connector's retry
+     policy, logs structurally and degrades gracefully. The inline
+     fallback below keeps the pipeline working if the manager is
+     absent, so behaviour is identical with or without it. */
 
   function collectBatches() {
+    if (typeof ConnectorManager !== 'undefined') {
+      return ConnectorManager.collect();
+    }
     const cfg = SourcesStore.load();
     return SourcesStore.BOARDS
       .filter(b => cfg.boards[b.id].enabled)

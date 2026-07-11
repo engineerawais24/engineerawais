@@ -68,6 +68,23 @@ const SourcesView = (() => {
           <div class="hint">Reference only (env:/secret:/vault:) — credentials never live in the browser.</div></div>
         <div class="field"><label>Session / login reference${req('sessionRef')}</label>
           <input type="text" id="cfg-session-${meta.id}" placeholder="env:${meta.id.toUpperCase()}_SESSION" value="${esc(cc.sessionRef)}"></div>
+        <div class="field"><label>OAuth access token reference</label>
+          <input type="text" id="cfg-oauth-${meta.id}" placeholder="env:${meta.id.toUpperCase()}_OAUTH_TOKEN" value="${esc(cc.oauthTokenRef)}"></div>
+        <div class="field"><label>Refresh token reference</label>
+          <input type="text" id="cfg-refresh-${meta.id}" placeholder="env:${meta.id.toUpperCase()}_REFRESH_TOKEN" value="${esc(cc.refreshTokenRef)}">
+          <div class="hint">OAuth2 connectors only — reference (env:/secret:/vault:), never the token itself.</div></div>
+        <div class="field"><label>Authentication type</label>
+          <select id="cfg-auth-${meta.id}">
+            ${ConnectorConfig.AUTH_TYPES.map(t => `<option value="${t}" ${t === cc.authType ? 'selected' : ''}>${t === 'none' ? 'None (public)' : t.replace('_', ' ')}</option>`).join('')}
+          </select></div>
+        <div class="cfg-policy">
+          <div class="field"><label>Rate limit (req/min)</label>
+            <input type="number" id="cfg-rate-${meta.id}" min="0" max="100000" value="${cc.rateLimit}"></div>
+          <div class="field"><label>Retry attempts</label>
+            <input type="number" id="cfg-retry-${meta.id}" min="0" max="5" value="${cc.retryMax}"></div>
+          <div class="field"><label>Timeout (ms)</label>
+            <input type="number" id="cfg-timeout-${meta.id}" min="1000" max="120000" value="${cc.timeoutMs}"></div>
+        </div>
         <div class="field"><label>Simulate state (diagnostics testing)</label>
           <select id="cfg-sim-${meta.id}">
             ${ConnectorConfig.SIMULATE.map(s => `<option value="${s}" ${s === cc.simulate ? 'selected' : ''}>${s === 'none' ? 'None' : ConnectorBase.STATE_LABELS[s]}</option>`).join('')}
@@ -206,6 +223,12 @@ const Sources = (() => {
       endpoint: val('endpoint').value || '',
       apiKeyRef: val('key').value || '',
       sessionRef: val('session').value || '',
+      oauthTokenRef: val('oauth').value || '',
+      refreshTokenRef: val('refresh').value || '',
+      authType: val('auth').value || 'none',
+      rateLimit: val('rate').value,
+      retryMax: val('retry').value,
+      timeoutMs: val('timeout').value,
       simulate: val('sim').value || 'none',
     });
     if (!res.ok) {
@@ -217,13 +240,15 @@ const Sources = (() => {
     return true;
   }
 
+  /* execution always flows through ConnectorManager — the UI never
+     calls an adapter (or the pipeline) directly (Sprint 11) */
   function test(id) {
-    DailySearch.retryBoard(id, { probe: true });
+    ConnectorManager.test(id);
     refresh();
   }
 
   function retry(id) {
-    DailySearch.retryBoard(id);
+    ConnectorManager.retry(id);
     refresh();
   }
 
