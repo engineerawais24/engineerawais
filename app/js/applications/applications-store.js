@@ -2,6 +2,13 @@
    ApplicationsStore — persistence layer for the Job Tracker
    board. Single responsibility: defaults, load, save, clear.
    Backed by localStorage (key versioned for future migrations).
+
+   Sprint 10A adds the PRODUCTION APPLICATION LIFECYCLE — the
+   eleven states an application moves through once real
+   connectors feed the pipeline. The Kanban board keeps its four
+   columns unchanged; columnFor() maps every lifecycle state to
+   its display column (pre-application states → null: they live
+   in Today's Jobs / Approvals until the user applies).
    ============================================================ */
 
 const ApplicationsStore = (() => {
@@ -9,6 +16,74 @@ const ApplicationsStore = (() => {
   const KEY = 'careerpilot_applications_v1';
 
   const STATUSES = ['applied', 'interview', 'offer', 'rejected'];
+
+  /* ---- production lifecycle (Sprint 10A) ---- */
+
+  const PIPELINE_STATUSES = [
+    { id: 'discovered',             label: 'Discovered',             column: null },
+    { id: 'shortlisted',            label: 'Shortlisted',            column: null },
+    { id: 'approved',               label: 'Approved',               column: null },
+    { id: 'preparing_resume',       label: 'Preparing Resume',       column: null },
+    { id: 'preparing_cover_letter', label: 'Preparing Cover Letter', column: null },
+    { id: 'ready_to_apply',         label: 'Ready To Apply',         column: null },
+    { id: 'applied',                label: 'Applied',                column: 'applied' },
+    { id: 'interview',              label: 'Interview',              column: 'interview' },
+    { id: 'offer',                  label: 'Offer',                  column: 'offer' },
+    { id: 'rejected',               label: 'Rejected',               column: 'rejected' },
+    { id: 'withdrawn',              label: 'Withdrawn',              column: 'rejected' },
+  ];
+
+  const STATUS_IDS = PIPELINE_STATUSES.map(s => s.id);
+  const byId = id => PIPELINE_STATUSES.find(s => s.id === id) || null;
+
+  function isKnownStatus(id) {
+    return STATUS_IDS.includes(id);
+  }
+
+  function statusLabel(id) {
+    const s = byId(id);
+    return s ? s.label : id;
+  }
+
+  /* board column an application renders in — null = not on the
+     board yet (still pre-application in the discovery pipeline) */
+  function columnFor(status) {
+    const s = byId(status);
+    return s ? s.column : null;
+  }
+
+  /* allowed transitions: one step forward through the lifecycle,
+     plus rejected/withdrawn from any non-terminal state */
+  const TERMINAL = ['offer', 'rejected', 'withdrawn'];
+
+  function nextStatuses(status) {
+    const i = STATUS_IDS.indexOf(status);
+    if (i === -1 || TERMINAL.includes(status)) return [];
+    const next = [];
+    const forward = STATUS_IDS[i + 1];
+    if (forward && !TERMINAL.includes(forward)) next.push(forward);
+    if (forward === 'offer') next.push('offer');
+    next.push('rejected', 'withdrawn');
+    return next;
+  }
+
+  function canTransition(from, to) {
+    return nextStatuses(from).includes(to);
+  }
+
+  /* production factory: a discovered/approved job becomes a
+     tracked application (used once the approval flow promotes
+     a job — never automatically) */
+  function fromJob(job, status = 'discovered') {
+    return {
+      id: 'app-' + (job.id || Date.now()),
+      company: job.company, position: job.title,
+      location: job.location || '',
+      applied: new Date().toISOString().slice(0, 10),
+      status: isKnownStatus(status) ? status : 'discovered',
+      jobId: job.id || null, source: job.source || null,
+    };
+  }
 
   /* Sample pipeline. Companies mirror the rest of the demo data
      (data.js) so the product feels coherent across screens. */
@@ -35,7 +110,7 @@ const ApplicationsStore = (() => {
       if (!raw) return defaults();
       const arr = JSON.parse(raw);
       if (!Array.isArray(arr)) return defaults();
-      const valid = arr.filter(a => a && a.id && a.company && STATUSES.includes(a.status));
+      const valid = arr.filter(a => a && a.id && a.company && isKnownStatus(a.status));
       return valid.length ? valid : defaults();
     } catch (e) {
       return defaults();
@@ -55,5 +130,10 @@ const ApplicationsStore = (() => {
     try { localStorage.removeItem(KEY); } catch (e) { /* ignore */ }
   }
 
-  return { KEY, STATUSES, defaults, load, save, clear };
+  return {
+    KEY, STATUSES, defaults, load, save, clear,
+    /* production lifecycle (Sprint 10A) */
+    PIPELINE_STATUSES, isKnownStatus, statusLabel,
+    columnFor, nextStatuses, canTransition, fromJob,
+  };
 })();

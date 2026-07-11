@@ -1,16 +1,17 @@
 /* ============================================================
-   DailySearch — the daily discovery workflow (Sprint 8B → 9A).
+   DailySearch — the daily discovery workflow (Sprint 8B → 10A).
 
-   9A: boards run through the ConnectorBase adapter interface.
-   Each enabled connector is executed with SearchParams, paged
-   until exhausted, and its DIAGNOSTICS recorded (state, last
-   run, jobs found, error, rate-limit). A failed connector never
+   10A: orchestration moved into Pipeline (pipeline.js) — the
+   explicit Source → Normalize → Dedupe → GCC → Salary → Ranking
+   → Match → Decision → Approval Queue → Applications flow.
+   DailySearch keeps the connector-level concerns: runBoard()
+   executes ONE adapter with SearchParams, pages until exhausted,
+   records DIAGNOSTICS (state, last run, jobs found, error,
+   rate-limit) and appends a SyncLog entry (source, time, error,
+   retry count, last successful sync). A failed connector never
    aborts the run — the pipeline degrades gracefully and every
-   other source still publishes.
-
-   Pipeline stays: collect → normalize (inside adapters) →
-   dedupe by priority → match (read-only) → salary + GCC rules →
-   publish to Today's Jobs. Approvals only via explicit action.
+   other source still publishes. retryBoard() is the manual
+   retry; SyncLog.retryCountOf() feeds real backoff later.
    ============================================================ */
 
 const DailySearch = (() => {
@@ -59,74 +60,37 @@ const DailySearch = (() => {
     }
     SourcesStore.save(after);
 
+    /* append to the sync log — source, time, error, retry count,
+       last successful sync (Sprint 10A error-handling contract) */
+    if (typeof SyncLog !== 'undefined') {
+      SyncLog.record({
+        source: boardId, sourceLabel: adapter.label,
+        ok: last.ok, state: last.state,
+        error: last.ok ? null : last.error, jobs: jobs.length,
+      });
+    }
+
     return { ok: last.ok, jobs, state: last.state, error: last.ok ? null : last.error };
   }
 
+  /* full daily run — delegates to the Sprint 10A Pipeline
+     (Source → Normalize → Dedupe → GCC → Salary → Ranking →
+     Match → Decision → Approval Queue → Applications) and keeps
+     the summary contract every screen already reads */
   function run() {
-    const cfg = SourcesStore.load();
-    const enabledBoards = SourcesStore.BOARDS
-      .filter(b => cfg.boards[b.id].enabled)
-      .sort((a, b) => cfg.boards[a.id].priority - cfg.boards[b.id].priority);
+    const { jobs, summary, trace } = Pipeline.execute();
 
-    /* 1+2 — collect via adapters (normalized inside), in priority order */
-    let jobs = [];
-    const perBoard = [];
-    enabledBoards.forEach(b => {
-      const r = runBoard(b.id);
-      perBoard.push({ id: b.id, label: b.label, count: r.jobs.length, state: r.state, error: r.error });
-      jobs = jobs.concat(r.jobs);
-    });
-    const found = jobs.length;
-
-    /* 3 — dedupe on company+title; first seen (highest priority) wins */
-    const seen = new Map();
-    const kept = [];
-    let groupN = 0;
-    jobs.forEach(j => {
-      const key = (j.company + '|' + j.title).toLowerCase().replace(/[^a-z0-9|]+/g, ' ').trim();
-      const winner = seen.get(key);
-      if (winner) {
-        if (!winner.duplicateGroupId) winner.duplicateGroupId = 'dg-' + (++groupN);
-        winner.duplicates.push(j.source);
-      } else {
-        seen.set(key, j);
-        kept.push(j);
-      }
-    });
-    const duplicatesRemoved = found - kept.length;
-
-    /* 4+5 — match (read-only snapshot) + salary and GCC region rules */
-    const snap = MatchEngine.snapshotFromProfile(Profile.getState(), MasterResume.get());
-    let salaryFiltered = 0;
-    let regionFiltered = 0;
-    let undisclosed = 0;
-    kept.forEach(j => {
-      const reason = MatchEngine.evaluate(j, snap).filterReason;
-      if (reason === 'salary') salaryFiltered++;
-      if (reason === 'region') regionFiltered++;
-      if (!j.salaryDisclosed) undisclosed++;
-    });
-    const qualified = kept.length - salaryFiltered - regionFiltered;
-
-    const summary = {
-      ranAt: Date.now(),
-      found, duplicatesRemoved, salaryFiltered, regionFiltered,
-      qualified, undisclosed, sentForReview: qualified,
-      perBoard,
-    };
-
-    /* 6 — publish + persist run state */
-    JobsStore.setDiscovered(kept);
+    /* persist run state for the Settings + Today's Jobs cards */
     const state = SourcesStore.load();
     state.lastSummary = summary;
     SourcesStore.save(state);
 
     if (typeof Jobs !== 'undefined') Jobs.reload();
     if (typeof Activity !== 'undefined') {
-      const failures = perBoard.filter(p => p.state !== 'success').length;
-      Activity.log('info', `Daily search: ${found} found, ${duplicatesRemoved} duplicates removed, ${qualified} sent for review${failures ? `, ${failures} connector${failures > 1 ? 's' : ''} degraded` : ''}`);
+      const failures = summary.perBoard.filter(p => p.state !== 'success').length;
+      Activity.log('info', `Daily search: ${summary.found} found, ${summary.duplicatesRemoved} duplicates removed, ${summary.qualified} sent for review${failures ? `, ${failures} connector${failures > 1 ? 's' : ''} degraded` : ''}`);
     }
-    return { jobs: kept, summary };
+    return { jobs, summary, trace };
   }
 
   /* per-connector retry / test-connection (diagnostics buttons) */

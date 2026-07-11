@@ -38,6 +38,9 @@ const SourcesView = (() => {
     if (b.rateLimitedUntil && b.rateLimitedUntil > Date.now()) {
       bits.push(`rate-limited until ${new Date(b.rateLimitedUntil).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`);
     }
+    /* consecutive-failure counter from the sync log (10A) */
+    const retries = (typeof SyncLog !== 'undefined') ? SyncLog.retryCountOf(id) : 0;
+    if (retries > 0) bits.push(`${retries} failed attempt${retries > 1 ? 's' : ''}`);
     let line = bits.join(' · ');
     if (b.lastError) line += `<br><span class="src-err">⚠ ${esc(b.lastError)}</span>`;
     return line;
@@ -96,7 +99,7 @@ const SourcesView = (() => {
           </label>
           <label>Priority
             <select onchange="Sources.setPriority('${meta.id}', this.value)" ${b.enabled ? '' : 'disabled'}>
-              ${[1, 2, 3, 4].map(n => `<option ${n === b.priority ? 'selected' : ''}>${n}</option>`).join('')}
+              ${SourcesStore.BOARDS.map((_, i) => `<option ${i + 1 === b.priority ? 'selected' : ''}>${i + 1}</option>`).join('')}
             </select>
           </label>
           <button class="src-gear ${openCfg === meta.id ? 'active' : ''}" title="Configure connector" onclick="Sources.toggleConfig('${meta.id}')">⚙</button>

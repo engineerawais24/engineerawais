@@ -1,12 +1,17 @@
 /* ============================================================
-   SourcesStore — job-source configuration (Sprint 8B).
+   SourcesStore — job-source configuration (Sprint 8B → 10A).
 
-   Four boards feed the daily search, each with:
+   Eight boards feed the daily search, each with:
      enabled     — on/off
      frequency   — 'Daily' | 'Twice daily' | 'Weekly' | 'Manual'
-     priority    — 1..4; on duplicate jobs, the lowest number wins
+     priority    — 1..N; on duplicate jobs, the lowest number wins
      lastRun     — timestamp of the last successful search (null = never)
-     status      — 'ready' | 'ok' | 'off'  (mock connection state)
+     state       — ConnectorBase connector state machine
+
+   The four ATS providers added in Sprint 10A (Greenhouse, Lever,
+   Workday, SmartRecruiters) ship DISABLED by default (dflt:false)
+   so existing daily-search behaviour is preserved exactly —
+   enable them in Settings → Job sources.
 
    The Company Career Portals board crawls the configurable
    target-company portals below. lastSummary keeps the stats of
@@ -18,10 +23,15 @@ const SourcesStore = (() => {
   const KEY = 'careerpilot_sources_v1';
 
   const BOARDS = [
-    { id: 'linkedin',   label: 'LinkedIn Jobs' },
-    { id: 'bayt',       label: 'Bayt' },
-    { id: 'gulftalent', label: 'GulfTalent' },
-    { id: 'careers',    label: 'Company Career Portals' },
+    { id: 'linkedin',        label: 'LinkedIn Jobs' },
+    { id: 'bayt',            label: 'Bayt' },
+    { id: 'gulftalent',      label: 'GulfTalent' },
+    { id: 'careers',         label: 'Company Career Portals' },
+    /* ATS providers (Sprint 10A) — opt-in */
+    { id: 'greenhouse',      label: 'Greenhouse',      dflt: false },
+    { id: 'lever',           label: 'Lever',           dflt: false },
+    { id: 'workday',         label: 'Workday',         dflt: false },
+    { id: 'smartrecruiters', label: 'SmartRecruiters', dflt: false },
   ];
 
   /* configurable target company portals (crawled via 'careers') */
@@ -48,7 +58,7 @@ const SourcesStore = (() => {
     const boards = {};
     BOARDS.forEach((b, i) => {
       boards[b.id] = {
-        enabled: true, frequency: 'Daily', priority: i + 1,
+        enabled: b.dflt !== false, frequency: 'Daily', priority: i + 1,
         /* connector diagnostics (Sprint 9A) */
         state: 'ready',          // ConnectorBase.STATES
         lastRun: null, lastSuccess: null,

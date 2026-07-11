@@ -24,7 +24,12 @@ const Applications = (() => {
 
   function counts() {
     const c = { applied: 0, interview: 0, offer: 0, rejected: 0, total: items.length };
-    items.forEach(a => { c[a.status]++; });
+    items.forEach(a => {
+      /* production lifecycle states map onto their board column;
+         pre-application states don't count on the board (10A) */
+      const col = ApplicationsStore.columnFor(a.status);
+      if (col) c[col]++;
+    });
     return c;
   }
 
