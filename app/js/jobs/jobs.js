@@ -99,6 +99,10 @@ const Jobs = (() => {
     const item = evaluated().find(x => x.job.id === id);
     if (!item) return;
     decide(id, 'approved');
+    /* Sprint 10C: build the full application package (tailored copy
+       of the locked master, cover letter, provenance-backed answers,
+       safety report) — reviewable in Approvals, never auto-sent */
+    if (typeof Prep !== 'undefined') Prep.buildFor(item);
     /* tailored COPY into the approvals queue — master stays locked,
        and the application still needs explicit user approval there.
        resumeVersion records the EXACT document version this

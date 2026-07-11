@@ -25,12 +25,15 @@ const ApplicationsStore = (() => {
     { id: 'approved',               label: 'Approved',               column: null },
     { id: 'preparing_resume',       label: 'Preparing Resume',       column: null },
     { id: 'preparing_cover_letter', label: 'Preparing Cover Letter', column: null },
+    { id: 'preparing_answers',      label: 'Preparing Answers',      column: null },   /* 10C */
+    { id: 'ready_for_review',       label: 'Ready for Review',       column: null },   /* 10C */
     { id: 'ready_to_apply',         label: 'Ready To Apply',         column: null },
     { id: 'applied',                label: 'Applied',                column: 'applied' },
     { id: 'interview',              label: 'Interview',              column: 'interview' },
     { id: 'offer',                  label: 'Offer',                  column: 'offer' },
     { id: 'rejected',               label: 'Rejected',               column: 'rejected' },
     { id: 'withdrawn',              label: 'Withdrawn',              column: 'rejected' },
+    { id: 'blocked_manual_review',  label: 'Blocked for Manual Review', column: null }, /* 10C hold state */
   ];
 
   const STATUS_IDS = PIPELINE_STATUSES.map(s => s.id);
@@ -53,16 +56,21 @@ const ApplicationsStore = (() => {
   }
 
   /* allowed transitions: one step forward through the lifecycle,
-     plus rejected/withdrawn from any non-terminal state */
+     plus rejected/withdrawn from any non-terminal state.
+     10C: preparation states can be put on hold for manual review;
+     resolving the hold returns the package to ready_for_review. */
   const TERMINAL = ['offer', 'rejected', 'withdrawn'];
+  const CAN_BLOCK = ['preparing_resume', 'preparing_cover_letter', 'preparing_answers', 'ready_for_review'];
 
   function nextStatuses(status) {
+    if (status === 'blocked_manual_review') return ['ready_for_review', 'rejected', 'withdrawn'];
     const i = STATUS_IDS.indexOf(status);
     if (i === -1 || TERMINAL.includes(status)) return [];
     const next = [];
     const forward = STATUS_IDS[i + 1];
-    if (forward && !TERMINAL.includes(forward)) next.push(forward);
+    if (forward && !TERMINAL.includes(forward) && forward !== 'blocked_manual_review') next.push(forward);
     if (forward === 'offer') next.push('offer');
+    if (CAN_BLOCK.includes(status)) next.push('blocked_manual_review');
     next.push('rejected', 'withdrawn');
     return next;
   }

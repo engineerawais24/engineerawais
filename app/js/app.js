@@ -17,6 +17,7 @@ const SCREENS = {
   profile:   { label: 'Profile',         title: 'Career Profile',       render: () => Profile.render(), badge: () => Profile.isDirty() ? '•' : 0 },
   jobs:      { label: "Today's Jobs",    title: "Today's Jobs",         render: () => Jobs.render(), badge: () => Jobs.pendingCount() },
   approvals: { label: 'Approvals',       title: 'Approvals',            render: renderApprovals, badge: () => DB.approvals.filter(a => a.status === 'awaiting').length },
+  review:    { label: 'Application Review', title: 'Application Review', render: () => Prep.renderReview(), hidden: true },
   applications: { label: 'Applications', title: 'Applications Board',   render: () => Applications.render() },
   resumes:   { label: 'Resume Library',  title: 'Resume Library',       render: () => Resumes.render() },
   tracker:   { label: 'Tracker',         title: 'Applications Tracker', render: renderTracker },
@@ -40,7 +41,7 @@ function navigate() {
 
 function renderNav() {
   const route = currentRoute();
-  const nav = Object.entries(SCREENS).map(([key, s]) => {
+  const nav = Object.entries(SCREENS).filter(([, s]) => !s.hidden).map(([key, s]) => {
     const badge = s.badge ? s.badge() : 0;
     const badgeCls = badge === '•' ? 'badge amber' : 'badge';
     return `
@@ -206,6 +207,7 @@ function renderApprovals() {
 
   return `
     <p class="screen-intro">Every application package waits here for your explicit sign-off — nothing is ever sent without you. Approving moves it to today's submission queue (mock).</p>
+    ${typeof PrepView !== 'undefined' ? PrepView.approvalsCard(Prep.packages()) : ''}
     <div style="display:flex; flex-direction:column; gap:11px">${awaitingHtml}</div>
     ${queuedHtml}`;
 }
@@ -490,6 +492,7 @@ const LOCAL_STORES = () => [
   { key: ConnectorConfig.KEY,   label: 'Connector configuration (references only)' },
   { key: SyncLog.KEY,           label: 'Connector sync log' },
   { key: CompaniesStore.KEY,    label: 'Company priority tiers' },
+  { key: PrepStore.KEY,         label: 'Application packages' },
   { key: Activity.KEY,          label: 'Activity log' },
   { key: Theme.KEY,             label: 'Theme & UI preferences' },
 ];

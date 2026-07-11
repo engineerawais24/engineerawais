@@ -1,0 +1,54 @@
+/* ============================================================
+   CareerPilot AI — Application preparation styles (Sprint 10C)
+   Approvals packages card + the final review screen.
+   ============================================================ */
+
+.prep-row{
+  display:flex; align-items:center; gap:12px;
+  border:1px solid var(--divider); border-radius:10px; background:var(--subtle);
+  padding:10px 12px; margin-bottom:8px;
+}
+.prep-row:last-child{ margin-bottom:0; }
+.prep-main{ flex:1; min-width:0; }
+.prep-top{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:13px; }
+.prep-co{ color:var(--muted); }
+.prep-meta{ font-size:11px; color:var(--muted); margin-top:3px; line-height:1.55; overflow-wrap:anywhere; }
+.prep-meta a{ color:var(--accent); font-weight:600; text-decoration:none; }
+.prep-meta a:hover{ text-decoration:underline; }
+.prep-warn{ color:var(--amber); font-weight:600; }
+
+.prep-chip{
+  font-family:var(--mono); font-size:9.5px; font-weight:600; letter-spacing:.04em;
+  padding:3px 8px; border-radius:6px; white-space:nowrap;
+}
+.prep-neutral{ background:var(--subtle); border:1px solid var(--border); color:var(--body); }
+.prep-indigo{ background:var(--accent-soft); border:1px solid var(--accent-border); color:var(--accent-ink); }
+.prep-green{ background:var(--green-soft); border:1px solid var(--green-soft); color:var(--green-ink); }
+.prep-red{ background:var(--red-soft); border:1px solid var(--red-soft); color:var(--red); }
+
+.prep-actions{ display:flex; align-items:center; gap:9px; flex-wrap:wrap; margin-top:12px; padding-top:12px; border-top:1px solid var(--divider); }
+.prep-actions .btn[disabled]{ opacity:.45; cursor:not-allowed; }
+
+.prep-sub{
+  font-family:var(--mono); font-size:9px; letter-spacing:.13em; color:var(--faint);
+  margin:12px 0 6px; font-weight:600;
+}
+
+/* answers */
+.ans-row{ padding:9px 0; border-top:1px solid var(--divider); }
+.ans-row:first-of-type{ border-top:none; }
+.ans-q{ font-size:12px; font-weight:600; color:var(--ink); display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.ans-a{ font-size:11.5px; color:var(--body); line-height:1.6; margin-top:4px; }
+.ans-empty{ color:var(--amber); font-style:italic; }
+.ans-src{ font-family:var(--mono); font-size:9.5px; color:var(--faint); margin-top:3px; overflow-wrap:anywhere; }
+.ans-src a{ color:var(--accent); text-decoration:none; }
+.ans-flagged{ background:var(--amber-soft); border-radius:8px; padding:9px 10px; border-top:none; margin-top:6px; }
+
+/* review layout */
+.rev-grid{ display:grid; grid-template-columns:1.25fr 1fr; gap:12px; align-items:start; margin-top:12px; }
+.prep-letter{
+  font:11.5px/1.7 var(--sans); color:var(--body); white-space:pre-wrap;
+  background:var(--subtle); border:1px solid var(--divider); border-radius:9px;
+  padding:12px 14px; margin:0; max-height:420px; overflow-y:auto;
+}
+@media (max-width:1100px){ .rev-grid{ grid-template-columns:1fr; } }
