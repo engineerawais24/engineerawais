@@ -52,6 +52,40 @@ const Jobs = (() => {
     state = JobsStore.load();
   }
 
+  /* ---------- Sprint 25: the Job Discovery Engine feeds this board ----------
+     Today's Jobs no longer stands on static sample data: it renders whatever
+     the discovery engine published. The board, its cards, its decisions and
+     every downstream sprint are unchanged — discovery publishes through
+     JobsStore.setDiscovered(), the same channel the daily search has always
+     used. If discovery yields nothing (or its files aren't loaded), the
+     sample feed still stands in, so the board can never be blank. */
+
+  let _discovering = false;
+
+  async function discover(filters) {
+    if (typeof JobDiscoveryService === 'undefined') return null;
+    if (_discovering) return null;
+    _discovering = true;
+    try {
+      const res = await JobDiscoveryService.discoverForBoard(filters || {});
+      reload();
+      refresh();
+      return res;
+    } catch (e) {
+      return null;                       // the board keeps whatever it had
+    } finally {
+      _discovering = false;
+    }
+  }
+
+  /* run once at boot, only when the board has never been populated —
+     it must never overwrite a real search the user has already run */
+  function bootDiscovery() {
+    if (typeof JobDiscoveryService === 'undefined') return null;
+    if (JobsStore.load().discovered) return null;
+    return discover({});
+  }
+
   function statusOf(id) {
     return state.decisions[id] || 'pending';
   }
@@ -326,6 +360,8 @@ const Jobs = (() => {
 
   return {
     render, evaluated, statusOf, pendingCount, reload,
+    /* Sprint 25 */
+    discover, bootDiscovery,
     setSource, toggleHidden, toggleWhy,
     approve, reject, later, undo,
     /* Sprint 19 */

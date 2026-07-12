@@ -540,6 +540,13 @@ window.addEventListener('DOMContentLoaded', () => {
     try { Backend.boot(); } catch (e) { /* stay local */ }
     window.addEventListener('online', () => { try { Backend.onOnline(); } catch (e) { /* stay local */ } });
   }
+  /* Sprint 25: populate Today's Jobs from the Job Discovery Engine. Runs in
+     the BACKGROUND and only when the board has never been populated, so it
+     never blocks the first paint and never overwrites a search the user has
+     already run. The board re-renders itself when the results land. */
+  if (typeof Jobs !== 'undefined' && Jobs.bootDiscovery) {
+    try { Jobs.bootDiscovery(); } catch (e) { /* the sample feed stands in */ }
+  }
   if (!location.hash) location.hash = '#/dashboard';
   navigate();
 });
