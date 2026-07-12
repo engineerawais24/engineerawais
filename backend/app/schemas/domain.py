@@ -294,3 +294,25 @@ class ConnectorStatusOut(_Out):
     avg_response_ms: int
     last_error: str
     updated_at: datetime
+
+
+# ---------- Conflicts (Sprint 17 PART 4) ----------
+class ConflictIn(BaseModel):
+    entity: str = Field(min_length=1)
+    entity_key: str = ""
+    kind: str = "version"                 # version | duplicate | provenance | http_409
+    message: str = ""
+    local_version: dict[str, Any] = Field(default_factory=dict)
+    backend_version: dict[str, Any] = Field(default_factory=dict)
+
+
+class ConflictOut(_Out):
+    id: int
+    entity: str
+    entity_key: str
+    kind: str
+    message: str
+    local_version: dict[str, Any]
+    backend_version: dict[str, Any]
+    resolved: bool
+    created_at: datetime

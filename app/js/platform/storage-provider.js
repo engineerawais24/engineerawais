@@ -111,19 +111,37 @@ const StorageProviders = (() => {
     opts = opts || {};
     const baseUrl = opts.baseUrl || '';
     const configured = !!baseUrl;
-    const mirror = localProvider({ namespace: opts.namespace || 'careerpilot_platform.' });
+    const ns = opts.namespace || 'careerpilot_platform.';
+    const mirror = localProvider({ namespace: ns });
     const client = opts.client || (typeof APIClient !== 'undefined' ? APIClient : null);
     const transport = opts.transport || null;
+    const META_KEY = '__kvmeta';
     let reachable = configured ? null : false;
+    let hydration = null;          // last hydration result
 
     const kvUrl = key => baseUrl + '/api/kv/' + encodeURIComponent(key);
+    const dataKeys = () => mirror.list().filter(k => k !== META_KEY);
+
+    /* per-key sync metadata: when it was written locally and whether
+       that write has been confirmed by the backend (Sprint 17). */
+    function meta() { return mirror.get(META_KEY) || {}; }
+    function saveMeta(m) { mirror.set(META_KEY, m); }
+    function markLocal(key) { const m = meta(); m[key] = { localUpdatedAt: Date.now(), synced: false }; saveMeta(m); }
+    function markSynced(key, backendUpdatedAt) {
+      const m = meta();
+      m[key] = Object.assign({}, m[key], { synced: true, syncedAt: Date.now(), backendUpdatedAt: backendUpdatedAt || null });
+      saveMeta(m);
+    }
 
     function push(method, key, value) {
       if (!configured || !client) return;
       const o = { transport, retries: 1, retryBackoffMs: 0, timeout: opts.timeout || 6000 };
       if (method === 'PUT') o.body = { value };
       client.request(method, kvUrl(key), o)
-        .then(() => { reachable = true; })
+        .then(res => {
+          reachable = true;
+          if (method === 'PUT') markSynced(key, res && res.data && res.data.updated_at);
+        })
         .catch(() => {
           reachable = false;   // offline: keep the mirror copy + queue for later
           if (typeof SyncManager !== 'undefined') {
@@ -132,15 +150,111 @@ const StorageProviders = (() => {
         });
     }
 
+    /* ---- async backend reads (never synchronous network) ---- */
+    async function listRemote(o) {
+      o = o || {};
+      if (!configured || !client) throw new Error('backend not configured');
+      const res = await client.request('GET', baseUrl + '/api/kv?prefix=' + encodeURIComponent(ns), { transport: o.transport || transport, retries: 0, timeout: o.timeout || 10000 });
+      const d = res && res.data ? res.data : {};
+      return (d.entries || (d.keys || []).map(k => ({ key: k, updated_at: null })));
+    }
+    async function getRemote(key, o) {
+      o = o || {};
+      if (!configured || !client) throw new Error('backend not configured');
+      const res = await client.request('GET', kvUrl(key), { transport: o.transport || transport, retries: 0, timeout: o.timeout || 8000 });
+      return res && res.data ? res.data : null;     // { key, value, updated_at }
+    }
+
+    /* HYDRATE: merge backend KV into the local mirror.
+       • never deletes unknown local keys
+       • never overwrites a NEWER unsynced local write (records a conflict)
+       • on failure the app keeps using the mirror — no data loss */
+    async function hydrate(o) {
+      o = o || {};
+      const started = Date.now();
+      if (!configured || !client) {
+        hydration = { at: Date.now(), ok: false, error: 'backend not configured' };
+        return hydration;
+      }
+      try {
+        const entries = await listRemote(o);
+        const m = meta();
+        let applied = 0, added = 0, skipped = 0, conflicted = 0;
+
+        for (const e of entries) {
+          const full = e.key;
+          if (String(full).indexOf(ns) !== 0) continue;      // not our namespace
+          const key = String(full).slice(ns.length);
+          if (key === META_KEY) continue;
+
+          const backendAt = e.updated_at ? Date.parse(e.updated_at) : 0;
+          const lm = m[key];
+
+          /* a local write that has NOT been confirmed by the backend and is
+             at least as new as the backend copy WINS — keep local, record it */
+          if (lm && lm.synced === false && (lm.localUpdatedAt || 0) >= backendAt) {
+            skipped++; conflicted++;
+            if (typeof ConflictCenter !== 'undefined') {
+              ConflictCenter.record({
+                entity: 'kv', key, kind: 'version',
+                message: 'Local unsynced write is newer than the backend copy — local kept',
+                local: { updatedAt: lm.localUpdatedAt, value: mirror.get(key) },
+                backend: { updatedAt: e.updated_at },
+              });
+            }
+            continue;
+          }
+
+          const remote = await getRemote(full, o);
+          const existed = mirror.get(key) !== null;
+          mirror.set(key, remote ? remote.value : null);
+          m[key] = { localUpdatedAt: backendAt || Date.now(), synced: true, syncedAt: Date.now(), backendUpdatedAt: e.updated_at || null };
+          applied++;
+          if (!existed) added++;
+        }
+
+        saveMeta(m);
+        reachable = true;
+        hydration = { at: Date.now(), ok: true, applied, added, skipped, conflicts: conflicted, backendKeys: entries.length, durationMs: Date.now() - started };
+        return hydration;
+      } catch (err) {
+        reachable = false;
+        hydration = { at: Date.now(), ok: false, error: (err && err.message) || 'hydration failed' };
+        return hydration;   // app continues on the mirror — nothing is lost
+      }
+    }
+
+    /* backend vs local difference summary (async) */
+    async function diff(o) {
+      const entries = await listRemote(o || {});
+      const remote = entries
+        .map(e => String(e.key))
+        .filter(k => k.indexOf(ns) === 0)
+        .map(k => k.slice(ns.length))
+        .filter(k => k !== META_KEY);
+      const local = dataKeys();
+      return {
+        localCount: local.length,
+        backendCount: remote.length,
+        onlyLocal: local.filter(k => remote.indexOf(k) === -1),
+        onlyBackend: remote.filter(k => local.indexOf(k) === -1),
+        both: local.filter(k => remote.indexOf(k) !== -1),
+      };
+    }
+
     return {
-      name: 'RESTStorageProvider', kind: 'rest', configured, namespace: mirror.namespace, baseUrl,
-      get: k => mirror.get(k),                                  // sync from mirror
-      set: (k, v) => { const r = mirror.set(k, v); push('PUT', k, v); return r; },
-      remove: k => { const r = mirror.remove(k); push('DELETE', k); return r; },
-      list: () => mirror.list(),
+      name: 'RESTStorageProvider', kind: 'rest', configured, namespace: ns, baseUrl,
+      get: k => mirror.get(k),                                  // sync from mirror — always instant
+      set: (k, v) => { const r = mirror.set(k, v); markLocal(k); push('PUT', k, v); return r; },
+      remove: k => { const r = mirror.remove(k); const m = meta(); delete m[k]; saveMeta(m); push('DELETE', k); return r; },
+      list: () => dataKeys(),
       clear: () => mirror.clear(),                              // mirror only — never mass-deletes the backend
       transaction: fn => mirror.transaction(fn),
-      healthCheck: () => ({ ok: reachable !== false, provider: 'rest', configured, reachable, baseUrl, keys: mirror.list().length }),
+      healthCheck: () => ({ ok: reachable !== false, provider: 'rest', configured, reachable, baseUrl, keys: dataKeys().length, hydration }),
+      /* Sprint 17 async backend reads */
+      hydrate, diff, getRemote, listRemote,
+      hydration: () => hydration,
+      meta,
     };
   }
   const postgresProvider = o => stub('postgres', 'PostgreSQL', { via: 'backend service', table: 'kv_store', columns: ['key', 'value', 'updated_at', 'user_id'] }, o);

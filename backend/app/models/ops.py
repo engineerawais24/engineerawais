@@ -2,7 +2,9 @@
 (Sprint 16 PART 3)."""
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, Integer, JSON, String, Text
+from sqlalchemy import (
+    Boolean, Column, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint,
+)
 
 from ..database import Base
 
@@ -60,13 +62,38 @@ class ErrorEntry(Base):
 
 class KVEntry(Base):
     """Generic key/value store backing the frontend RESTStorageProvider
-    (Sprint 16 PART 5). Opaque JSON blobs keyed by namespaced string."""
+    (Sprint 16 PART 5). Opaque JSON blobs keyed by namespaced string.
+
+    Sprint 17: scoped to the owning user, and `updated_at` is returned to
+    the client so hydration can compare local vs backend recency.
+    """
     __tablename__ = "kv_entries"
 
     id = Column(Integer, primary_key=True)
-    key = Column(String(255), unique=True, nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    key = Column(String(255), nullable=False, index=True)
     value = Column(JSON, default=dict)
     updated_at = Column(DateTime, default=_now, onupdate=_now, nullable=False)
+
+    __table_args__ = (UniqueConstraint("user_id", "key", name="uq_kv_user_key"),)
+
+
+class Conflict(Base):
+    """A recorded sync conflict (Sprint 17 PART 4). Neither side is ever
+    discarded: the local version stays authoritative locally and the
+    backend version is preserved here for diagnostics."""
+    __tablename__ = "conflicts"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    entity = Column(String(64), default="")            # profile | submitted | interviews | kv …
+    entity_key = Column(String(255), default="")
+    kind = Column(String(48), default="version")       # version | duplicate | provenance | http_409
+    message = Column(Text, default="")
+    local_version = Column(JSON, default=dict)
+    backend_version = Column(JSON, default=dict)
+    resolved = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=_now, nullable=False)
 
 
 class Migration(Base):

@@ -12,11 +12,11 @@ from .core import (
 )
 from .jobs import Job, JobDecision
 from .applications import ApplicationPackage, SubmittedApplication, InterviewRecord
-from .ops import ConnectorStatus, SyncOperation, ErrorEntry, KVEntry, Migration
+from .ops import ConnectorStatus, SyncOperation, ErrorEntry, KVEntry, Conflict, Migration
 
 __all__ = [
     "User", "Profile", "Preferences", "Employment", "Skill", "Certification",
     "ResumeMeta", "Job", "JobDecision", "ApplicationPackage",
     "SubmittedApplication", "InterviewRecord", "ConnectorStatus",
-    "SyncOperation", "ErrorEntry", "KVEntry", "Migration",
+    "SyncOperation", "ErrorEntry", "KVEntry", "Conflict", "Migration",
 ]

@@ -73,23 +73,177 @@ const Backend = (() => {
     const c = loadCfg(); c.mode = 'local'; saveCfg(c);
   }
 
-  function status() { return Object.assign({ mode: mode(), baseUrl: baseUrl() }, _status); }
-
   function refresh() {
     if (typeof navigate === 'function' && typeof currentRoute === 'function' && currentRoute() === 'admin') navigate();
   }
 
-  /* admin button: test connection, then (if reachable) offer backend mode */
-  async function adminTest() {
-    const s = await testConnection();
-    if (typeof toast === 'function') {
-      toast(s.reachable ? `Backend reachable — API v${s.apiVersion || '?'} · DB ${s.database || 'ok'}` : `Backend unreachable at ${baseUrl()}`, s.reachable ? 'success' : 'error');
-    }
-    refresh();
-    return s;
+  /* ---- in-flight guards: the admin disables a button while its
+     action is already running (Sprint 17 PART 5) ---- */
+  const busy = { test: false, hydrate: false, sync: false, retry: false, mode: false };
+  function isBusy(k) { return k ? !!busy[k] : Object.keys(busy).some(x => busy[x]); }
+  async function guarded(key, fn) {
+    if (busy[key]) return { skipped: true, reason: 'in_progress' };
+    busy[key] = true; refresh();
+    try { return await fn(); } finally { busy[key] = false; refresh(); }
   }
 
-  return { CFG_KEY, DEFAULT_BASE, loadCfg, saveCfg, baseUrl, setBaseUrl, mode, client, testConnection, useBackend, useLocal, status, adminTest, refresh };
+  function provider() {
+    const p = (typeof AppStorage !== 'undefined') ? AppStorage.active() : null;
+    return (p && p.kind === 'rest') ? p : null;
+  }
+
+  function status() {
+    const p = provider();
+    const sync = (typeof SyncManager !== 'undefined') ? SyncManager.status() : {};
+    return Object.assign({
+      mode: mode(),
+      baseUrl: baseUrl(),
+      hydration: p && p.hydration ? p.hydration() : null,
+      sync,
+      conflicts: (typeof ConflictCenter !== 'undefined') ? ConflictCenter.count() : 0,
+      busy: Object.assign({}, busy),
+      compare: (typeof DomainSync !== 'undefined') ? DomainSync.compare() : null,
+    }, _status);
+  }
+
+  /* ---- HYDRATION: pull backend state into the local mirror ----
+     Local unsynced writes are always preserved (see RESTStorageProvider). */
+  async function hydrate(opts) {
+    opts = opts || {};
+    const p = provider();
+    if (!p) return { ok: false, error: 'backend mode is not active' };
+    const kv = await p.hydrate(opts);
+    let domain = null;
+    if (typeof DomainSync !== 'undefined') {
+      try { domain = await DomainSync.hydrateAll(opts); } catch (e) { domain = { ok: false, error: e.message }; }
+    }
+    return { ok: !!kv.ok, kv, domain };
+  }
+
+  /* ---- FLUSH: drain the offline queue to the backend ---- */
+  async function syncNow(opts) {
+    if (typeof SyncManager === 'undefined') return { ok: false, error: 'SyncManager unavailable' };
+    const r = await SyncManager.flushNow(opts || {});
+    if (typeof DomainSync !== 'undefined' && mode() === 'backend') {
+      try { await DomainSync.pushAll(opts || {}); } catch (e) { /* queued by DomainSync */ }
+    }
+    return r;
+  }
+
+  /* ---- MODE SWITCHING ---- */
+  /* Backend mode ALWAYS tests connectivity first. On success it swaps the
+     provider, marks sync online, hydrates and flushes the queue. */
+  async function enableBackendMode(opts) {
+    opts = opts || {};
+    const s = await testConnection(opts);
+    if (!s.reachable) return { ok: false, reachable: false, error: 'Backend unreachable — staying in local mode' };
+    useBackend(opts);
+    if (typeof SyncManager !== 'undefined') SyncManager.setOnline(true);
+    const h = await hydrate(opts);
+    const f = await syncNow(opts);
+    return { ok: true, reachable: true, hydrate: h, flush: f };
+  }
+
+  /* Local mode NEVER deletes backend or local data — it only swaps the
+     active provider back to the local mirror. */
+  function enableLocalMode() {
+    useLocal();
+    if (typeof SyncManager !== 'undefined') SyncManager.setOnline(false);
+    return { ok: true, mode: 'local' };
+  }
+
+  /* ---- TRIGGERS (PART 1) ---- */
+  async function onOnline() {                      // browser came online
+    if (mode() !== 'backend') return { skipped: true };
+    const s = await testConnection();
+    if (!s.reachable) return { skipped: true, reachable: false };
+    if (typeof SyncManager !== 'undefined') SyncManager.setOnline(true);
+    return syncNow();
+  }
+
+  async function boot() {                          // app start, backend mode was on
+    if (mode() !== 'backend') return { skipped: true, mode: 'local' };
+    const s = await testConnection();
+    if (!s.reachable) {
+      if (typeof SyncManager !== 'undefined') SyncManager.setOnline(false);
+      return { skipped: true, reachable: false };  // stay on the mirror, fully usable
+    }
+    useBackend({});
+    if (typeof SyncManager !== 'undefined') SyncManager.setOnline(true);
+    const h = await hydrate();
+    const f = await syncNow();
+    return { ok: true, hydrate: h, flush: f };
+  }
+
+  /* ---- ADMIN BUTTON ACTIONS (guarded + toasted) ---- */
+  function say(msg, type) { if (typeof toast === 'function') toast(msg, type); }
+
+  function adminTest() {
+    return guarded('test', async () => {
+      const s = await testConnection();
+      say(s.reachable ? `Backend reachable — API v${s.apiVersion || '?'} · DB ${s.database || 'ok'}` : `Backend unreachable at ${baseUrl()}`, s.reachable ? 'success' : 'error');
+      if (s.reachable && mode() === 'backend' && typeof SyncManager !== 'undefined') {
+        SyncManager.setOnline(true);
+        await syncNow();                       // trigger: connection test succeeded
+      }
+      return s;
+    });
+  }
+
+  function adminHydrate() {
+    return guarded('hydrate', async () => {
+      if (mode() !== 'backend') { say('Switch to backend mode first — hydration only runs in backend mode', 'error'); return { ok: false }; }
+      if (typeof confirm === 'function' && !confirm('Hydrate from the backend?\n\nBackend data is merged INTO your local mirror. Any local change that has not been synced yet is PRESERVED (it wins, and the difference is recorded as a conflict). Nothing local is deleted.')) return { skipped: true };
+      const r = await hydrate();
+      const kv = r.kv || {};
+      say(r.ok ? `Hydrated — ${kv.applied || 0} key(s) applied, ${kv.skipped || 0} local write(s) kept, ${kv.conflicts || 0} conflict(s)` : `Hydration failed — still using the local mirror (${(kv && kv.error) || 'unreachable'})`, r.ok ? 'success' : 'error');
+      return r;
+    });
+  }
+
+  function adminSyncNow() {
+    return guarded('sync', async () => {
+      if (typeof SyncManager !== 'undefined' && mode() === 'backend') SyncManager.setOnline(true);
+      const r = await syncNow();
+      if (r && r.skipped) say(r.reason === 'in_progress' ? 'A sync is already running' : 'Offline — operations stay queued', 'info');
+      else say(`Sync — ${r.synced || 0} sent, ${r.failed || 0} failed, ${r.conflicts || 0} conflict(s), ${r.pending || 0} still queued`, (r.failed || r.conflicts) ? 'error' : 'success');
+      return r;
+    });
+  }
+
+  function adminRetryFailed() {
+    return guarded('retry', async () => {
+      if (typeof SyncManager === 'undefined') return { ok: false };
+      const n = SyncManager.retry();
+      if (!n) { say('No failed operations to retry', 'info'); return { ok: true, rearmed: 0 }; }
+      const r = await syncNow();
+      say(`Retried ${n} operation(s) — ${r.synced || 0} succeeded, ${r.pending || 0} still queued`, (r.synced) ? 'success' : 'error');
+      return Object.assign({ rearmed: n }, r);
+    });
+  }
+
+  function adminUseBackend() {
+    return guarded('mode', async () => {
+      const r = await enableBackendMode();
+      say(r.ok ? 'Backend mode ON — hydrated and queue flushed' : (r.error || 'Could not enable backend mode'), r.ok ? 'success' : 'error');
+      return r;
+    });
+  }
+
+  function adminUseLocal() {
+    return guarded('mode', async () => {
+      const r = enableLocalMode();
+      say('Local mode ON — nothing was deleted locally or on the backend', 'success');
+      return r;
+    });
+  }
+
+  return {
+    CFG_KEY, DEFAULT_BASE, loadCfg, saveCfg, baseUrl, setBaseUrl, mode, client,
+    testConnection, useBackend, useLocal, provider, status, refresh,
+    hydrate, syncNow, enableBackendMode, enableLocalMode, onOnline, boot,
+    isBusy, adminTest, adminHydrate, adminSyncNow, adminRetryFailed, adminUseBackend, adminUseLocal,
+  };
 })();
 
 

@@ -21,12 +21,24 @@ const AdminView = (() => {
   function backendCard() {
     if (typeof Backend === 'undefined') return '';
     const s = Backend.status();
-    const cnt = (typeof Migration !== 'undefined') ? Migration.counts() : {};
+    const sync = s.sync || {};
+    const hyd = s.hydration;
+    const cmp = s.compare || { local: {}, backend: {} };
     const last = (typeof Migration !== 'undefined') ? Migration.lastMigration() : null;
-    const pendingSync = (typeof SyncManager !== 'undefined') ? SyncManager.status().pending : 0;
     const apiErrs = (typeof ErrorCenter !== 'undefined') ? (ErrorCenter.counts().api || 0) : 0;
     const reach = s.reachable === true ? 'reachable' : s.reachable === false ? 'offline' : 'not tested';
-    const total = Object.keys(cnt).reduce((n, k) => n + cnt[k], 0);
+    const b = s.busy || {};
+    const dis = k => (b[k] || Backend.isBusy('mode')) ? 'disabled' : '';
+    const lbl = (k, t) => b[k] ? '…' : t;
+
+    /* local vs backend record comparison */
+    const entities = Array.from(new Set(Object.keys(cmp.local || {}).concat(Object.keys(cmp.backend || {}))));
+    const cmpRows = entities.map(k => {
+      const l = (cmp.local || {})[k] || 0, r = (cmp.backend || {})[k] || 0;
+      const cls = l === r ? 'prep-neutral' : 'prep-red';
+      return `<span class="prep-chip ${cls}">${esc(k)}: ${l}/${r}</span>`;
+    }).join(' ');
+
     return `
       <div class="card card-pad">
         <p class="card-title">Backend &amp; persistence ${dot(s.reachable === true)}</p>
@@ -36,13 +48,40 @@ const AdminView = (() => {
           ${stat(s.apiVersion ? ('v' + s.apiVersion) : '—', 'api version')}
           ${stat(s.database || '—', 'database', s.database === 'connected' ? 'good' : '')}
         </div>
-        <div class="hint" style="margin-top:8px">Base URL <span class="mono">${esc(s.baseUrl)}</span> · ${total} local record(s) ready to migrate · pending sync ${pendingSync} · REST failures ${apiErrs}</div>
-        <div class="prep-sub">LOCAL RECORDS</div>
-        <div class="job-chips">${Object.keys(cnt).map(k => `<span class="prep-chip prep-neutral">${esc(k)}: ${cnt[k]}</span>`).join(' ')}</div>
-        ${last ? `<div class="hint" style="margin-top:8px">Last migration ${fmtTime(last.at)}${last.result ? ` — ${last.result.success_count} imported, ${last.result.skipped_count} skipped, ${last.result.failed_count} failed` : ''}</div>` : '<div class="hint" style="margin-top:8px">No migration run yet — defaults to local storage.</div>'}
+        <div class="ds-stats" style="margin-top:8px">
+          ${stat(sync.pending || 0, 'pending ops', (sync.pending || 0) ? '' : 'good')}
+          ${stat(sync.permanentFailed || 0, 'permanent failed', (sync.permanentFailed || 0) ? 'bad' : 'good')}
+          ${stat(s.conflicts || 0, 'conflicts', (s.conflicts || 0) ? 'bad' : 'good')}
+          ${stat(hyd && hyd.at ? fmtTime(hyd.at) : 'never', 'last hydration', hyd && hyd.ok ? 'good' : '')}
+        </div>
+        <div class="hint" style="margin-top:8px">
+          Base URL <span class="mono">${esc(s.baseUrl)}</span> ·
+          last successful sync ${sync.lastSuccessAt ? fmtTime(sync.lastSuccessAt) : 'never'} ·
+          last failed sync ${sync.lastFailureAt ? fmtTime(sync.lastFailureAt) : 'never'} ·
+          REST failures ${apiErrs}${sync.flushing ? ' · <b>flushing…</b>' : ''}
+        </div>
+
+        <div class="prep-sub">LOCAL / BACKEND RECORDS</div>
+        <div class="job-chips">${cmpRows || '<span class="hint">No comparison yet — hydrate to populate.</span>'}</div>
+
+        ${(typeof ConflictCenter !== 'undefined' && ConflictCenter.count()) ? `
+          <div class="prep-sub" style="color:var(--red)">RECENT CONFLICTS (local version always kept)</div>
+          ${ConflictCenter.recent(4).map(c => `<div class="mi-row">⚠ <b>${esc(c.entity)}${c.key ? '·' + esc(c.key) : ''}</b> [${esc(c.kind)}] — ${esc(c.message)}</div>`).join('')}` : ''}
+
+        ${last ? `<div class="hint" style="margin-top:8px">Last migration ${fmtTime(last.at)}${last.result ? ` — ${last.result.success_count} imported, ${last.result.skipped_count} skipped` : ''}</div>` : ''}
+
         <div class="prep-actions">
-          <button class="btn btn-primary" onclick="Backend.adminTest()">Test backend connection</button>
-          <button class="btn btn-green" onclick="Migration.adminMigrate()">Migrate local data</button>
+          <button class="btn btn-primary" onclick="Backend.adminTest()" ${dis('test')}>${lbl('test', 'Test Connection')}</button>
+          <button class="btn btn-ghost" onclick="Backend.adminHydrate()" ${dis('hydrate')}>${lbl('hydrate', 'Hydrate From Backend')}</button>
+          <button class="btn btn-green" onclick="Backend.adminSyncNow()" ${dis('sync')}>${lbl('sync', 'Sync Now')}</button>
+          <button class="btn btn-amber" onclick="Backend.adminRetryFailed()" ${dis('retry')}>${lbl('retry', 'Retry Failed Operations')}</button>
+        </div>
+        <div class="prep-actions" style="border-top:none; padding-top:0">
+          ${s.mode === 'backend'
+            ? `<button class="btn btn-ghost" onclick="Backend.adminUseLocal()" ${dis('mode')}>${lbl('mode', 'Switch to Local Mode')}</button>`
+            : `<button class="btn btn-primary" onclick="Backend.adminUseBackend()" ${dis('mode')}>${lbl('mode', 'Switch to Backend Mode')}</button>`}
+          <button class="btn btn-ghost" onclick="Migration.adminMigrate()">Migrate local data</button>
+          <span class="hint" style="margin:0">Switching modes never deletes local or backend data. Local mode always works offline.</span>
         </div>
       </div>`;
   }

@@ -8,6 +8,7 @@ from .domain import (
     SubmittedApplicationIn, SubmittedApplicationOut,
     InterviewRecordIn, InterviewRecordOut, InterviewUpdateIn,
     ConnectorStatusIn, ConnectorStatusOut,
+    ConflictIn, ConflictOut,
 )
 from .migration import MigrationBundle, MigrationResult, MigrationPreview
 
@@ -21,5 +22,6 @@ __all__ = [
     "SubmittedApplicationIn", "SubmittedApplicationOut",
     "InterviewRecordIn", "InterviewRecordOut", "InterviewUpdateIn",
     "ConnectorStatusIn", "ConnectorStatusOut",
+    "ConflictIn", "ConflictOut",
     "MigrationBundle", "MigrationResult", "MigrationPreview",
 ]

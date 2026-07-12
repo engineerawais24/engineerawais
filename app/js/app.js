@@ -531,6 +531,13 @@ window.addEventListener('DOMContentLoaded', () => {
   if (typeof Search !== 'undefined') Search.init();
   /* Sprint 14: ensure a local/anonymous session exists (no login) */
   if (typeof SessionManager !== 'undefined') SessionManager.init();
+  /* Sprint 17: if backend mode was previously enabled, reconnect →
+     hydrate → flush the queue IN THE BACKGROUND. This never blocks the
+     UI and silently stays on the local mirror if the backend is down. */
+  if (typeof Backend !== 'undefined') {
+    try { Backend.boot(); } catch (e) { /* stay local */ }
+    window.addEventListener('online', () => { try { Backend.onOnline(); } catch (e) { /* stay local */ } });
+  }
   if (!location.hash) location.hash = '#/dashboard';
   navigate();
 });
