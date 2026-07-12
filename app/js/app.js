@@ -21,7 +21,7 @@ const SCREENS = {
   applications: { label: 'Applications', title: 'Applications Board',   render: () => Applications.render() },
   resumes:   { label: 'Resume Library',  title: 'Resume Library',       render: () => Resumes.render() },
   tracker:   { label: 'Tracker',         title: 'Applications Tracker', render: renderTracker },
-  interview: { label: 'Interview Prep',  title: 'Interview Prep',       render: renderInterview },
+  interview: { label: 'Interview Prep',  title: 'Interview Prep',       render: () => Interview.render() },
   settings:  { label: 'Settings',        title: 'Settings',             render: renderSettings },
 };
 
@@ -285,59 +285,11 @@ function setTrackerFilter(f) {
 }
 
 /* ============================================================
-   INTERVIEW PREP
+   INTERVIEW PREP — Sprint 13 Interview Copilot.
+   The page now renders from the Interview controller (interview/*),
+   driven by real submitted-application memory. The old sample-data
+   renderer (DB.interviews) has been retired.
    ============================================================ */
-function renderInterview() {
-  const iv = DB.interviews.find(i => i.id === UI.interviewId) || DB.interviews[0];
-  const activeTab = UI.prepTab[iv.id] || Object.keys(iv.tabs)[0];
-  const tab = iv.tabs[activeTab];
-
-  const picker = DB.interviews.map(i => `
-    <button class="iv-pick ${i.id === iv.id ? 'active' : ''}" onclick="selectInterview('${i.id}')">
-      <span class="co">${i.company}</span>
-      <span class="wh">${i.stage}</span>
-    </button>`).join('');
-
-  const tabs = Object.keys(iv.tabs).map(t => `
-    <button class="tab ${t === activeTab ? 'active' : ''}" onclick="selectPrepTab('${iv.id}','${t}')">${t}</button>`).join('');
-
-  return `
-    <p class="screen-intro">Auto-generated prep pack for each upcoming interview: company research, likely questions per round, and negotiation guidance.</p>
-    <div class="iv-picker">${picker}</div>
-    <div class="iv-head">
-      <span class="role">${iv.company} · ${iv.role}</span>
-      <span class="pill pill-indigo">${iv.stage}</span>
-    </div>
-    <div class="grid grid-2">
-      <div class="card card-pad">
-        <p class="card-title">Company research</p>
-        <ul class="iv-list">${iv.research.map(r => `<li>${r}</li>`).join('')}</ul>
-        <p class="card-title" style="margin:16px 0 8px">Questions to ask them</p>
-        <ul class="iv-list">${iv.ask.map(q => `<li>${q}</li>`).join('')}</ul>
-      </div>
-      <div style="display:flex; flex-direction:column; gap:12px">
-        <div class="card card-pad">
-          <div class="tabs">${tabs}</div>
-          <div class="prep-label">${tab.label}</div>
-          <div class="star">${tab.html}</div>
-        </div>
-        <div class="advice">
-          <div class="ak">SALARY ADVICE</div>
-          <div class="av">${iv.advice}</div>
-        </div>
-      </div>
-    </div>`;
-}
-
-function selectInterview(id) {
-  UI.interviewId = id;
-  navigate();
-}
-
-function selectPrepTab(ivId, tabName) {
-  UI.prepTab[ivId] = tabName;
-  navigate();
-}
 
 /* ============================================================
    SETTINGS
@@ -493,6 +445,8 @@ const LOCAL_STORES = () => [
   { key: SyncLog.KEY,           label: 'Connector sync log' },
   { key: CompaniesStore.KEY,    label: 'Company priority tiers' },
   { key: PrepStore.KEY,         label: 'Application packages' },
+  { key: SubmissionStore.KEY,   label: 'Submitted applications' },
+  { key: ApplicationMemory.KEY, label: 'Application memory & interview prep' },
   { key: Activity.KEY,          label: 'Activity log' },
   { key: Theme.KEY,             label: 'Theme & UI preferences' },
 ];
