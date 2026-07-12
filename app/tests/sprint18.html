@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CareerPilot · Sprint 18 tests</title>
+  <style>
+    :root{ color-scheme: light dark; }
+    body{ font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif; margin:0; padding:28px; background:#0e0f1a; color:#e7e8f0; }
+    h1{ font-size:18px; margin:0 0 4px; }
+    .sub{ color:#9aa0b5; font-size:12px; margin-bottom:18px; }
+    #summary{ display:inline-block; font-weight:700; font-size:13px; padding:4px 12px; border-radius:8px; margin-bottom:16px; }
+    #summary.ok{ background:#123524; color:#4ade80; } #summary.bad{ background:#3a1620; color:#f87171; }
+    .t{ display:flex; gap:12px; align-items:flex-start; padding:11px 13px; border:1px solid #23263a; border-radius:10px; margin-bottom:8px; background:#151728; }
+    .t.fail{ border-color:#5b2130; background:#1e1420; }
+    .badge{ font:600 10px/1 ui-monospace,monospace; padding:5px 7px; border-radius:6px; letter-spacing:.06em; }
+    .t.pass .badge{ background:#123524; color:#4ade80; } .t.fail .badge{ background:#3a1620; color:#f87171; }
+    b{ font-weight:600; } .detail{ color:#9aa0b5; font-size:12px; margin-top:3px; font-family:ui-monospace,monospace; }
+    .note{ margin-top:18px; color:#7b8196; font-size:11.5px; max-width:860px; }
+  </style>
+</head>
+<body>
+  <h1>Sprint 18 — Intelligent Job Search Engine &amp; Multi-Source Aggregation</h1>
+  <div class="sub">Browser harness · providers use LOCAL MOCK FEEDS (no network, no scraping, no credentials, no submission) · localStorage snapshot restored afterwards.</div>
+  <div id="summary">running…</div>
+  <div id="results"></div>
+  <div class="note">
+    PART 11 coverage: provider interface · provider failure isolation · unified model · deterministic dedup ·
+    stable 0–100 ranking · ranking explanation · cache hit · stale-while-refresh · offline from cache ·
+    history + rerun · cancellation · admin diagnostics · existing approval/decision workflow · no submission ·
+    Sprint 14–17 unchanged.
+  </div>
+  <div id="toasts"></div>
+
+  <!-- ROUTER CONTRACT ------------------------------------------------------
+       The harnesses deliberately do NOT load app.js: booting the full SPA
+       would render every screen into a page that has no app shell. But app.js
+       is also where the router's public API lives — `currentRoute()` /
+       `navigate()` / `renderNav()` — and several completed controllers
+       (Jobs, Applications, Profile, Resumes) call it DIRECTLY, without a
+       typeof guard (e.g. jobs.js:65 `if (currentRoute() === 'jobs') navigate()`).
+
+       Sprint 18's test 13 is the first harness case to drive a real controller
+       action (Jobs.later), so it was the first to hit that bare call.
+
+       Providing the same router contract here lets those controllers run their
+       REAL code paths (decide → JobsStore.save) instead of throwing. It returns
+       a route that is not an app screen, so no re-render is attempted — and it
+       mocks away NOTHING that is being asserted: the decision still goes
+       through the real Jobs controller and is still verified in JobsStore.
+       ---------------------------------------------------------------------- -->
+  <script>
+    function currentRoute() { return 'test-harness'; }
+    function navigate() { /* no app shell to re-render in a harness */ }
+    function renderNav() { /* no sidebar in a harness */ }
+  </script>
+
+  <script src="../js/data.js"></script>
+  <script src="../js/lib/icons.js"></script>
+  <script src="../js/lib/notify.js"></script>
+  <script src="../js/lib/activity.js"></script>
+  <script src="../js/lib/theme.js"></script>
+  <script src="../js/lib/master-resume.js"></script>
+  <script src="../js/profile/profile-store.js"></script>
+  <script src="../js/profile/profile-validate.js"></script>
+  <script src="../js/profile/profile-view.js"></script>
+  <script src="../js/profile/profile.js"></script>
+  <script src="../js/applications/applications-store.js"></script>
+  <script src="../js/applications/applications-view.js"></script>
+  <script src="../js/applications/applications.js"></script>
+  <script src="../js/resumes/resumes-store.js"></script>
+  <script src="../js/resumes/resumes-view.js"></script>
+  <script src="../js/resumes/tailor-engine.js"></script>
+  <script src="../js/resumes/resumes.js"></script>
+  <script src="../js/jobs/jobs-store.js"></script>
+  <script src="../js/jobs/match-engine.js"></script>
+  <script src="../js/jobs/decision-engine.js"></script>
+  <script src="../js/jobs/jobs-view.js"></script>
+  <script src="../js/jobs/jobs.js"></script>
+  <script src="../js/companies/companies-store.js"></script>
+  <script src="../js/companies/rank-engine.js"></script>
+  <script src="../js/companies/companies-view.js"></script>
+  <script src="../js/prep/prep-store.js"></script>
+  <script src="../js/prep/answers-engine.js"></script>
+  <script src="../js/prep/prep-view.js"></script>
+  <script src="../js/prep/prep.js"></script>
+  <script src="../js/sources/sources-store.js"></script>
+  <script src="../js/sources/job-schema.js"></script>
+  <script src="../js/sources/sync-log.js"></script>
+  <script src="../js/sources/connector-base.js"></script>
+  <script src="../js/sources/connector-config.js"></script>
+  <script src="../js/sources/connectors.js"></script>
+  <script src="../js/sources/connector-manager.js"></script>
+  <script src="../js/sources/pipeline.js"></script>
+  <script src="../js/sources/daily-search.js"></script>
+  <script src="../js/sources/sources-view.js"></script>
+  <script src="../js/sources/rate-limit-manager.js"></script>
+  <script src="../js/sources/connector-auth.js"></script>
+  <script src="../js/sources/deduplicator.js"></script>
+  <script src="../js/sources/connector-analytics.js"></script>
+  <script src="../js/sources/connector-integration.js"></script>
+  <script src="../js/submit/submission-store.js"></script>
+  <script src="../js/submit/submission-adapter.js"></script>
+  <script src="../js/submit/submitters.js"></script>
+  <script src="../js/submit/submission-engine.js"></script>
+  <script src="../js/submit/submission-view.js"></script>
+  <script src="../js/interview/interview-store.js"></script>
+  <script src="../js/interview/star-library.js"></script>
+  <script src="../js/interview/interview-engine.js"></script>
+  <script src="../js/interview/mock-interview.js"></script>
+  <script src="../js/interview/interview-view.js"></script>
+  <script src="../js/interview/interview.js"></script>
+  <script src="../js/platform/storage-provider.js"></script>
+  <script src="../js/platform/error-center.js"></script>
+  <script src="../js/platform/conflict-center.js"></script>
+  <script src="../js/platform/telemetry.js"></script>
+  <script src="../js/platform/session-manager.js"></script>
+  <script src="../js/platform/api-client.js"></script>
+  <script src="../js/platform/sync-manager.js"></script>
+  <script src="../js/platform/job-cache.js"></script>
+  <script src="../js/platform/backend.js"></script>
+  <script src="../js/platform/domain-sync.js"></script>
+  <script src="../js/platform/admin-view.js"></script>
+
+  <!-- Sprint 18 search engine -->
+  <script src="../js/search/providers/base-provider.js"></script>
+  <script src="../js/search/providers/linkedin-provider.js"></script>
+  <script src="../js/search/providers/indeed-provider.js"></script>
+  <script src="../js/search/providers/bayt-provider.js"></script>
+  <script src="../js/search/providers/gulftalent-provider.js"></script>
+  <script src="../js/search/providers/greenhouse-provider.js"></script>
+  <script src="../js/search/providers/lever-provider.js"></script>
+  <script src="../js/search/ranking-engine.js"></script>
+  <script src="../js/search/search-cache.js"></script>
+  <script src="../js/search/engine.js"></script>
+  <script src="../js/search/search-view.js"></script>
+
+  <script src="sprint18-tests.js"></script>
+</body>
+</html>

@@ -15,7 +15,9 @@ const UI = {
 const SCREENS = {
   dashboard: { label: 'Dashboard',       title: 'Dashboard',            render: renderDashboard },
   profile:   { label: 'Profile',         title: 'Career Profile',       render: () => Profile.render(), badge: () => Profile.isDirty() ? '•' : 0 },
-  jobs:      { label: "Today's Jobs",    title: "Today's Jobs",         render: () => Jobs.render(), badge: () => Jobs.pendingCount() },
+  /* Sprint 18: the search panel renders ABOVE the existing Today's Jobs
+     screen — Jobs.render() and its approval workflow are unchanged. */
+  jobs:      { label: "Today's Jobs",    title: "Today's Jobs",         render: () => (typeof SearchView !== 'undefined' ? SearchView.panel() : '') + Jobs.render(), badge: () => Jobs.pendingCount() },
   approvals: { label: 'Approvals',       title: 'Approvals',            render: renderApprovals, badge: () => DB.approvals.filter(a => a.status === 'awaiting').length },
   review:    { label: 'Application Review', title: 'Application Review', render: () => Prep.renderReview(), hidden: true },
   applications: { label: 'Applications', title: 'Applications Board',   render: () => Applications.render() },

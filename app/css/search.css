@@ -1,0 +1,24 @@
+/* ============================================================
+   CareerPilot AI — job search panel styles (Sprint 18)
+   Additive; reuses card / chip / field / prep-* tokens.
+   ============================================================ */
+
+.se-card{ margin-bottom:12px; border:1px solid var(--accent-border); }
+.se-head{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.se-head .job-chips{ flex:1; }
+
+.se-checks{ display:flex; flex-wrap:wrap; gap:10px; }
+.se-check{ display:inline-flex; align-items:center; gap:5px; font-size:11.5px; color:var(--body); cursor:pointer; }
+
+.se-grid{ display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; }
+@media (max-width:900px){ .se-grid{ grid-template-columns:repeat(2, 1fr); } }
+@media (max-width:620px){ .se-grid{ grid-template-columns:1fr; } }
+
+.se-row{ border-top:1px solid var(--divider); padding:9px 0; }
+.se-row:first-of-type{ border-top:none; }
+.se-row-top{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:12.5px; color:var(--ink); }
+.se-meta{ font-size:11px; color:var(--muted); margin-top:3px; }
+.se-why{ font-size:11px; color:var(--body); margin-top:5px; line-height:1.6;
+  background:var(--subtle); border:1px solid var(--divider); border-radius:8px; padding:7px 9px; }
+.se-good{ color:var(--green); margin-top:2px; }
+.se-bad{ color:var(--amber); margin-top:2px; }

@@ -218,6 +218,105 @@ const AdminView = (() => {
       </div>`;
   }
 
+  /* ---- Sprint 18: search engine diagnostics ---- */
+  const searchBusy = { health: false, diag: false, clear: false };
+
+  function searchCard() {
+    if (typeof SearchEngine === 'undefined') return '';
+    const d = SearchEngine.getDiagnostics();
+    const cache = (typeof SearchCache !== 'undefined') ? SearchCache.stats() : {};
+    const ph = d.providerHealth || [];
+    const rows = ph.map(h => {
+      const ok = h.reachable === true;
+      const bad = h.reachable === false;
+      return `<div class="ldrow"><div><b>${esc(h.label)}</b><span>${h.configured ? 'configured' : 'demo mode'} · ${h.connected ? 'connected' : 'disconnected'} · ${h.resultCount} result(s)${h.lastError ? ' · ' + esc(h.lastError) : ''}</span></div>${ok ? '<span class="adm-dot ok"></span>' : (bad ? '<span class="adm-dot bad"></span>' : '<span class="mono">idle</span>')}</div>`;
+    }).join('');
+
+    return `
+      <div class="card card-pad">
+        <p class="card-title">Search engine</p>
+        <div class="ds-stats">
+          ${stat(d.totalSearches, 'total searches')}
+          ${stat(d.searchesToday, 'today')}
+          ${stat(d.averageDurationMs + 'ms', 'avg duration')}
+          ${stat(d.averageResultCount, 'avg results')}
+        </div>
+        <div class="ds-stats" style="margin-top:8px">
+          ${stat(d.cacheHitRate + '%', 'cache hit rate', d.cacheHitRate >= 50 ? 'good' : '')}
+          ${stat(d.staleCacheHits, 'stale hits')}
+          ${stat(d.duplicateCount, 'duplicates merged')}
+          ${stat(d.averageRankingScore, 'avg score', d.averageRankingScore >= 60 ? 'good' : '')}
+        </div>
+        <div class="ds-stats" style="margin-top:8px">
+          ${stat(d.providerFailureCount, 'provider failures', d.providerFailureCount ? 'bad' : 'good')}
+          ${stat(d.cancelledSearchCount, 'cancelled')}
+          ${stat(d.offlineSearchCount, 'offline searches')}
+          ${stat(d.activeSearchCount, 'active', d.activeSearchCount ? '' : 'good')}
+        </div>
+        <div class="hint" style="margin-top:8px">
+          Last successful search ${d.lastSuccessfulSearch ? fmtTime(d.lastSuccessfulSearch) : 'never'} ·
+          last failed ${d.lastFailedSearch ? fmtTime(d.lastFailedSearch) : 'never'} ·
+          cache ${cache.entries || 0}/${cache.maxEntries || 0} entries ·
+          active search ${d.activeSearch ? esc(d.activeSearch.id) : 'none'}
+        </div>
+
+        <div class="prep-sub">PROVIDER HEALTH</div>
+        ${rows || '<div class="hint">No providers registered.</div>'}
+
+        <div class="prep-actions">
+          <button class="btn btn-ghost" onclick="AdminView.searchClearExpired()">Clear expired cache</button>
+          <button class="btn btn-ghost" onclick="AdminView.searchRefreshHealth()">Refresh provider health</button>
+          <button class="btn btn-primary" onclick="AdminView.searchDiagnosticsRun()">Run diagnostics search</button>
+          <button class="btn btn-red" onclick="AdminView.searchCancelActive()" ${d.activeSearchCount ? '' : 'disabled'}>Cancel active search</button>
+          <button class="btn btn-ghost" onclick="AdminView.searchExport()">Export search diagnostics</button>
+        </div>
+        <div class="hint">Clearing expired cache only removes stale <b>search result</b> entries — it never touches jobs, decisions, applications, interviews, résumés, profile or preferences.</div>
+      </div>`;
+  }
+
+  function reRender() { if (typeof navigate === 'function' && typeof currentRoute === 'function' && currentRoute() === 'admin') navigate(); }
+  function say(m, t) { if (typeof toast === 'function') toast(m, t); }
+
+  function searchClearExpired() {
+    const n = SearchCache.clearExpired();
+    say(`Removed ${n} expired search-cache entr${n === 1 ? 'y' : 'ies'} — no job, decision or application data touched`, 'success');
+    reRender();
+  }
+  function searchRefreshHealth() {
+    SearchEngine.refreshProviderHealth();
+    say('Provider health refreshed', 'success');
+    reRender();
+  }
+  async function searchDiagnosticsRun() {
+    if (searchBusy.diag) return;
+    searchBusy.diag = true;
+    try {
+      /* diagnostics search uses the MOCK transport (no network) */
+      const r = await SearchEngine.search({ query: '' }, { refresh: true, noBackgroundRefresh: true });
+      say(`Diagnostics search: ${r.history.finalResultCount} result(s), ${r.history.duplicateCount} duplicate(s), ${r.history.durationMs}ms`, 'success');
+    } catch (e) {
+      say('Diagnostics search failed — ' + ((e && e.message) || 'error'), 'error');
+    } finally { searchBusy.diag = false; reRender(); }
+  }
+  function searchCancelActive() {
+    const a = SearchEngine.activeSearches();
+    if (!a.length) { say('No active search', 'info'); return; }
+    SearchEngine.cancelAll();
+    say('Cancelled ' + a.length + ' active search(es)', 'info');
+    reRender();
+  }
+  function searchExport() {
+    try {
+      const blob = new Blob([SearchEngine.exportDiagnostics()], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'careerpilot-search-diagnostics.json';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      say('Search diagnostics exported', 'success');
+    } catch (e) { say('Export failed', 'error'); }
+  }
+
   function render() {
     return `
       <p class="screen-intro">Hidden diagnostics (<span class="mono">#/admin</span>) — a read-only view of the Sprint 14 backend-readiness layer. Not linked from the sidebar; nothing here changes your data.</p>
@@ -232,8 +331,13 @@ const AdminView = (() => {
         ${telemetryCard()}
         ${errorsCard()}
       </div>
+      ${typeof SearchEngine !== 'undefined' ? `<div class="prep-sub" style="margin:16px 0 4px">SEARCH ENGINE · SPRINT 18</div><div class="adm-grid">${searchCard()}</div>` : ''}
       ${typeof ConnectorIntegration !== 'undefined' ? `<div class="prep-sub" style="margin:16px 0 4px">CONNECTOR INTEGRATION LAYER · SPRINT 15</div><div class="adm-grid">${ConnectorIntegration.adminCards()}</div>` : ''}`;
   }
 
-  return { render };
+  return {
+    render,
+    /* Sprint 18 search diagnostics actions */
+    searchClearExpired, searchRefreshHealth, searchDiagnosticsRun, searchCancelActive, searchExport,
+  };
 })();
