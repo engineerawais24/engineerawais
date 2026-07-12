@@ -150,6 +150,24 @@ const Jobs = (() => {
     refresh();
   }
 
+  /* Sprint 21: manually override the recommended résumé for one job.
+     An empty value clears the override and falls back to the
+     recommendation. Purely a display/selection preference — it never
+     touches the master résumé, a decision or an application. */
+  function setResume(jobId, resumeId) {
+    if (typeof ResumeRecommender === 'undefined') return;
+    if (!resumeId) {
+      ResumeRecommender.clearOverride(jobId);
+    } else {
+      /* picking the recommended résumé again simply clears the override */
+      const job = (state.discovered || JobsStore.jobs()).find(j => j.id === jobId);
+      const rec = job ? ResumeRecommender.recommend(job) : null;
+      if (rec && rec.id === resumeId) ResumeRecommender.clearOverride(jobId);
+      else ResumeRecommender.setOverride(jobId, resumeId);
+    }
+    refresh();
+  }
+
   function setSource(s) {
     ui.source = s;
     refresh();
@@ -243,5 +261,7 @@ const Jobs = (() => {
     /* Sprint 19 */
     ui, setSearch, setFilter, toggleFilter, setSort, clearFilters,
     saveSearch, loadSearch, renameSearch, deleteSearch,
+    /* Sprint 20/21 */
+    setResume,
   };
 })();

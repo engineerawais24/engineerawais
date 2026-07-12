@@ -134,3 +134,25 @@
   background:var(--green-soft); color:var(--green-ink); border:1px solid var(--green-soft);
   white-space:nowrap;
 }
+
+/* ---- Sprint 21: résumé recommendation (inside the job card) ---- */
+.job-resume{
+  display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+  margin-top:8px; padding:7px 9px;
+  background:var(--subtle); border:1px solid var(--divider); border-radius:9px;
+}
+.jr-lbl{ font-family:var(--mono); font-size:9px; letter-spacing:.13em; color:var(--faint); font-weight:600; }
+.jr-sel{ font-size:11.5px; max-width:280px; }
+.jr-conf{ font-family:var(--mono); font-size:10.5px; font-weight:600; }
+.jr-conf.hi{ color:var(--green); }
+.jr-conf.mid{ color:var(--amber); }
+.jr-conf.low{ color:var(--red); }
+.jr-tag{
+  font-size:9.5px; font-weight:600; padding:2px 6px; border-radius:6px;
+  background:var(--accent-soft); color:var(--accent-ink); border:1px solid var(--accent-border);
+}
+.jr-reset{
+  font-size:9.5px; font-weight:600; padding:2px 6px; border-radius:6px; cursor:pointer;
+  background:var(--amber-soft); color:var(--amber); border:1px solid var(--amber-soft);
+}
+.jr-why{ flex:1; min-width:180px; font-size:10.5px; color:var(--muted); }

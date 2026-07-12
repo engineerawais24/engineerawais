@@ -78,6 +78,31 @@ const JobsView = (() => {
     return `<div class="job-reasons">${rs.map(r => `<span class="rchip">✓ ${esc(r)}</span>`).join('')}</div>`;
   }
 
+  /* Sprint 21: the recommended résumé for this job, with a manual
+     override. Guarded — if the recommender isn't loaded the card renders
+     exactly as before. Nothing here submits or modifies a résumé. */
+  function resumeRec(job) {
+    if (typeof ResumeRecommender === 'undefined') return '';
+    const r = ResumeRecommender.forJob(job);
+    if (!r) return '';
+    const sel = r.selected;
+    const cls = sel.confidence >= 80 ? 'hi' : sel.confidence >= 55 ? 'mid' : 'low';
+    const options = r.all.map(o => `
+      <option value="${esc(o.id)}" ${o.id === sel.id ? 'selected' : ''}>
+        ${o.id === r.recommended.id ? '★ ' : ''}${esc(o.name)} · ${o.confidence}%
+      </option>`).join('');
+    return `
+      <div class="job-resume">
+        <span class="jr-lbl">RÉSUMÉ</span>
+        <select class="jr-sel" onchange="Jobs.setResume('${esc(job.id)}', this.value)">${options}</select>
+        <span class="jr-conf ${cls}">${sel.confidence}% confidence</span>
+        ${r.overridden
+        ? `<button class="jr-reset" onclick="Jobs.setResume('${esc(job.id)}','')" title="Back to the recommendation">manual · reset</button>`
+        : '<span class="jr-tag">recommended</span>'}
+        <span class="jr-why">${esc(sel.reason)}</span>
+      </div>`;
+  }
+
   const REC_CLASS = {
     'Must Apply': 'must', 'Strong Match': 'strong', 'Good Match': 'good',
     'Review Manually': 'review', 'Skip': 'skip',
@@ -192,6 +217,7 @@ const JobsView = (() => {
             ${matchReasons(res)}
             <div class="job-desc">${esc(job.description)}</div>
             <div class="job-chips">${chips}</div>
+            ${resumeRec(job)}
             <div class="job-foot">
               <button class="why-btn" id="whyb-${job.id}" onclick="Jobs.toggleWhy('${job.id}')">Why ranked here?</button>
               <a class="apply-link" href="${esc(job.applyUrl)}" target="_blank" rel="noopener">View posting ↗</a>
