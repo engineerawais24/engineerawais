@@ -356,6 +356,7 @@ const JobsView = (() => {
     return `
       <p class="screen-intro">Sourced from LinkedIn, Bayt, GulfTalent and company career pages, normalized into one job model and scored 0–100 by the match engine against your full profile. Live crawling connects in the backend sprint. Your master resume is read <b>only</b> — approving queues a tailored <i>copy</i> for your sign-off.</p>
       ${summaryHtml || ''}
+      ${typeof Imports !== 'undefined' ? Imports.render() : ''}
       <div class="jobs-summary">
         <span class="t">Today's jobs · ${items.length} sourced from ${JobsStore.SOURCES.length} boards${narrowed ? ` · <b>${matched.length} match your search</b>` : ''}</span>
         <div class="counts">
