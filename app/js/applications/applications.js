@@ -55,15 +55,40 @@ const Applications = (() => {
     return pkg;
   }
 
+  /* Sprint 24: a package status IS a board status. Mirroring it onto the
+     board card is what makes the dashboard counters follow a status change —
+     they are computed from the board, so nothing else has to be told. */
+  function syncBoard(pkg) {
+    const column = ApplicationsStore.columnFor(pkg.status);
+    const card = items.find(a => a.jobId === pkg.jobId);
+    if (column) {
+      if (card) card.status = pkg.status;                       // move the existing card
+      else items.push(ApplicationsStore.fromJob(pkg.job, pkg.status));   // …or add it once
+    } else if (card) {
+      items = items.filter(a => a.jobId !== pkg.jobId);         // back to Ready → off the board
+    }
+    ApplicationsStore.save(items);
+  }
+
+  function setPackageStatus(id, status) {
+    if (typeof ApplicationPackages === 'undefined') return null;
+    const pkg = ApplicationPackages.setStatus(id, status);
+    if (!pkg) {
+      if (typeof toast === 'function') toast('Unknown application status — nothing changed', 'error');
+      refresh();                                                 // put the control back where it was
+      return null;
+    }
+    syncBoard(pkg);
+    if (typeof toast === 'function') toast(`${pkg.job.company} → ${ApplicationPackages.statusLabel(pkg.status)}`);
+    refresh();
+    return pkg;
+  }
+
   function markApplied(id) {
     if (typeof ApplicationPackages === 'undefined') return null;
     const pkg = ApplicationPackages.markApplied(id);
     if (!pkg) return null;
-    /* promote it onto the existing board — once, never a duplicate card */
-    if (!items.some(a => a.jobId === pkg.jobId)) {
-      items.push(ApplicationsStore.fromJob(pkg.job, 'applied'));
-      ApplicationsStore.save(items);
-    }
+    syncBoard(pkg);
     if (typeof toast === 'function') toast(`${pkg.job.company} marked as applied — tracked on the board`);
     refresh();
     return pkg;
@@ -155,5 +180,7 @@ const Applications = (() => {
     dragStart, dragEnd, dragOver, dragEnter, dragLeave, drop,
     /* Sprint 23 */
     ui, reload, openPackage, copyPackageCover, setPackageResume, markApplied,
+    /* Sprint 24 */
+    setPackageStatus,
   };
 })();

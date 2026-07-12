@@ -109,9 +109,14 @@
 .pkg-co{ font-weight:700; font-size:13.5px; }
 .pkg-pos{ flex:1; min-width:140px; font-size:12.5px; color:var(--body); }
 .pkg-score{ font-family:var(--mono); font-size:10.5px; font-weight:600; color:var(--accent); }
-.pkg-chip{ font-size:9.5px; font-weight:600; padding:3px 7px; border-radius:6px; letter-spacing:.03em; }
-.pkg-chip.ready{ background:var(--accent-soft); color:var(--accent-ink); border:1px solid var(--accent-border); }
-.pkg-chip.applied{ background:var(--green-soft); color:var(--green); border:1px solid var(--green-soft); }
+.pkg-chip{ font-size:9.5px; font-weight:600; padding:3px 7px; border-radius:6px; letter-spacing:.03em;
+  background:var(--subtle); color:var(--body); border:1px solid var(--divider); }
+.pkg-chip.s-ready_to_apply{ background:var(--accent-soft); color:var(--accent-ink); border-color:var(--accent-border); }
+.pkg-chip.s-applied{ background:var(--subtle); color:var(--body); border-color:var(--divider); }
+.pkg-chip.s-interview{ background:var(--accent-soft); color:var(--accent); border-color:var(--accent-border); }
+.pkg-chip.s-offer{ background:var(--green-soft); color:var(--green); border-color:var(--green-soft); }
+.pkg-chip.s-rejected{ background:var(--red-soft); color:var(--red); border-color:var(--red-soft); }
+.pkg-status{ font-size:11.5px; font-weight:600; }
 .pkg-meta{ display:flex; gap:5px; flex-wrap:wrap; margin-top:4px; font-size:10.5px; color:var(--muted); }
 .pkg-acts{ display:flex; align-items:center; gap:7px; flex-wrap:wrap; margin-top:9px; }
 .pkg-acts .btn{ font-size:11px; padding:4px 10px; }

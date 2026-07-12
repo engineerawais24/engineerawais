@@ -21,9 +21,22 @@ const ApplicationPackages = (() => {
 
   const READY = 'ready_to_apply';
   const APPLIED = 'applied';
-  const STATUS_LABEL = { ready_to_apply: 'Ready to Apply', applied: 'Applied' };
+
+  /* Sprint 24: the statuses a package moves through. These are the ids the
+     existing lifecycle (ApplicationsStore.PIPELINE_STATUSES) already uses, so
+     a package status maps straight onto a board column — and therefore onto
+     the dashboard counters — with no second vocabulary to keep in step. */
+  const STATUSES = ['ready_to_apply', 'applied', 'interview', 'offer', 'rejected'];
+  const STATUS_LABEL = {
+    ready_to_apply: 'Ready to Apply',
+    applied: 'Applied',
+    interview: 'Interview',
+    offer: 'Offer',
+    rejected: 'Rejected',
+  };
 
   const today = () => new Date().toISOString().slice(0, 10);
+  function isValidStatus(s) { return STATUSES.indexOf(s) !== -1; }
 
   function all() {
     const list = (typeof AppStorage !== 'undefined') ? AppStorage.get(STORAGE_KEY) : null;
@@ -130,17 +143,37 @@ const ApplicationPackages = (() => {
     return setResume(id, nowId);
   }
 
+  /* ---------- status (Sprint 24) ----------
+     Only the LATEST status is kept, with the date it changed — no trail.
+     An unknown status is refused outright: a bad value must never be able
+     to strand a package in a state the board and dashboard can't render. */
+
+  function setStatus(id, status) {
+    if (!isValidStatus(status)) return null;             // invalid → no change at all
+    const list = all();
+    const pkg = list.find(p => p.id === id);
+    if (!pkg) return null;
+    if (pkg.status === status) return pkg;               // already there — not a change
+
+    pkg.status = status;
+    pkg.statusChangedOn = today();
+    pkg.statusChangedAt = Date.now();
+    /* the date it was actually sent is part of the record, so it is stamped
+       once and then left alone as the application moves on */
+    if (status === APPLIED && !pkg.appliedOn) {
+      pkg.appliedOn = today();
+      pkg.appliedAt = Date.now();
+    }
+    persist(list);
+    return pkg;
+  }
+
   /* ---------- mark as applied (explicit, user-driven) ---------- */
 
   function markApplied(id) {
-    const list = all();
-    const pkg = list.find(p => p.id === id);
+    const pkg = get(id);
     if (!pkg || pkg.status === APPLIED) return null;      // never applied twice
-    pkg.status = APPLIED;
-    pkg.appliedOn = today();
-    pkg.appliedAt = Date.now();
-    persist(list);
-    return pkg;
+    return setStatus(id, APPLIED);
   }
 
   function copyCoverLetter(id) {
@@ -174,8 +207,8 @@ const ApplicationPackages = (() => {
   function clear() { persist([]); }
 
   return {
-    STORAGE_KEY, READY, APPLIED, STATUS_LABEL,
-    all, ready, get, forJob, has, statusLabel,
-    createFrom, setResume, syncToResume, markApplied, copyCoverLetter, remove, clear,
+    STORAGE_KEY, READY, APPLIED, STATUSES, STATUS_LABEL,
+    all, ready, get, forJob, has, statusLabel, isValidStatus,
+    createFrom, setResume, syncToResume, setStatus, markApplied, copyCoverLetter, remove, clear,
   };
 })();

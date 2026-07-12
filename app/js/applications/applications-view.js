@@ -89,6 +89,8 @@ const ApplicationsView = (() => {
       ['Match score', pkg.matchScore == null ? '—' : pkg.matchScore + '%'],
       ['Résumé', pkg.resumeName || '—'],
       ['Approved', pkg.approvedOn],
+      ['Status', ApplicationPackages.statusLabel(pkg.status)],
+      ['Status changed', pkg.statusChangedOn],
     ].filter(([, v]) => v != null && v !== '');
     return `
       <div class="pkg-detail">
@@ -101,27 +103,39 @@ const ApplicationsView = (() => {
       </div>`;
   }
 
+  /* Sprint 24: change the status straight from the Applications page */
+  function statusOptions(pkg) {
+    return ApplicationPackages.STATUSES.map(s =>
+      `<option value="${s}" ${s === pkg.status ? 'selected' : ''}>${esc(ApplicationPackages.statusLabel(s))}</option>`
+    ).join('');
+  }
+
   function pkgCard(pkg, open) {
-    const applied = pkg.status === 'applied';
+    /* once it has left "Ready to Apply" the package is a record of what was
+       actually sent, so the résumé is no longer editable */
+    const sent = pkg.status !== 'ready_to_apply';
     return `
-      <article class="pkg ${applied ? 'is-applied' : ''}">
+      <article class="pkg ${sent ? 'is-applied' : ''}">
         <div class="pkg-top">
           <span class="pkg-co">${esc(pkg.job.company)}</span>
           <span class="pkg-pos">${esc(pkg.job.title)}</span>
           ${pkg.matchScore == null ? '' : `<span class="pkg-score">${pkg.matchScore}% match</span>`}
-          <span class="pkg-chip ${applied ? 'applied' : 'ready'}">${esc(ApplicationPackages.statusLabel(pkg.status))}</span>
+          <span class="pkg-chip s-${esc(pkg.status)}">${esc(ApplicationPackages.statusLabel(pkg.status))}</span>
         </div>
         <div class="pkg-meta">
           <span>Approved ${fmtDate(pkg.approvedOn)}</span>
           ${pkg.appliedOn ? `<span>· Applied ${fmtDate(pkg.appliedOn)}</span>` : ''}
+          ${pkg.statusChangedOn ? `<span>· ${esc(ApplicationPackages.statusLabel(pkg.status))} ${fmtDate(pkg.statusChangedOn)}</span>` : ''}
           <span>· ${esc(pkg.resumeName || 'No résumé')}</span>
         </div>
         <div class="pkg-acts">
-          <select class="pkg-resume" title="Change the selected résumé" ${applied ? 'disabled' : ''}
+          <select class="pkg-status s-${esc(pkg.status)}" title="Change the application status"
+                  onchange="Applications.setPackageStatus('${esc(pkg.id)}', this.value)">${statusOptions(pkg)}</select>
+          <select class="pkg-resume" title="Change the selected résumé" ${sent ? 'disabled' : ''}
                   onchange="Applications.setPackageResume('${esc(pkg.id)}', this.value)">${resumeOptions(pkg)}</select>
           <button class="btn btn-ghost" onclick="Applications.openPackage('${esc(pkg.id)}')">${open ? 'Close' : 'Open package'}</button>
           <button class="btn btn-ghost" onclick="Applications.copyPackageCover('${esc(pkg.id)}')">Copy cover letter</button>
-          ${applied ? '' : `<button class="btn btn-primary" onclick="Applications.markApplied('${esc(pkg.id)}')">Mark as Applied</button>`}
+          ${sent ? '' : `<button class="btn btn-primary" onclick="Applications.markApplied('${esc(pkg.id)}')">Mark as Applied</button>`}
         </div>
         ${open ? pkgDetail(pkg) : ''}
       </article>`;
