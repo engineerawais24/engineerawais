@@ -99,7 +99,50 @@ const StorageProviders = (() => {
       healthCheck: () => ({ ok: false, provider: kind, configured: false, note: `${label} interface prepared; connect a backend to enable.`, contract }),
     };
   }
-  const restProvider = o => stub('rest', 'REST', { baseUrl: 'https://api.example.com', auth: 'bearer', endpoints: '/kv/:key' }, o);
+  /* REAL RESTStorageProvider (Sprint 16 PART 5). Backs the sync
+     StorageProvider interface with a LOCAL MIRROR (so reads stay
+     synchronous and offline keeps working) while pushing writes to
+     the FastAPI /api/kv endpoint in the background. If the backend is
+     unreachable the write stays in the mirror and is queued on
+     SyncManager — local data is never lost. Created WITHOUT a baseUrl
+     it reports configured:false (so the Sprint 14 harness, which
+     treats it as interface-only, still passes). */
+  function restProvider(opts) {
+    opts = opts || {};
+    const baseUrl = opts.baseUrl || '';
+    const configured = !!baseUrl;
+    const mirror = localProvider({ namespace: opts.namespace || 'careerpilot_platform.' });
+    const client = opts.client || (typeof APIClient !== 'undefined' ? APIClient : null);
+    const transport = opts.transport || null;
+    let reachable = configured ? null : false;
+
+    const kvUrl = key => baseUrl + '/api/kv/' + encodeURIComponent(key);
+
+    function push(method, key, value) {
+      if (!configured || !client) return;
+      const o = { transport, retries: 1, retryBackoffMs: 0, timeout: opts.timeout || 6000 };
+      if (method === 'PUT') o.body = { value };
+      client.request(method, kvUrl(key), o)
+        .then(() => { reachable = true; })
+        .catch(() => {
+          reachable = false;   // offline: keep the mirror copy + queue for later
+          if (typeof SyncManager !== 'undefined') {
+            SyncManager.enqueue({ type: method === 'PUT' ? 'set' : 'delete', entity: 'kv', key, payload: value != null ? value : null, optimistic: true });
+          }
+        });
+    }
+
+    return {
+      name: 'RESTStorageProvider', kind: 'rest', configured, namespace: mirror.namespace, baseUrl,
+      get: k => mirror.get(k),                                  // sync from mirror
+      set: (k, v) => { const r = mirror.set(k, v); push('PUT', k, v); return r; },
+      remove: k => { const r = mirror.remove(k); push('DELETE', k); return r; },
+      list: () => mirror.list(),
+      clear: () => mirror.clear(),                              // mirror only — never mass-deletes the backend
+      transaction: fn => mirror.transaction(fn),
+      healthCheck: () => ({ ok: reachable !== false, provider: 'rest', configured, reachable, baseUrl, keys: mirror.list().length }),
+    };
+  }
   const postgresProvider = o => stub('postgres', 'PostgreSQL', { via: 'backend service', table: 'kv_store', columns: ['key', 'value', 'updated_at', 'user_id'] }, o);
   const supabaseProvider = o => stub('supabase', 'Supabase', { url: 'https://<project>.supabase.co', anonKeyRef: 'env:SUPABASE_ANON_KEY', table: 'kv_store', rls: true }, o);
   const firebaseProvider = o => stub('firebase', 'Firebase', { projectId: '<project>', service: 'firestore', collection: 'kv_store', authRequired: true }, o);

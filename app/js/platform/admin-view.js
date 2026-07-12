@@ -18,6 +18,35 @@ const AdminView = (() => {
   const fmtTime = t => t ? new Date(t).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
   const kb = b => b == null ? '—' : (b / 1024).toFixed(1) + ' KB';
 
+  function backendCard() {
+    if (typeof Backend === 'undefined') return '';
+    const s = Backend.status();
+    const cnt = (typeof Migration !== 'undefined') ? Migration.counts() : {};
+    const last = (typeof Migration !== 'undefined') ? Migration.lastMigration() : null;
+    const pendingSync = (typeof SyncManager !== 'undefined') ? SyncManager.status().pending : 0;
+    const apiErrs = (typeof ErrorCenter !== 'undefined') ? (ErrorCenter.counts().api || 0) : 0;
+    const reach = s.reachable === true ? 'reachable' : s.reachable === false ? 'offline' : 'not tested';
+    const total = Object.keys(cnt).reduce((n, k) => n + cnt[k], 0);
+    return `
+      <div class="card card-pad">
+        <p class="card-title">Backend &amp; persistence ${dot(s.reachable === true)}</p>
+        <div class="ds-stats">
+          ${stat(esc(s.mode), 'storage mode', s.mode === 'backend' ? 'good' : '')}
+          ${stat(reach, 'backend', s.reachable === true ? 'good' : (s.reachable === false ? 'bad' : ''))}
+          ${stat(s.apiVersion ? ('v' + s.apiVersion) : '—', 'api version')}
+          ${stat(s.database || '—', 'database', s.database === 'connected' ? 'good' : '')}
+        </div>
+        <div class="hint" style="margin-top:8px">Base URL <span class="mono">${esc(s.baseUrl)}</span> · ${total} local record(s) ready to migrate · pending sync ${pendingSync} · REST failures ${apiErrs}</div>
+        <div class="prep-sub">LOCAL RECORDS</div>
+        <div class="job-chips">${Object.keys(cnt).map(k => `<span class="prep-chip prep-neutral">${esc(k)}: ${cnt[k]}</span>`).join(' ')}</div>
+        ${last ? `<div class="hint" style="margin-top:8px">Last migration ${fmtTime(last.at)}${last.result ? ` — ${last.result.success_count} imported, ${last.result.skipped_count} skipped, ${last.result.failed_count} failed` : ''}</div>` : '<div class="hint" style="margin-top:8px">No migration run yet — defaults to local storage.</div>'}
+        <div class="prep-actions">
+          <button class="btn btn-primary" onclick="Backend.adminTest()">Test backend connection</button>
+          <button class="btn btn-green" onclick="Migration.adminMigrate()">Migrate local data</button>
+        </div>
+      </div>`;
+  }
+
   function storageCard() {
     if (typeof AppStorage === 'undefined') return '';
     const h = AppStorage.healthCheck();
@@ -154,6 +183,7 @@ const AdminView = (() => {
     return `
       <p class="screen-intro">Hidden diagnostics (<span class="mono">#/admin</span>) — a read-only view of the Sprint 14 backend-readiness layer. Not linked from the sidebar; nothing here changes your data.</p>
       <div class="adm-grid">
+        ${backendCard()}
         ${storageCard()}
         ${sessionCard()}
         ${syncCard()}
