@@ -22,7 +22,15 @@
 const ResumeRecommender = (() => {
 
   const STORAGE_KEY = 'resume_overrides';
-  const WEIGHTS = { category: 35, skills: 35, level: 20, role: 10 };
+
+  /* Sprint 27 extends the scoring with two more signals — certifications and
+     industry — so the five the brief asks for are all represented:
+       skills (skills 30) · certifications (10) · experience (level 15)
+       · preferred role (category 25 + role 10) · industry (10)
+     The weights still total 100 and the recommendation itself is unchanged
+     for the existing jobs: both new signals award full marks when the job
+     states no requirement, because an unstated requirement cannot be unmet. */
+  const WEIGHTS = { category: 25, skills: 30, level: 15, role: 10, certifications: 10, industry: 10 };
 
   const lc = s => String(s == null ? '' : s).toLowerCase().trim();
 
@@ -75,6 +83,9 @@ const ResumeRecommender = (() => {
       level: (typeof MatchEngine !== 'undefined' && MatchEngine.levelFromYears)
         ? MatchEngine.levelFromYears(years) : 'mid',
       years,
+      /* Sprint 27 */
+      certifications: certificationsHeld(p),
+      employer: (p.employment && p.employment.company) || '',
     };
   }
 
@@ -82,6 +93,65 @@ const ResumeRecommender = (() => {
   function keywordsFor(title) {
     return (typeof ResumesStore !== 'undefined' && ResumesStore.keywordsFor)
       ? ResumesStore.keywordsFor(title) : [];
+  }
+
+  /* ---------- Sprint 27: certifications ----------
+     The certifications a posting actually asks for. Read from the job's own
+     text — nothing is assumed. When a posting names none, the signal is not
+     applicable and scores full: you cannot fail a requirement that isn't there. */
+  const CERT_HINTS = [
+    { id: 'Azure Administrator', re: /\b(az-104|azure administrator)\b/i },
+    { id: 'Azure Solutions Architect', re: /\b(az-305|azure solutions architect)\b/i },
+    { id: 'AWS Certified', re: /\baws certified\b/i },
+    { id: 'Certified Kubernetes Administrator', re: /\b(cka|certified kubernetes administrator)\b/i },
+    { id: 'Terraform Associate', re: /\bterraform associate\b/i },
+    { id: 'TOGAF', re: /\btogaf\b/i },
+    { id: 'PMP', re: /\bpmp\b/i },
+    { id: 'CCNA', re: /\bccna\b/i },
+  ];
+
+  function certificationsRequiredBy(job) {
+    const hay = [job.title, job.description, (job.skills || []).join(' ')].join(' ');
+    return CERT_HINTS.filter(c => c.re.test(hay)).map(c => c.id);
+  }
+
+  /* the certifications the candidate actually holds (résumés are built from
+     the one profile, so they all carry the same ones) */
+  function certificationsHeld(profile) {
+    const p = profile || ((typeof Profile !== 'undefined') ? Profile.getState() : {});
+    return (p.certifications || []).map(c => (c && c.name) ? c.name : String(c)).filter(Boolean);
+  }
+
+  function holdsCert(held, wanted) {
+    return held.some(h => {
+      const a = lc(h), b = lc(wanted);
+      return a === b || a.indexOf(b) !== -1 || b.indexOf(a) !== -1;
+    });
+  }
+
+  /* ---------- Sprint 27: industry ----------
+     A résumé aimed at a payments company reads differently from one aimed at
+     an observability vendor. The industry comes from the COMPANY on each side.
+     An unknown company means the signal is not applicable — it scores full
+     rather than penalising a job we simply have no industry data for. */
+  const INDUSTRIES = [
+    { id: 'payments', companies: ['stripe', 'adyen', 'checkout.com', 'paypal'] },
+    { id: 'developer tools', companies: ['vercel', 'retool', 'hashicorp', 'github', 'gitlab'] },
+    { id: 'observability', companies: ['datadog', 'new relic', 'grafana', 'splunk'] },
+    { id: 'enterprise cloud', companies: ['microsoft', 'amazon web services', 'aws', 'google', 'oracle', 'ibm'] },
+    { id: 'industrial', companies: ['honeywell', 'siemens', 'schneider electric', 'abb'] },
+    { id: 'banking', companies: ['emirates nbd', 'mashreq', 'adcb', 'hsbc', 'standard chartered'] },
+    { id: 'telecom', companies: ['saudi telecom', 'stc', 'mobily', 'etisalat', 'du', 'zain'] },
+    { id: 'e-commerce', companies: ['noon', 'careem', 'amazon', 'talabat', 'namshi'] },
+    { id: 'IT services', companies: ['systems limited', 'netsol', 'accenture', 'deloitte', 'pwc', 'ey', 'kpmg', 'techvantage'] },
+    { id: 'data platforms', companies: ['palantir', 'snowflake', 'databricks'] },
+  ];
+
+  function industryOf(company) {
+    const c = lc(company);
+    if (!c) return null;
+    const hit = INDUSTRIES.find(i => i.companies.some(name => c === name || c.indexOf(name) !== -1));
+    return hit ? hit.id : null;                 // unknown → not applicable
   }
 
   /* ---------- scoring ---------- */
@@ -113,7 +183,11 @@ const ResumeRecommender = (() => {
     const jobLvl = levelOf(job.title);
     const resLvl = resume.isMaster ? (c.level || 'mid') : levelOf(resume.title);
     const gap = Math.abs(levelRank(jobLvl) - levelRank(resLvl));
-    const level = gap === 0 ? WEIGHTS.level : gap === 1 ? 13 : gap === 2 ? 6 : 0;
+    /* one rung either way still lands the interview; two is a stretch */
+    const level = gap === 0 ? WEIGHTS.level
+      : gap === 1 ? Math.round(WEIGHTS.level * 0.65)
+        : gap === 2 ? Math.round(WEIGHTS.level * 0.3)
+          : 0;
     if (gap === 0) reasons.push(`${resLvl}-level résumé for a ${jobLvl}-level role`);
 
     /* 4 — does the résumé's title sit inside your target roles? */
@@ -121,15 +195,48 @@ const ResumeRecommender = (() => {
     const role = Math.round(WEIGHTS.role * roleRatio);
     if (roleRatio >= 0.6) reasons.push('Matches your saved target roles');
 
-    const confidence = Math.max(0, Math.min(100, category + skills + level + role));
+    /* 5 — certifications the posting asks for (Sprint 27) */
+    const certsWanted = certificationsRequiredBy(job);
+    const held = c.certifications || certificationsHeld();
+    const certsMatched = certsWanted.filter(w => holdsCert(held, w));
+    let certifications;
+    if (!certsWanted.length) {
+      certifications = WEIGHTS.certifications;            // none asked for → nothing unmet
+    } else {
+      certifications = Math.round(WEIGHTS.certifications * certsMatched.length / certsWanted.length);
+      if (certsMatched.length) reasons.push(`${certsMatched.length}/${certsWanted.length} certifications held`);
+      else reasons.push(`Missing ${certsWanted.join(', ')}`);
+    }
+
+    /* 6 — industry alignment (Sprint 27) */
+    const jobIndustry = industryOf(job.company);
+    const resumeIndustry = resume.isMaster
+      ? industryOf((c.employer) || '')
+      : industryOf(resume.company);
+    let industry;
+    if (!jobIndustry || !resumeIndustry) {
+      industry = WEIGHTS.industry;                        // no industry data → not applicable
+    } else if (jobIndustry === resumeIndustry) {
+      industry = WEIGHTS.industry;
+      reasons.push(`Same industry (${jobIndustry})`);
+    } else {
+      industry = 0;
+      reasons.push(`${resumeIndustry} résumé for a ${jobIndustry} company`);
+    }
+
+    const confidence = Math.max(0, Math.min(100,
+      category + skills + level + role + certifications + industry));
     return {
       confidence,
-      parts: { category, skills, level, role },
+      parts: { category, skills, level, role, certifications, industry },
       reasons,
       /* a short 1–2 line explanation */
       reason: reasons.slice(0, 2).join(' · '),
       jobCategory: jobCat, resumeCategory: resCat, jobLevel: jobLvl, resumeLevel: resLvl,
       matchedSkills: hits,
+      certificationsRequired: certsWanted,
+      certificationsMatched: certsMatched,
+      jobIndustry, resumeIndustry,
     };
   }
 
@@ -179,8 +286,10 @@ const ResumeRecommender = (() => {
   }
 
   return {
-    STORAGE_KEY, WEIGHTS,
+    STORAGE_KEY, WEIGHTS, INDUSTRIES, CERT_HINTS,
     candidates, context, score, rank, recommend,
     overrides, overrideFor, setOverride, clearOverride, forJob,
+    /* Sprint 27 */
+    certificationsRequiredBy, certificationsHeld, industryOf, keywordsFor,
   };
 })();

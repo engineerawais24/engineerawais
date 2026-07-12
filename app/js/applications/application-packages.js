@@ -95,6 +95,12 @@ const ApplicationPackages = (() => {
       approvedAt: Date.now(),
       status: READY,
       appliedOn: null,
+      /* Sprint 27: the package carries a job summary, and tracks whether the
+         user has actually reviewed it (the checklist derives from this) */
+      jobSummary: (typeof PackageBuilder !== 'undefined')
+        ? PackageBuilder.jobSummary(job)
+        : (job.description || ''),
+      reviewedAt: null,
     };
     persist(all().concat([pkg]));
     return pkg;
@@ -176,6 +182,36 @@ const ApplicationPackages = (() => {
     return setStatus(id, APPLIED);
   }
 
+  /* ---------- Sprint 27: review + checklist + summary ---------- */
+
+  /* Opening the package IS reviewing it — the checklist ticks itself. */
+  function markReviewed(id) {
+    const list = all();
+    const pkg = list.find(p => p.id === id);
+    if (!pkg || pkg.reviewedAt) return pkg || null;
+    pkg.reviewedAt = Date.now();
+    persist(list);
+    return pkg;
+  }
+
+  function checklist(id) {
+    const pkg = typeof id === 'string' ? get(id) : id;
+    return (typeof PackageBuilder !== 'undefined')
+      ? PackageBuilder.checklist(pkg)
+      : { items: [], done: 0, total: 0, progress: 0, complete: false };
+  }
+
+  function summaryText(id) {
+    const pkg = typeof id === 'string' ? get(id) : id;
+    return (typeof PackageBuilder !== 'undefined') ? PackageBuilder.summaryText(pkg) : '';
+  }
+
+  function copySummary(id) {
+    const pkg = get(id);
+    if (!pkg) return { ok: false, error: 'No application package to copy' };
+    return PackageBuilder.copySummary(pkg);
+  }
+
   function copyCoverLetter(id) {
     const pkg = get(id);
     if (!pkg || !pkg.coverLetter) return { ok: false, error: 'No cover letter in this package' };
@@ -210,5 +246,7 @@ const ApplicationPackages = (() => {
     STORAGE_KEY, READY, APPLIED, STATUSES, STATUS_LABEL,
     all, ready, get, forJob, has, statusLabel, isValidStatus,
     createFrom, setResume, syncToResume, setStatus, markApplied, copyCoverLetter, remove, clear,
+    /* Sprint 27 */
+    markReviewed, checklist, summaryText, copySummary,
   };
 })();

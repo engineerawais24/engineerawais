@@ -158,6 +158,22 @@ const CoverLetter = (() => {
       lines.push('');
     }
 
+    /* Sprint 27 — certifications, stated only when the profile holds them */
+    if (facts.certifications.length) {
+      lines.push(`I hold ${facts.certifications.join(', ')}.`);
+      lines.push('');
+    }
+
+    /* Sprint 27 — the role's own location, addressed directly */
+    if (job.location) {
+      const remote = /remote/i.test(job.location) || job.workMode === 'Remote';
+      const prefersRemote = /remote/i.test((p.preferences && p.preferences.workMode) || '');
+      lines.push(remote && prefersRemote
+        ? `The role is remote, which is how I already work with clients across regions.`
+        : `The role is based in ${job.location}${city ? `, and I'm currently in ${city}` : ''}.`);
+      lines.push('');
+    }
+
     lines.push(`I'd welcome the chance to talk about how I can help ${job.company}. Thank you for your time.`);
     lines.push('');
     lines.push('Sincerely,');
@@ -185,6 +201,10 @@ const CoverLetter = (() => {
       resumeKeywords: kws,
       matchedSkills, resumeSkills, otherSkills, gapSkills,
       evidence: evidenceFor(resume, profile),
+      /* Sprint 27: the certifications the profile actually holds */
+      certifications: (profile.certifications || [])
+        .map(c => (c && c.name) ? c.name : String(c))
+        .filter(Boolean),
     };
 
     return Object.assign({

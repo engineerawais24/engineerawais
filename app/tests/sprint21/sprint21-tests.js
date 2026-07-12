@@ -64,7 +64,9 @@
       ranked.forEach(r => {
         assert(typeof r.confidence === 'number', 'confidence must be a number');
         assert(r.confidence >= 0 && r.confidence <= 100, 'confidence out of range: ' + r.confidence);
-        const sum = r.parts.category + r.parts.skills + r.parts.level + r.parts.role;
+        /* sums EVERY signal, so the assertion keeps holding as the engine
+           grows (Sprint 27 added certifications + industry) */
+        const sum = Object.keys(r.parts).reduce((n, k) => n + r.parts[k], 0);
         assert(Math.min(100, Math.max(0, sum)) === r.confidence, 'confidence is not the sum of its parts for ' + r.id);
       });
 

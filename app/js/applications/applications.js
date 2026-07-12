@@ -35,6 +35,11 @@ const Applications = (() => {
 
   function openPackage(id) {
     ui.open[id] = !ui.open[id];
+    /* Sprint 27: opening the package IS reviewing it — the checklist item
+       ticks itself, so there is nothing extra for the user to do */
+    if (ui.open[id] && typeof ApplicationPackages !== 'undefined') {
+      ApplicationPackages.markReviewed(id);
+    }
     refresh();
   }
 
@@ -42,6 +47,15 @@ const Applications = (() => {
     if (typeof ApplicationPackages === 'undefined') return null;
     const r = ApplicationPackages.copyCoverLetter(id);
     if (typeof toast === 'function') toast(r.ok ? 'Cover letter copied to clipboard' : r.error, r.ok ? 'success' : 'error');
+    return r;
+  }
+
+  /* Sprint 27: copy the application summary (role, company, link, match,
+     résumé, status, checklist). No PDF/DOCX export. */
+  function copyPackageSummary(id) {
+    if (typeof ApplicationPackages === 'undefined') return null;
+    const r = ApplicationPackages.copySummary(id);
+    if (typeof toast === 'function') toast(r.ok ? 'Application summary copied to clipboard' : r.error, r.ok ? 'success' : 'error');
     return r;
   }
 
@@ -182,5 +196,7 @@ const Applications = (() => {
     ui, reload, openPackage, copyPackageCover, setPackageResume, markApplied,
     /* Sprint 24 */
     setPackageStatus,
+    /* Sprint 27 */
+    copyPackageSummary,
   };
 })();

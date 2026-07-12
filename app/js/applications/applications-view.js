@@ -81,6 +81,49 @@ const ApplicationsView = (() => {
         ${o.id === r.recommended.id ? '★ ' : ''}${esc(o.name)} · ${o.confidence}%</option>`).join('');
   }
 
+  /* ---------- Sprint 27: checklist + tailoring preview ---------- */
+
+  function pkgChecklist(pkg) {
+    if (typeof PackageBuilder === 'undefined') return '';
+    const c = PackageBuilder.checklist(pkg);
+    return `
+      <div class="pkg-check">
+        <div class="pc-head">
+          <span class="pc-lbl">CHECKLIST</span>
+          <div class="pc-bar"><i style="width:${c.progress}%"></i></div>
+          <span class="pc-pct ${c.complete ? 'done' : ''}">${c.done}/${c.total} · ${c.progress}%</span>
+        </div>
+        <ul class="pc-items">
+          ${c.items.map(i => `
+            <li class="${i.done ? 'ok' : ''}">
+              <span class="pc-box">${i.done ? '✓' : ''}</span>
+              <span class="pc-name">${esc(i.label)}</span>
+              <span class="pc-note">${esc(i.note)}</span>
+            </li>`).join('')}
+        </ul>
+      </div>`;
+  }
+
+  function pkgTailoring(pkg) {
+    if (typeof PackageBuilder === 'undefined') return '';
+    const t = PackageBuilder.tailoringPreview(pkg.job);
+    const chips = (list, cls) => list.map(s => `<span class="pt-chip ${cls}">${esc(s)}</span>`).join('');
+    return `
+      <div class="pkg-tailor">
+        <span class="pt-lbl">RÉSUMÉ TAILORING · SUGGESTIONS ONLY — YOUR RÉSUMÉ IS NOT MODIFIED</span>
+        <div class="pt-row"><span class="pt-k">Matched</span>
+          <span class="pt-v">${t.matchedSkills.length ? chips(t.matchedSkills, 'ok') : '<i>None</i>'}</span></div>
+        <div class="pt-row"><span class="pt-k">Missing</span>
+          <span class="pt-v">${t.missingSkills.length ? chips(t.missingSkills, 'gap') : '<i>None</i>'}</span></div>
+        <div class="pt-row"><span class="pt-k">Keywords</span>
+          <span class="pt-v">${t.suggestedKeywords.length ? chips(t.suggestedKeywords, 'kw') : '<i>Nothing to add</i>'}</span></div>
+        ${t.improvements.length ? `
+          <div class="pt-row"><span class="pt-k">Improve</span>
+            <span class="pt-v"><ul class="pt-tips">${t.improvements.map(i => `<li>${esc(i)}</li>`).join('')}</ul></span>
+          </div>` : ''}
+      </div>`;
+  }
+
   function pkgDetail(pkg) {
     const j = pkg.job || {};
     const rows = [
@@ -97,7 +140,10 @@ const ApplicationsView = (() => {
         <dl class="pkg-facts">
           ${rows.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}
         </dl>
+        ${pkg.jobSummary ? `<div class="pkg-summary">${esc(pkg.jobSummary)}</div>` : ''}
         ${(j.skills || []).length ? `<div class="pkg-skills">${j.skills.map(s => `<span class="pkg-skill">${esc(s)}</span>`).join('')}</div>` : ''}
+        ${pkgChecklist(pkg)}
+        ${pkgTailoring(pkg)}
         <pre class="pkg-cover">${esc(pkg.coverLetter || 'No cover letter in this package.')}</pre>
         ${j.applyUrl ? `<a class="pkg-link" href="${esc(j.applyUrl)}" target="_blank" rel="noopener">Open the original posting ↗</a>` : ''}
       </div>`;
@@ -127,6 +173,9 @@ const ApplicationsView = (() => {
           ${pkg.appliedOn ? `<span>· Applied ${fmtDate(pkg.appliedOn)}</span>` : ''}
           ${pkg.statusChangedOn ? `<span>· ${esc(ApplicationPackages.statusLabel(pkg.status))} ${fmtDate(pkg.statusChangedOn)}</span>` : ''}
           <span>· ${esc(pkg.resumeName || 'No résumé')}</span>
+          ${typeof PackageBuilder !== 'undefined'
+            ? (c => `<span class="pkg-prog ${c.complete ? 'done' : ''}">· Checklist ${c.done}/${c.total}</span>`)(PackageBuilder.checklist(pkg))
+            : ''}
         </div>
         <div class="pkg-acts">
           <select class="pkg-status s-${esc(pkg.status)}" title="Change the application status"
@@ -135,6 +184,7 @@ const ApplicationsView = (() => {
                   onchange="Applications.setPackageResume('${esc(pkg.id)}', this.value)">${resumeOptions(pkg)}</select>
           <button class="btn btn-ghost" onclick="Applications.openPackage('${esc(pkg.id)}')">${open ? 'Close' : 'Open package'}</button>
           <button class="btn btn-ghost" onclick="Applications.copyPackageCover('${esc(pkg.id)}')">Copy cover letter</button>
+          <button class="btn btn-ghost" onclick="Applications.copyPackageSummary('${esc(pkg.id)}')">Copy summary</button>
           ${sent ? '' : `<button class="btn btn-primary" onclick="Applications.markApplied('${esc(pkg.id)}')">Mark as Applied</button>`}
         </div>
         ${open ? pkgDetail(pkg) : ''}
