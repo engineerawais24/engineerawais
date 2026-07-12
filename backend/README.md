@@ -190,6 +190,152 @@ start "" "..\app\tests\sprint15.html"
 start "" "..\app\tests\sprint14.html"
 ```
 
+---
+
+# Sprint 18 — Intelligent Job Search Engine
+
+> **No backend changes were made in Sprint 18.** Search history, the
+> search cache and search diagnostics all persist through the existing
+> `AppStorage` abstraction, so they already work in **local mode** and —
+> in **backend mode** — sync to `/api/kv` automatically via Sprint 17.
+> No new endpoints, models or migrations were required.
+
+## What this is (and is NOT)
+
+It is a **provider abstraction** over **local mock feeds** with an
+**injectable transport**.
+
+It is **NOT** real LinkedIn API access, **NOT** real Indeed API access,
+**NOT** scraping, **NOT** automated application submission, and **NOT**
+production authentication. No credentials exist anywhere in the code.
+
+## Search architecture
+
+```
+SearchView (UI panel, above Today's Jobs)
+      │
+      ▼
+SearchEngine ── providers (fan-out, failure-isolated)
+      │            LinkedIn · Indeed · Bayt · GulfTalent · Greenhouse · Lever
+      ├─ normalize  → UnifiedJob (30 fields, no provider fields leak)
+      ├─ filter     → titles/locations/countries/mode/salary/experience/keywords
+      ├─ deduplicate→ URL + company/title/location/description similarity
+      ├─ rank       → SearchRanking (deterministic 0–100 + explanation)
+      ├─ cache      → SearchCache (TTL, stale-while-refresh, bounded)
+      └─ history    → AppStorage (bounded, rerunnable)
+      │
+      ▼
+SearchEngine.toDiscovered() → JobsStore.setDiscovered() → Jobs.reload()
+      → the EXISTING MatchEngine / DecisionEngine / Approve-Later-Reject flow
+```
+
+The engine **never touches the DOM** and **never submits an application**.
+
+## Provider abstraction
+
+Each provider implements `connect(config)`, `search(filters, context)`,
+`normalize(rawJob)`, `health()`, `disconnect()` and reports
+`configured · connected · reachable · lastSuccessAt · lastFailureAt ·
+resultCount · lastError`. A provider failure is captured and reported —
+it **never fails the whole search**. Cancellation propagates via an
+`AbortSignal`.
+
+## Unified job model
+
+30 fields (`id … updatedAt`). Unknowns are consistently `null` / `[]` /
+`false`. URLs are canonicalized *before* duplicate detection; dates are
+ISO. After a merge, every original provider name is preserved in
+`providers[]` and every source URL/ID in `mergeMeta`.
+
+## Deduplication
+
+Deterministic: the input is sorted, then grouped by canonical URL, same
+source-id, or a weighted similarity (company 0.38 · title 0.34 ·
+location 0.18 · description 0.10) against a configurable threshold
+(0.82). The **most complete** record wins, ties break on the **newest
+`postedAt`**, and provenance is merged — never lost. The same input
+always produces the same output.
+
+## Ranking
+
+Deterministic and fully explainable — no randomness, no `Date.now()` in
+the scoring path. Weights: skills 25 · salary 12 · location 12 · title
+12 · resume 10 · experience 8 · remote 6 · certifications 5 · seniority
+4 · employmentType 2 · visa 2 · keywords 2, plus an excluded-keyword
+penalty and a bounded prior-decision bonus/penalty. Riyadh and Saudi
+Arabia rank highest on location, then GCC, then remote.
+
+Output per job: `score · scoreBand · reasons[] · strengths[] · gaps[] ·
+warnings[] · matchedSkills[] · missingSkills[] · salaryAssessment ·
+locationAssessment · recommendation`.
+
+It is **additive**: MatchEngine, DecisionEngine, the GCC/salary rules and
+the company ranking still govern the approval workflow unchanged.
+
+## Cache · offline · history
+
+Cache key = filters + providers + ranking version + relevant
+preferences. Fresh → instant hit. Expired → the **stale entry is still
+served instantly** and a background refresh runs (stale-while-refresh).
+Offline → cached results are served (a cache miss offline is empty and
+safe, never an error). Bounded to 25 entries with deterministic LRU
+eviction. History keeps the last 30 searches with all 17 fields and is
+rerunnable.
+
+## Diagnostics (`#/admin` → Search engine)
+
+Total searches · today · average duration · average results · cache hit
+rate · stale hits · duplicates merged · average score · provider health ·
+provider failures · last successful/failed search · active search ·
+cancelled · offline. Actions: **Clear expired cache · Refresh provider
+health · Run diagnostics search · Cancel active search · Export search
+diagnostics**. Clearing expired cache only removes stale *search result*
+entries — it never touches jobs, decisions, applications, interviews,
+résumés, profile or preferences.
+
+## Test commands (Sprint 18)
+
+```powershell
+# frontend harness (no backend needed)
+start "" "c:\Users\m.awais\Desktop\Job Prject\app\tests\sprint18.html"
+
+# previous harnesses still apply
+start "" "c:\Users\m.awais\Desktop\Job Prject\app\tests\sprint17.html"
+start "" "c:\Users\m.awais\Desktop\Job Prject\app\tests\sprint16.html"
+
+# backend suite is UNCHANGED by Sprint 18
+cd backend; .\.venv\Scripts\Activate.ps1; pytest
+```
+
+## Manual verification (Sprint 18)
+
+1. Open the app → **Today's Jobs** → the **Job search** card is above the
+   existing list. Click **Open search**.
+2. Pick providers, set filters, press **Search**. Watch the result count,
+   duplicate count, cache/offline indicators and provider health chips.
+3. The ranked results show a score, band and explanation. All results are
+   loaded into **Today's Jobs below** — approve / later / reject as usual.
+4. Press **Search** again with the same filters → the `from cache` chip
+   appears. **Force refresh** skips the cache.
+5. Press **Cancel** during a search → it stops safely.
+6. Use **Rerun** on a recent search.
+7. `#/admin` → **Search engine** section → try the five actions.
+
+## Known limitations (Sprint 18)
+
+- Providers are **mock feeds**, not live APIs. Live mode would require a
+  backend-held credential reference and a real transport — neither
+  exists.
+- Ranking recency is deliberately excluded from the score to guarantee
+  determinism.
+- The search panel shows ranking explanations; the existing Today's Jobs
+  cards are unchanged and do not yet display the search score inline.
+- Dedup similarity is lexical (token/Jaccard), not semantic.
+- Search history/cache are per-browser via `AppStorage` (synced to the
+  backend KV only when backend mode is on).
+
+---
+
 ## Known limitations (Sprint 17)
 
 - **Not full cloud sync, and no authentication.** One local development
