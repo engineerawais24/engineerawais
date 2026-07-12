@@ -162,7 +162,8 @@ const AdminView = (() => {
         ${connectorCard()}
         ${telemetryCard()}
         ${errorsCard()}
-      </div>`;
+      </div>
+      ${typeof ConnectorIntegration !== 'undefined' ? `<div class="prep-sub" style="margin:16px 0 4px">CONNECTOR INTEGRATION LAYER · SPRINT 15</div><div class="adm-grid">${ConnectorIntegration.adminCards()}</div>` : ''}`;
   }
 
   return { render };

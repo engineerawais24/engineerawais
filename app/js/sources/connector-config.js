@@ -30,7 +30,7 @@ const ConnectorConfig = (() => {
   const KEY = 'careerpilot_connector_cfg_v1';
 
   const REF_RE = /^(env|secret|vault):[A-Za-z0-9_./-]+$/;
-  const SIMULATE = ['none', 'failed', 'rate_limited', 'auth_required'];
+  const SIMULATE = ['none', 'failed', 'rate_limited', 'auth_required', 'offline', 'maintenance'];
   const AUTH_TYPES = ['none', 'api_key', 'oauth2', 'session', 'basic'];
 
   /* production defaults for the retry / rate / timeout policy */

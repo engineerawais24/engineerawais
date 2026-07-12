@@ -65,7 +65,8 @@
 
 const ConnectorBase = (() => {
 
-  /* connector lifecycle states (requirement: all seven) */
+  /* connector lifecycle states. Sprint 15 adds OFFLINE + MAINTENANCE
+     to the production status set (healthy is derived, not a run state). */
   const STATES = {
     NOT_CONFIGURED: 'not_configured',
     READY: 'ready',
@@ -74,6 +75,8 @@ const ConnectorBase = (() => {
     FAILED: 'failed',
     RATE_LIMITED: 'rate_limited',
     AUTH_REQUIRED: 'auth_required',
+    OFFLINE: 'offline',
+    MAINTENANCE: 'maintenance',
   };
 
   const STATE_LABELS = {
@@ -84,7 +87,21 @@ const ConnectorBase = (() => {
     failed: 'Failed',
     rate_limited: 'Rate limited',
     auth_required: 'Auth required',
+    offline: 'Offline',
+    maintenance: 'Maintenance',
     off: 'Off',
+  };
+
+  /* the seven production STATUSES a connector reports (PART 2) */
+  const STATUS_LABELS = {
+    healthy: 'Healthy',
+    disabled: 'Disabled',
+    offline: 'Offline',
+    auth_required: 'Authentication Required',
+    rate_limited: 'Rate Limited',
+    maintenance: 'Maintenance',
+    error: 'Error',
+    not_configured: 'Not Configured',
   };
 
   function result(ok, state, extra = {}) {
@@ -146,6 +163,12 @@ const ConnectorBase = (() => {
     if (cfg.simulate === 'auth_required') {
       return result(false, STATES.AUTH_REQUIRED, { error: 'Authentication required (simulated) — session expired' });
     }
+    if (cfg.simulate === 'offline') {
+      return result(false, STATES.OFFLINE, { error: 'Connector offline (simulated) — network unreachable' });
+    }
+    if (cfg.simulate === 'maintenance') {
+      return result(false, STATES.MAINTENANCE, { error: 'Connector in scheduled maintenance (simulated)' });
+    }
 
     if (!cfg.useDemo) {
       const missing = missingConfig(spec, cfg);
@@ -172,12 +195,16 @@ const ConnectorBase = (() => {
      rate_limited / error + last run / jobs found / retry count). */
   function deriveHealth(spec, cfg, board) {
     if (board && board.enabled === false) return 'disabled';
+    if (cfg.simulate === 'offline') return 'offline';
+    if (cfg.simulate === 'maintenance') return 'maintenance';
     if (cfg.simulate === 'rate_limited') return 'rate_limited';
     if (cfg.simulate === 'auth_required') return 'auth_required';
     if (cfg.simulate === 'failed') return 'error';
     if (!cfg.useDemo && missingConfig(spec, cfg).length) return 'not_configured';
     if (board) {
       if (board.state === 'failed') return 'error';
+      if (board.state === 'offline') return 'offline';
+      if (board.state === 'maintenance') return 'maintenance';
       if (board.state === 'rate_limited') return 'rate_limited';
       if (board.state === 'auth_required') return 'auth_required';
     }
@@ -194,6 +221,25 @@ const ConnectorBase = (() => {
 
       isConfigured() {
         return missingConfig(spec, ConnectorConfig.get(spec.id)).length === 0;
+      },
+
+      /* initialize() — prepare the connector before use (Sprint 15
+         lifecycle). No-op in the demo build; a live connector would
+         set up its HTTP client / SDK here. */
+      initialize() {
+        const cfg = ConnectorConfig.get(spec.id);
+        return {
+          ok: true, id: spec.id, mode: cfg.useDemo ? 'demo' : 'live',
+          note: cfg.useDemo ? 'Demo connector ready — no setup needed'
+            : 'Live client is initialized by the backend, not the browser',
+        };
+      },
+
+      /* rateLimit() — current rate-limit posture, delegated to the
+         centralized RateLimitManager (Sprint 15). */
+      rateLimit() {
+        if (typeof RateLimitManager !== 'undefined') return RateLimitManager.status(spec.id);
+        return { id: spec.id, count: 0, quota: null, remaining: null, cooldownUntil: 0, backoffLevel: 0, inCooldown: false };
       },
 
       /* ---- Sprint 11 production contract (every adapter) ---- */
@@ -252,17 +298,29 @@ const ConnectorBase = (() => {
         const board = (typeof SourcesStore !== 'undefined')
           ? (SourcesStore.load().boards[spec.id] || null) : null;
         const retryCount = (typeof SyncLog !== 'undefined') ? SyncLog.retryCountOf(spec.id) : 0;
+        const health = deriveHealth(spec, cfg, board);
+        const lastSuccess = board ? board.lastSuccess
+          : ((typeof SyncLog !== 'undefined') ? SyncLog.lastSuccessOf(spec.id) : null);
+        const an = (typeof ConnectorAnalytics !== 'undefined') ? ConnectorAnalytics.summary(spec.id) : null;
         return {
           id: spec.id,
           label: spec.label,
-          health: deriveHealth(spec, cfg, board),
+          health,
+          /* Sprint 15 status set + expanded diagnostics */
+          status: health,
+          statusLabel: STATUS_LABELS[health] || health,
           lastRun: board ? board.lastRun : null,
-          lastSuccess: board ? board.lastSuccess
-            : ((typeof SyncLog !== 'undefined') ? SyncLog.lastSuccessOf(spec.id) : null),
+          lastSuccess,
+          lastSuccessfulSearch: lastSuccess,
           jobsFound: board && board.jobsFound != null ? board.jobsFound : null,
+          jobsRetrieved: an ? an.searched : (board && board.jobsFound != null ? board.jobsFound : null),
           retryCount,
+          retries: retryCount,
+          avgResponseTime: an ? an.avgResponseMs : null,
+          successRate: an ? an.successRate : null,
           rateLimitedUntil: board ? (board.rateLimitedUntil || null) : null,
           error: board ? (board.lastError || null) : null,
+          lastError: board ? (board.lastError || null) : null,
         };
       },
 
@@ -284,5 +342,5 @@ const ConnectorBase = (() => {
     };
   }
 
-  return { STATES, STATE_LABELS, result, createAdapter, deriveHealth };
+  return { STATES, STATE_LABELS, STATUS_LABELS, result, createAdapter, deriveHealth };
 })();
