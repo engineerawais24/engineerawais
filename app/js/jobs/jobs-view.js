@@ -53,6 +53,31 @@ const JobsView = (() => {
       : `${cur}${job.salary}k`;
   }
 
+  /* Sprint 20: the score breakdown + short match reasons, shown in the
+     existing match-score area of the card. Guarded so an older result
+     object (without a breakdown) still renders exactly as before. */
+  function scoreBreakdown(res) {
+    const b = res && res.breakdown;
+    if (!b) return '';
+    const bar = (label, part) => {
+      const pct = part.max ? Math.round((part.points / part.max) * 100) : 0;
+      const cls = pct >= 80 ? 'hi' : pct >= 50 ? 'mid' : 'low';
+      return `<span class="bd ${cls}" title="${esc(label)} ${part.points} of ${part.max}">
+        <i>${esc(label)}</i><b>${part.points}/${part.max}</b></span>`;
+    };
+    return `
+      <div class="job-breakdown">
+        <span class="bd overall"><i>Match</i><b>${b.overall}/100</b></span>
+        ${bar('Skills', b.skills)}${bar('Experience', b.experience)}${bar('Location', b.location)}${bar('Salary', b.salary)}
+      </div>`;
+  }
+
+  function matchReasons(res) {
+    const rs = (res && res.matchReasons) || [];
+    if (!rs.length) return '';
+    return `<div class="job-reasons">${rs.map(r => `<span class="rchip">✓ ${esc(r)}</span>`).join('')}</div>`;
+  }
+
   const REC_CLASS = {
     'Must Apply': 'must', 'Strong Match': 'strong', 'Good Match': 'good',
     'Review Manually': 'review', 'Skip': 'skip',
@@ -163,6 +188,8 @@ const JobsView = (() => {
               ${statusPill}${salaryPill}
             </div>
             <div class="job-meta">${esc(job.location)}${job.location.toLowerCase().includes(job.workMode.toLowerCase()) ? '' : ' · ' + esc(job.workMode)} · ${esc(job.employmentType)} · ${salaryDisplay(job)}</div>
+            ${scoreBreakdown(res)}
+            ${matchReasons(res)}
             <div class="job-desc">${esc(job.description)}</div>
             <div class="job-chips">${chips}</div>
             <div class="job-foot">

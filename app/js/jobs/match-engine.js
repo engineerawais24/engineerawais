@@ -104,6 +104,58 @@ const MatchEngine = (() => {
       note: 'Outside GCC without relocation support or visa sponsorship — filtered by your work-mode setting' };
   }
 
+  /* ---- Sprint 20: seniority + résumé-category signals ----
+     Both are derived from the job title only, so evaluate() stays pure. */
+
+  /* order matters: lead/staff wins over senior ("Senior Staff Engineer") */
+  const LEVELS = [
+    { id: 'entry', rank: 1, re: /\b(intern|junior|jr|graduate|entry|associate)\b/i },
+    { id: 'lead', rank: 4, re: /\b(lead|staff|principal|head|director|manager|vp)\b/i },
+    { id: 'senior', rank: 3, re: /\b(senior|sr)\b/i },
+    { id: 'mid', rank: 2, re: null },      // fallback
+  ];
+  function levelOf(title) {
+    const hit = LEVELS.find(l => l.re && l.re.test(String(title || '')));
+    return hit ? hit.id : 'mid';
+  }
+  function levelRank(id) { const l = LEVELS.find(x => x.id === id); return l ? l.rank : 2; }
+
+  /* the candidate's own level, from total years of experience */
+  function levelFromYears(years) {
+    if (years == null) return 'mid';
+    if (years < 3) return 'entry';
+    if (years < 6) return 'mid';
+    if (years < 10) return 'senior';
+    return 'lead';
+  }
+
+  /* résumé/role families — the same four the Résumé Library uses */
+  const CATEGORIES = [
+    { id: 'architect', re: /architect/i },
+    { id: 'consultant', re: /consultant|advisor/i },
+    { id: 'implementation', re: /implementation|deployment|deployed/i },
+    { id: 'engineer', re: /engineer|developer|services/i },
+    { id: 'general', re: null },           // fallback
+  ];
+  function categoryOf(title) {
+    const hit = CATEGORIES.find(c => c.re && c.re.test(String(title || '')));
+    return hit ? hit.id : 'general';
+  }
+
+  /* total professional experience from the saved employment history */
+  function yearsFromProfile(p) {
+    const dates = [];
+    if (p.employment && p.employment.startDate) dates.push(p.employment.startDate);
+    (p.history || []).forEach(h => { if (h && h.startDate) dates.push(h.startDate); });
+    if (!dates.length) return null;
+    const earliest = dates.slice().sort()[0];
+    const [y, m] = String(earliest).split('-').map(Number);
+    if (!y) return null;
+    const now = new Date();
+    const yrs = (now.getFullYear() - y) + ((now.getMonth() + 1) - (m || 1)) / 12;
+    return Math.max(0, Math.round(yrs * 10) / 10);
+  }
+
   const STOP = new Set(['and', 'the', 'for', 'with', 'of', 'to', 'a', 'an',
     'senior', 'staff', 'sr', 'jr', 'lead', 'principal', 'junior', 'ii', 'iii']);
 
@@ -137,7 +189,16 @@ const MatchEngine = (() => {
      only until server-side parsing exists. */
   function snapshotFromProfile(p, master) {
     const norm = s => String(s || '').toLowerCase().trim();
+    /* Sprint 20: the candidate's own seniority + résumé families */
+    const years = yearsFromProfile(p);
+    const roleTitles = [p.employment.title]
+      .concat(String(p.preferences.targetRoles || '').split(',').map(s => s.trim()))
+      .filter(Boolean);
+    const categories = Array.from(new Set(roleTitles.map(categoryOf))).filter(c => c !== 'general');
     return {
+      years,
+      level: levelFromYears(years),
+      categories,
       skills: p.skills.map(norm),
       certs: p.certifications.filter(c => c.name).map(c => norm(c.name)),
       languages: p.languages.filter(l => l.name).map(l => norm(l.name)),
@@ -183,38 +244,57 @@ const MatchEngine = (() => {
           || snap.certs.some(c => c.includes(k));
     });
     const missing = jobSkills.filter(s => !matched.includes(s));
-    add('Skills & certifications',
+    const skillsPts = add('Skills & certifications',
       jobSkills.length ? WEIGHTS.skills * matched.length / jobSkills.length : WEIGHTS.skills / 2,
       WEIGHTS.skills,
       jobSkills.length ? `${matched.length} of ${jobSkills.length} required skills on your profile` : 'Posting lists no skills',
       jobSkills.length > 0 && matched.length === 0);
 
-    /* 2 — role fit vs target roles */
+    /* 2 — role fit: target-role overlap (14) + résumé category (6) */
     const titleTok = tokens(job.title);
     const roleRatio = overlapRatio(titleTok, tokens(snap.targetRoles));
-    add('Role fit', WEIGHTS.role * roleRatio, WEIGHTS.role,
-      roleRatio >= 0.6 ? 'Title closely matches your target roles'
-        : roleRatio > 0 ? 'Partial overlap with your target roles' : 'Outside your target roles',
-      roleRatio === 0);
+    const jobCategory = categoryOf(job.title);
+    const myCategories = snap.categories || [];
+    const catMatch = myCategories.indexOf(jobCategory) !== -1;
+    const catPts = catMatch ? 6 : (jobCategory === 'general' || !myCategories.length) ? 3 : 1;
+    add('Role fit', 14 * roleRatio + catPts, WEIGHTS.role,
+      (roleRatio >= 0.6 ? 'Title closely matches your target roles'
+        : roleRatio > 0 ? 'Partial overlap with your target roles' : 'Outside your target roles')
+      + (catMatch ? ` · ${jobCategory} résumé category matched` : ''),
+      roleRatio === 0 && !catMatch);
 
-    /* 3 — experience relevance (employment history + master resume) */
+    /* 3 — experience: history relevance (9) + seniority-level fit (6) */
     const histTitleRatio = overlapRatio(titleTok, snap.titleTokens);
     const histHits = jobSkills.filter(k => snap.historyText.includes(k.toLowerCase())).length;
     const expRatio = 0.5 * histTitleRatio + 0.5 * (jobSkills.length ? histHits / jobSkills.length : 0.5);
-    add('Experience relevance', WEIGHTS.experience * expRatio, WEIGHTS.experience,
-      `${histHits} posting keyword${histHits === 1 ? '' : 's'} appear in your work history${snap.master ? ' · master resume on file (read-only)' : ''}`,
-      expRatio < 0.2);
+    const jobLevel = levelOf(job.title);
+    const myLevel = snap.level || 'mid';
+    const levelGap = Math.abs(levelRank(jobLevel) - levelRank(myLevel));
+    const levelPts = levelGap === 0 ? 6 : levelGap === 1 ? 4 : levelGap === 2 ? 2 : 0;
+    const expPts = add('Experience relevance', 9 * expRatio + levelPts, WEIGHTS.experience,
+      `${histHits} posting keyword${histHits === 1 ? '' : 's'} in your work history · ${jobLevel}-level role vs your ${myLevel} level`
+      + (snap.years != null ? ` (~${snap.years} yrs)` : '') + (snap.master ? ' · master resume on file (read-only)' : ''),
+      expRatio < 0.2 && levelPts <= 2);
 
-    /* 4 — location & work mode (GCC-first regional rules) */
+    /* 4 — location & work mode: remote preference (8) + preferred location (7),
+           inside the unchanged GCC-first regional rules */
     const jloc = (job.location || '').toLowerCase();
     const remoteJob = job.workMode === 'Remote' || /remote/.test(jloc);
     const region = regionEval(job, snap, remoteJob, jloc);
+    const wantRemote = snap.workMode === 'Remote';
     const modeOk = snap.workMode === 'Flexible' || job.workMode === snap.workMode;
+    let modePts;
+    if (snap.workMode === 'Flexible') modePts = 6;
+    else if (modeOk) modePts = 8;                                    // exact work-mode preference
+    else if (wantRemote && job.workMode === 'Hybrid') modePts = 5;   // partial for remote-seekers
+    else if (wantRemote && job.workMode === 'On-site') modePts = 2;
+    else modePts = 3;
     const locOk = remoteJob
       ? snap.locations.some(l => /remote/.test(l))
       : snap.locations.some(l => l && (jloc.includes(l.split(' ')[0]) || l.includes(jloc.split(' ')[0])));
-    const locPts = region.filtered ? 2 : (modeOk ? 8 : 3) + (locOk ? 7 : (snap.relocation ? 4 : 1));
-    add('Location & work mode', locPts, WEIGHTS.location, region.note,
+    const locPts = add('Location & work mode',
+      region.filtered ? 2 : modePts + (locOk ? 7 : (snap.relocation ? 4 : 1)),
+      WEIGHTS.location, region.note,
       region.filtered || (!modeOk && !locOk));
 
     /* 5 — salary alignment (the hard filter rules live here).
@@ -250,7 +330,7 @@ const MatchEngine = (() => {
       salaryBelow = true;
       salaryNote = `≈$${Math.round(k)}k is below your $${snap.minSalaryK}k minimum`;
     }
-    add('Salary alignment', salaryPts, WEIGHTS.salary, salaryNote, salaryBelow);
+    const salaryScore = add('Salary alignment', salaryPts, WEIGHTS.salary, salaryNote, salaryBelow);
 
     /* 6 — work authorization & visa. Job locations name cities, the
        authorization list names countries — so the user's own city
@@ -276,6 +356,27 @@ const MatchEngine = (() => {
       reqLangs.length > 0 && haveLangs.length < reqLangs.length);
 
     const score = Math.max(0, Math.min(100, factors.reduce((n, f) => n + f.points, 0)));
+
+    /* ---- Sprint 20: score breakdown + short match reasons ---- */
+    const breakdown = {
+      overall: score,
+      skills: { points: skillsPts, max: WEIGHTS.skills },
+      experience: { points: expPts, max: WEIGHTS.experience },
+      location: { points: locPts, max: WEIGHTS.location },
+      salary: { points: salaryScore, max: WEIGHTS.salary },
+    };
+
+    const matchReasons = [];
+    if (skillsPts >= WEIGHTS.skills * 0.7) matchReasons.push('Strong skill match');
+    else if (skillsPts >= WEIGHTS.skills * 0.4) matchReasons.push('Partial skill match');
+    if (!region.filtered && (locOk || region.gcc)) matchReasons.push('Preferred location');
+    if (salaryScore === WEIGHTS.salary) matchReasons.push('Salary meets expectation');
+    if (wantRemote && remoteJob) matchReasons.push('Remote matches preference');
+    if (catMatch) matchReasons.push('Resume category matched');
+    if (levelPts >= 4) matchReasons.push('Experience level fits');
+    if (roleRatio >= 0.6) matchReasons.push('Target role match');
+    if (!authOk && job.visaSponsorship) matchReasons.push('Visa sponsorship offered');
+
     return {
       score, factors, matched, missing,
       /* salary and region are independent hard filters */
@@ -284,8 +385,16 @@ const MatchEngine = (() => {
       region,
       reasons: factors.filter(f => !f.gap && f.points >= f.max * 0.6).map(f => f.note),
       gaps: factors.filter(f => f.gap).map(f => f.note),
+      /* Sprint 20 additions (purely additive — nothing above changed shape) */
+      breakdown,
+      matchReasons: matchReasons.slice(0, 5),
+      jobLevel, jobCategory,
     };
   }
 
-  return { WEIGHTS, GCC_MODES, isGCC, evaluate, snapshotFromProfile, usdK, tokens };
+  return {
+    WEIGHTS, GCC_MODES, isGCC, evaluate, snapshotFromProfile, usdK, tokens,
+    /* Sprint 20 */
+    levelOf, levelRank, levelFromYears, categoryOf, yearsFromProfile,
+  };
 })();

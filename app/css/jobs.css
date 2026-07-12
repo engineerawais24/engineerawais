@@ -112,3 +112,25 @@
 .jb-chip-x{ border:none; background:none; cursor:pointer; color:var(--muted); font-size:11px; padding:4px 6px; }
 .jb-chip-x:hover{ color:var(--red); }
 .jb-chip-load:hover{ background:var(--accent-soft); }
+
+/* ---- Sprint 20: score breakdown + match reasons (match-score area) ---- */
+.job-breakdown{ display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+.bd{
+  display:inline-flex; align-items:center; gap:5px;
+  border:1px solid var(--divider); border-radius:7px; background:var(--subtle);
+  padding:2px 7px; white-space:nowrap;
+}
+.bd i{ font-style:normal; font-size:9.5px; letter-spacing:.04em; color:var(--faint); text-transform:uppercase; }
+.bd b{ font-family:var(--mono); font-size:10.5px; font-weight:600; color:var(--body); }
+.bd.overall{ background:var(--accent-soft); border-color:var(--accent-border); }
+.bd.overall b, .bd.overall i{ color:var(--accent-ink); }
+.bd.hi b{ color:var(--green); }
+.bd.mid b{ color:var(--amber); }
+.bd.low b{ color:var(--red); }
+
+.job-reasons{ display:flex; flex-wrap:wrap; gap:5px; margin-top:5px; }
+.rchip{
+  font-size:10px; font-weight:600; padding:2px 7px; border-radius:6px;
+  background:var(--green-soft); color:var(--green-ink); border:1px solid var(--green-soft);
+  white-space:nowrap;
+}
