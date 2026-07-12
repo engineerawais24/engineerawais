@@ -16,7 +16,13 @@ const Jobs = (() => {
     /* Sprint 19: board search / filters / sorting (display only) */
     filters: (typeof JobFilters !== 'undefined') ? Object.assign({}, JobFilters.DEFAULTS) : {},
     sort: 'match',
+    /* Sprint 22: which job cards have the cover-letter preview open */
+    coverOpen: {},
   };
+
+  function jobById(id) {
+    return (state.discovered || JobsStore.jobs()).find(j => j.id === id) || null;
+  }
 
   /* ---------- evaluation ---------- */
 
@@ -58,8 +64,16 @@ const Jobs = (() => {
 
   function render() {
     const summary = (typeof SourcesStore !== 'undefined') ? SourcesStore.load().lastSummary : null;
+    const items = evaluated();
+    /* Sprint 22: a letter is written against one specific résumé. If the
+       selected résumé has moved on since (the dropdown, or a profile edit
+       that changed the recommendation), rebuild it before it is shown —
+       the card must never display a letter for a different résumé. */
+    if (typeof CoverLetter !== 'undefined') {
+      items.forEach(x => { if (CoverLetter.has(x.job.id)) CoverLetter.syncToResume(x.job); });
+    }
     return JobsView.render({
-      items: evaluated(),
+      items,
       ui,
       minSalary: Profile.getState().preferences.minSalary,
       summaryHtml: (summary && typeof SourcesView !== 'undefined') ? SourcesView.summaryStrip(summary) : '',
@@ -156,15 +170,64 @@ const Jobs = (() => {
      touches the master résumé, a decision or an application. */
   function setResume(jobId, resumeId) {
     if (typeof ResumeRecommender === 'undefined') return;
+    const job = jobById(jobId);
     if (!resumeId) {
       ResumeRecommender.clearOverride(jobId);
     } else {
       /* picking the recommended résumé again simply clears the override */
-      const job = (state.discovered || JobsStore.jobs()).find(j => j.id === jobId);
       const rec = job ? ResumeRecommender.recommend(job) : null;
       if (rec && rec.id === resumeId) ResumeRecommender.clearOverride(jobId);
       else ResumeRecommender.setOverride(jobId, resumeId);
     }
+    /* Sprint 22: the letter is written against the selected résumé, so a
+       different résumé means the existing draft is stale — rebuild it. */
+    if (job && typeof CoverLetter !== 'undefined' && CoverLetter.has(jobId)) {
+      const before = CoverLetter.get(jobId).resumeId;
+      const after = CoverLetter.syncToResume(job);
+      if (after && after.resumeId !== before && typeof toast === 'function') {
+        toast(`Cover letter regenerated for ${after.resumeName || 'the new résumé'}`, 'info');
+      }
+    }
+    refresh();
+  }
+
+  /* ---------- Sprint 22: cover letter (template-based, local draft) ----------
+     Generated from the job, the profile and the résumé selected above.
+     Nothing is submitted and no application package is touched. */
+
+  function generateCover(jobId) {
+    if (typeof CoverLetter === 'undefined') return null;
+    const job = jobById(jobId);
+    if (!job) return null;
+    const letter = CoverLetter.generate(job);
+    ui.coverOpen[jobId] = true;                    // show the preview straight away
+    if (typeof toast === 'function') toast(`Cover letter drafted for ${job.company} — review before sending`);
+    refresh();
+    return letter;
+  }
+
+  function regenerateCover(jobId) {
+    if (typeof CoverLetter === 'undefined') return null;
+    const job = jobById(jobId);
+    if (!job) return null;
+    const letter = CoverLetter.regenerate(job);
+    ui.coverOpen[jobId] = true;
+    if (typeof toast === 'function') toast('Cover letter regenerated', 'info');
+    refresh();
+    return letter;
+  }
+
+  function copyCover(jobId) {
+    if (typeof CoverLetter === 'undefined') return null;
+    const r = CoverLetter.copy(jobId);
+    if (typeof toast === 'function') {
+      toast(r.ok ? 'Cover letter copied to clipboard' : r.error, r.ok ? 'success' : 'error');
+    }
+    return r;
+  }
+
+  function toggleCover(jobId) {
+    ui.coverOpen[jobId] = !ui.coverOpen[jobId];
     refresh();
   }
 
@@ -263,5 +326,7 @@ const Jobs = (() => {
     saveSearch, loadSearch, renameSearch, deleteSearch,
     /* Sprint 20/21 */
     setResume,
+    /* Sprint 22 */
+    generateCover, regenerateCover, copyCover, toggleCover,
   };
 })();

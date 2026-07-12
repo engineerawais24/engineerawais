@@ -156,3 +156,19 @@
   background:var(--amber-soft); color:var(--amber); border:1px solid var(--amber-soft);
 }
 .jr-why{ flex:1; min-width:180px; font-size:10.5px; color:var(--muted); }
+
+/* ---------- Sprint 22: cover letter (inside the job card) ---------- */
+.job-cover{
+  display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+  margin-top:6px; padding:7px 9px;
+  background:var(--subtle); border:1px solid var(--divider); border-radius:9px;
+}
+.jc-lbl{ font-family:var(--mono); font-size:9px; letter-spacing:.13em; color:var(--faint); font-weight:600; }
+.jc-btn{ font-size:11px; padding:3px 9px; }
+.jc-hint{ flex:1; min-width:180px; font-size:10.5px; color:var(--muted); }
+.jc-meta{ flex:1; min-width:160px; font-size:10.5px; color:var(--muted); text-align:right; }
+.jc-preview{
+  flex-basis:100%; margin:2px 0 0; padding:11px 13px; max-height:280px; overflow:auto;
+  font-family:var(--mono); font-size:11px; line-height:1.65; white-space:pre-wrap;
+  color:var(--ink); background:var(--card); border:1px solid var(--divider); border-radius:8px;
+}

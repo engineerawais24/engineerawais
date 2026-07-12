@@ -12,6 +12,10 @@ const JobsView = (() => {
 
   const LOGO_COLORS = ['#3538CD', '#1E7A4D', '#B7791F', '#B23A2E', '#0E7C7B', '#6B4EFF', '#2B579A'];
 
+  /* the controller's ui state for the current render (Sprint 22 needs it
+     inside jobCard, which is called without it) */
+  let _ui = {};
+
   const SRC_CLASS = {
     'LinkedIn': 'linkedin', 'Bayt': 'bayt',
     'GulfTalent': 'gulftalent', 'Company Careers': 'careers',
@@ -100,6 +104,32 @@ const JobsView = (() => {
         ? `<button class="jr-reset" onclick="Jobs.setResume('${esc(job.id)}','')" title="Back to the recommendation">manual · reset</button>`
         : '<span class="jr-tag">recommended</span>'}
         <span class="jr-why">${esc(sel.reason)}</span>
+      </div>`;
+  }
+
+  /* Sprint 22: the tailored cover letter for this job. Guarded — if the
+     generator isn't loaded the card renders exactly as before. Nothing
+     here submits anything; the letter is a local draft. */
+  function coverLetter(job, ui) {
+    if (typeof CoverLetter === 'undefined') return '';
+    const l = CoverLetter.get(job.id);
+    if (!l) {
+      return `
+        <div class="job-cover">
+          <span class="jc-lbl">COVER LETTER</span>
+          <button class="btn btn-ghost jc-btn" onclick="Jobs.generateCover('${esc(job.id)}')">Generate cover letter</button>
+          <span class="jc-hint">Template-based draft from your profile and the selected résumé — nothing is sent.</span>
+        </div>`;
+    }
+    const open = !!(ui.coverOpen && ui.coverOpen[job.id]);
+    return `
+      <div class="job-cover">
+        <span class="jc-lbl">COVER LETTER</span>
+        <button class="btn btn-ghost jc-btn" onclick="Jobs.toggleCover('${esc(job.id)}')">${open ? 'Hide preview' : 'Preview'}</button>
+        <button class="btn btn-ghost jc-btn" onclick="Jobs.copyCover('${esc(job.id)}')">Copy</button>
+        <button class="btn btn-ghost jc-btn" onclick="Jobs.regenerateCover('${esc(job.id)}')">Regenerate</button>
+        <span class="jc-meta">Using <b>${esc(l.resumeName || 'your résumé')}</b>${l.matchedSkills && l.matchedSkills.length ? ` · ${l.matchedSkills.length} matching skill${l.matchedSkills.length === 1 ? '' : 's'}` : ''}</span>
+        ${open ? `<pre class="jc-preview">${esc(l.text)}</pre>` : ''}
       </div>`;
   }
 
@@ -218,6 +248,7 @@ const JobsView = (() => {
             <div class="job-desc">${esc(job.description)}</div>
             <div class="job-chips">${chips}</div>
             ${resumeRec(job)}
+            ${coverLetter(job, _ui)}
             <div class="job-foot">
               <button class="why-btn" id="whyb-${job.id}" onclick="Jobs.toggleWhy('${job.id}')">Why ranked here?</button>
               <a class="apply-link" href="${esc(job.applyUrl)}" target="_blank" rel="noopener">View posting ↗</a>
@@ -283,6 +314,7 @@ const JobsView = (() => {
   }
 
   function render({ items, ui, minSalary, summaryHtml }) {
+    _ui = ui || {};
     /* priority ranking: order by rankScore (match score + boosts) */
     const byRank = (a, b) =>
       ((b.rank ? b.rank.rankScore : b.res.score) - (a.rank ? a.rank.rankScore : a.res.score));
