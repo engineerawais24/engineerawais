@@ -1,0 +1,11 @@
+/* ============================================================
+   CareerPilot AI — hidden admin/diagnostics styles (Sprint 14)
+   Additive; reuses card / ds-stat / ldrow / prep-chip tokens.
+   ============================================================ */
+
+.adm-grid{ display:grid; grid-template-columns:1fr 1fr; gap:12px; align-items:start; }
+@media (max-width:900px){ .adm-grid{ grid-template-columns:1fr; } }
+
+.adm-dot{ display:inline-block; width:8px; height:8px; border-radius:50%; margin-left:4px; vertical-align:middle; }
+.adm-dot.ok{ background:var(--green); }
+.adm-dot.bad{ background:var(--red); }

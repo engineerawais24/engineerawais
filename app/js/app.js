@@ -23,6 +23,7 @@ const SCREENS = {
   tracker:   { label: 'Tracker',         title: 'Applications Tracker', render: renderTracker },
   interview: { label: 'Interview Prep',  title: 'Interview Prep',       render: () => Interview.render() },
   settings:  { label: 'Settings',        title: 'Settings',             render: renderSettings },
+  admin:     { label: 'System Diagnostics', title: 'System Diagnostics', render: () => AdminView.render(), hidden: true },
 };
 
 /* ---------- router ---------- */
@@ -33,8 +34,11 @@ function currentRoute() {
 
 function navigate() {
   const route = currentRoute();
+  /* Sprint 14: measure page render duration (telemetry foundation) */
+  const _t = (typeof Telemetry !== 'undefined') ? Telemetry.start('page_render') : null;
   document.getElementById('screen-title').textContent = SCREENS[route].title;
   document.getElementById('screen').innerHTML = SCREENS[route].render();
+  if (_t) Telemetry.end(_t);
   renderNav();
   window.scrollTo(0, 0);
 }
@@ -525,6 +529,8 @@ window.addEventListener('DOMContentLoaded', () => {
   if (typeof Theme !== 'undefined') Theme.init();
   if (typeof Activity !== 'undefined') Activity.init();
   if (typeof Search !== 'undefined') Search.init();
+  /* Sprint 14: ensure a local/anonymous session exists (no login) */
+  if (typeof SessionManager !== 'undefined') SessionManager.init();
   if (!location.hash) location.hash = '#/dashboard';
   navigate();
 });
