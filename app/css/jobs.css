@@ -96,3 +96,19 @@
   .wf-note{ margin-left:0; }
   .jlogo{ display:none; }
 }
+
+/* ---- Sprint 19: board search / filters / sorting / saved searches ---- */
+.jb-tools{ margin-bottom:11px; }
+.jb-row{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px; }
+.jb-row:last-of-type{ margin-bottom:0; }
+.jb-search{ flex:1; min-width:220px; }
+.jb-sel, .jb-num, .jb-name{ font-size:12px; }
+.jb-num{ width:96px; }
+.jb-name{ width:170px; }
+.jb-check{ display:inline-flex; align-items:center; gap:5px; font-size:11.5px; color:var(--body); cursor:pointer; }
+.jb-lbl{ font-family:var(--mono); font-size:9px; letter-spacing:.13em; color:var(--faint); font-weight:600; }
+.jb-chip{ display:inline-flex; align-items:center; border:1px solid var(--border); border-radius:8px; background:var(--subtle); overflow:hidden; }
+.jb-chip-load{ border:none; background:none; cursor:pointer; font:600 11.5px var(--sans); color:var(--accent-ink); padding:4px 8px; }
+.jb-chip-x{ border:none; background:none; cursor:pointer; color:var(--muted); font-size:11px; padding:4px 6px; }
+.jb-chip-x:hover{ color:var(--red); }
+.jb-chip-load:hover{ background:var(--accent-soft); }
