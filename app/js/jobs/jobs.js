@@ -268,6 +268,10 @@ const Jobs = (() => {
        of the locked master, cover letter, provenance-backed answers,
        safety report) — reviewable in Approvals, never auto-sent */
     if (typeof Prep !== 'undefined') Prep.buildFor(item);
+    /* Sprint 23: the ready-to-apply package (job + selected résumé +
+       cover letter + match score) surfaces on the Applications page.
+       One per job — approving again never creates a second. */
+    if (typeof ApplicationPackages !== 'undefined') ApplicationPackages.createFrom(item);
     /* tailored COPY into the approvals queue — master stays locked,
        and the application still needs explicit user approval there.
        resumeVersion records the EXACT document version this
@@ -310,6 +314,9 @@ const Jobs = (() => {
   function undo(id) {
     if (state.decisions[id] === 'approved') {
       DB.approvals = DB.approvals.filter(a => a.fromJob !== id);
+      /* Sprint 23: withdraw the package too — but an already-applied
+         package is a record of what was sent, so it stays. */
+      if (typeof ApplicationPackages !== 'undefined') ApplicationPackages.remove(id);
     }
     delete state.decisions[id];
     JobsStore.save(state);
