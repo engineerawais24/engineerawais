@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CareerPilot · Sprint 29 tests</title>
+  <style>
+    :root{ color-scheme: light dark; }
+    body{ font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif; margin:0; padding:28px; background:#0e0f1a; color:#e7e8f0; }
+    h1{ font-size:18px; margin:0 0 4px; }
+    .sub{ color:#9aa0b5; font-size:12px; margin-bottom:18px; }
+    #summary{ display:inline-block; font-weight:700; font-size:13px; padding:4px 12px; border-radius:8px; margin-bottom:16px; }
+    #summary.ok{ background:#123524; color:#4ade80; } #summary.bad{ background:#3a1620; color:#f87171; }
+    .t{ display:flex; gap:12px; align-items:flex-start; padding:11px 13px; border:1px solid #23263a; border-radius:10px; margin-bottom:8px; background:#151728; }
+    .t.fail{ border-color:#5b2130; background:#1e1420; }
+    .badge{ font:600 10px/1 ui-monospace,monospace; padding:5px 7px; border-radius:6px; letter-spacing:.06em; }
+    .t.pass .badge{ background:#123524; color:#4ade80; } .t.fail .badge{ background:#3a1620; color:#f87171; }
+    b{ font-weight:600; } .detail{ color:#9aa0b5; font-size:12px; margin-top:3px; font-family:ui-monospace,monospace; }
+    .note{ margin-top:18px; color:#7b8196; font-size:11.5px; max-width:840px; }
+  </style>
+</head>
+<body>
+  <h1>Sprint 29 — Smart Job Match Engine v2</h1>
+  <div class="sub">Browser harness · async (providers are awaited) · localStorage is snapshotted and restored, so no existing user data is touched.</div>
+  <div id="summary">running…</div>
+  <div id="results"></div>
+  <div class="note">
+    Covers: provider loading (lazy registry, swappable, a dead provider is not fatal) · merged search results across
+    LinkedIn / Indeed / Bayt / GulfTalent · duplicate removal (providers preserved, highest confidence kept) ·
+    match scoring (skills, experience, titles, locations, certifications) · search filters (keywords, location,
+    remote only, experience level, salary range) · Today's Jobs integration (the board is fed by the engine, its UI
+    and workflow unchanged) · backward compatibility. Providers are read-only mock feeds — no network, no backend.
+  </div>
+  <div id="toasts"></div>
+
+  <!-- Router contract: the harnesses do not boot app.js, but the controllers
+       call the router directly. Providing the same contract lets the REAL
+       controllers run instead of throwing. Nothing under test is mocked. -->
+  <script>
+    function currentRoute() { return 'test-harness'; }
+    function navigate() { /* no app shell to re-render in a harness */ }
+    function renderNav() { /* no sidebar in a harness */ }
+  </script>
+
+  <script src="../../js/data.js"></script>
+  <script src="../../js/lib/icons.js"></script>
+  <script src="../../js/lib/notify.js"></script>
+  <script src="../../js/lib/activity.js"></script>
+  <script src="../../js/lib/theme.js"></script>
+  <script src="../../js/lib/master-resume.js"></script>
+  <script src="../../js/profile/profile-store.js"></script>
+  <script src="../../js/profile/profile-validate.js"></script>
+  <script src="../../js/profile/profile-view.js"></script>
+  <script src="../../js/profile/profile.js"></script>
+  <!-- Sprint 29: local résumé parsing (no library, no network, no OCR) -->
+  <script src="../../js/parsing/doc-readers.js"></script>
+  <script src="../../js/parsing/resume-parser.js"></script>
+  <script src="../../js/parsing/resume-extractor.js"></script>
+  <script src="../../js/parsing/parsed-resume.js"></script>
+  <script src="../../js/parsing/career-data.js"></script>
+  <script src="../../js/parsing/cert-recovery.js"></script>
+  <script src="../../js/parsing/parsing-view.js"></script>
+  <script src="../../js/parsing/resume-parsing.js"></script>
+  <script src="../../js/resumes/resumes-store.js"></script>
+  <script src="../../js/resumes/resumes-view.js"></script>
+  <script src="../../js/resumes/tailor-engine.js"></script>
+  <script src="../../js/resumes/resumes.js"></script>
+  <script src="../../js/sources/sources-store.js"></script>
+  <script src="../../js/sources/job-schema.js"></script>
+  <script src="../../js/companies/companies-store.js"></script>
+  <script src="../../js/companies/rank-engine.js"></script>
+  <script src="../../js/companies/companies-view.js"></script>
+
+  <!-- platform storage -->
+  <script src="../../js/platform/storage-provider.js"></script>
+  <script src="../../js/platform/error-center.js"></script>
+
+  <!-- the Job Board -->
+  <script src="../../js/jobs/jobs-store.js"></script>
+  <script src="../../js/jobs/match-engine.js"></script>
+  <!-- Sprint 29: the weighted engine -->
+  <script src="../../js/matching/synonym-dictionary.js"></script>
+  <script src="../../js/matching/cert-hierarchy.js"></script>
+  <script src="../../js/matching/skill-matcher.js"></script>
+  <script src="../../js/matching/match-engine-v2.js"></script>
+  <script src="../../js/jobs/decision-engine.js"></script>
+  <script src="../../js/resumes/resume-recommender.js"></script>
+  <script src="../../js/resumes/cover-letter.js"></script>
+  <script src="../../js/applications/applications-store.js"></script>
+  <!-- Sprint 29: the tailoring preview, checklist and summary builder -->
+  <script src="../../js/package/package-builder.js"></script>
+  <script src="../../js/applications/application-packages.js"></script>
+  <script src="../../js/jobs/job-filters.js"></script>
+  <script src="../../js/jobs/saved-searches.js"></script>
+  <script src="../../js/jobs/jobs-view.js"></script>
+  <script src="../../js/jobs/jobs.js"></script>
+
+  <!-- the providers (Sprint 18) — the discovery engine resolves them lazily -->
+  <script src="../../js/search/providers/base-provider.js"></script>
+  <script src="../../js/search/providers/linkedin-provider.js"></script>
+  <script src="../../js/search/providers/indeed-provider.js"></script>
+  <script src="../../js/search/providers/bayt-provider.js"></script>
+  <script src="../../js/search/providers/gulftalent-provider.js"></script>
+  <script src="../../js/search/providers/greenhouse-provider.js"></script>
+  <script src="../../js/search/providers/lever-provider.js"></script>
+  <script src="../../js/search/ranking-engine.js"></script>
+  <script src="../../js/search/search-cache.js"></script>
+  <script src="../../js/search/engine.js"></script>
+
+  <!-- Sprint 25: the Job Discovery Engine (scoring is reused, not replaced) -->
+  <script src="../../js/discovery/discovery-model.js"></script>
+  <script src="../../js/discovery/job-match-engine.js"></script>
+  <script src="../../js/discovery/job-discovery-service.js"></script>
+
+  <!-- the Applications page — an approved import becomes an application there -->
+  <script src="../../js/applications/applications-view.js"></script>
+  <script src="../../js/applications/applications.js"></script>
+
+  <!-- Sprint 29: manual job import -->
+  <script src="../../js/imports/imported-jobs.js"></script>
+  <script src="../../js/imports/import-view.js"></script>
+  <script src="../../js/imports/imports.js"></script>
+
+  <script src="sprint29-tests.js"></script>
+</body>
+</html>

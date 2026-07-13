@@ -30,12 +30,40 @@ const Jobs = (() => {
     return MatchEngine.snapshotFromProfile(Profile.getState(), MasterResume.get());
   }
 
+  /* Sprint 29: the weighted engine scores the board. MatchEngine (v1) still
+     owns the rules — what is FILTERED, the GCC/region logic, work
+     authorization — because those are guarantees, not weights. v2 replaces
+     only the number: the score, its factors and its reasons.
+
+     v1's 'Authorization & visa' factor is carried across so DecisionEngine's
+     sponsorship penalty keeps firing; v2 supplies 'Role fit' for its
+     target-role signal. The card renders the same four chips as before. */
+  function scoreWith(job, res, snap) {
+    if (typeof MatchEngineV2 === 'undefined') return res;
+    const v2 = MatchEngineV2.evaluate(job, snap);
+    const authFactor = (res.factors || []).find(f => f.label === 'Authorization & visa');
+    return Object.assign({}, res, {
+      score: v2.overall,
+      factors: authFactor ? v2.factors.concat([authFactor]) : v2.factors,
+      breakdown: v2.breakdown,
+      matchReasons: v2.reasons.length ? v2.reasons : res.matchReasons,
+      matched: v2.matched,
+      missing: v2.missing,
+      /* additive — nothing that existed before reads these */
+      v1Score: res.score,
+      v2,
+      explanation: v2.explanation,
+      missingGroups: v2.missingGroups,
+      skillConfidence: v2.confidence,
+    });
+  }
+
   function evaluated() {
     const snap = snapshot();
     const list = state.discovered || JobsStore.jobs();
     const companiesCfg = (typeof CompaniesStore !== 'undefined') ? CompaniesStore.load() : null;
     return list.map(job => {
-      const res = MatchEngine.evaluate(job, snap);
+      const res = scoreWith(job, MatchEngine.evaluate(job, snap), snap);
       const rank = (companiesCfg && typeof RankEngine !== 'undefined') ? RankEngine.rank(job, res, companiesCfg) : null;
       return {
         job,
