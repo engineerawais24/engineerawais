@@ -12,7 +12,7 @@
      drift with the calendar (evaluate/score are pure given a context) */
   function ctx() {
     return {
-      targetRoles: ProfileStore.defaults().preferences.targetRoles,
+      targetRoles: ProfileStore.demo().preferences.targetRoles,
       level: 'senior',
       years: 7,
     };
@@ -155,7 +155,7 @@
       // Sprint 20 scoring is unchanged
       const total = Object.keys(MatchEngine.WEIGHTS).reduce((n, k) => n + MatchEngine.WEIGHTS[k], 0);
       assert(total === 100, 'MatchEngine weights changed');
-      const res = MatchEngine.evaluate(ARCH, MatchEngine.snapshotFromProfile(ProfileStore.defaults(), null));
+      const res = MatchEngine.evaluate(ARCH, MatchEngine.snapshotFromProfile(ProfileStore.demo(), null));
       ['score', 'factors', 'matched', 'missing', 'filtered', 'filterReason', 'breakdown', 'matchReasons']
         .forEach(k => assert(k in res, 'MatchEngine result contract lost: ' + k));
 

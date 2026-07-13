@@ -37,7 +37,7 @@ const Prep = (() => {
 
 Dear ${job.company} Hiring Team,
 
-I'm writing to apply for the ${job.title} role I found via ${job.source}. As a ${(p.personal.headline || 'solutions engineer').toLowerCase()} based in ${p.contact.city || 'Karachi'}, I've spent the last several years owning technical delivery end-to-end — from discovery workshops to production rollout — and ${job.company} is exactly the kind of team I want to do that for next.
+I'm writing to apply for the ${job.title} role I found via ${job.source}. As a ${(p.personal.headline || 'solutions engineer').toLowerCase()} based in ${p.contact.city || 'my base'}, I've spent the last several years owning technical delivery end-to-end — from discovery workshops to production rollout — and ${job.company} is exactly the kind of team I want to do that for next.
 
 My strongest overlap with this posting: ${strengths}. Most recently I designed Terraform-based Azure landing zones that cut client onboarding from three weeks to four days, and delivered 14 proof-of-concepts with a 64% conversion rate. I work the way strong solutions teams do — write it down, keep the ego low, own the outcome.
 

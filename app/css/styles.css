@@ -428,3 +428,13 @@ button{ font-family:inherit; cursor:pointer; }
   .job-card .row{ flex-wrap:wrap; }
   .job-actions{ flex-direction:row; width:100%; }
 }
+
+/* ---------- Sprint 30: backup & restore preview ---------- */
+.bk-preview{ margin-top:11px; padding:11px 13px; background:var(--subtle); border:1px solid var(--divider); border-radius:9px; }
+.bk-row{ display:flex; gap:10px; align-items:flex-start; font-size:12px; padding:3px 0; }
+.bk-k{ width:130px; flex:none; font-family:var(--mono); font-size:9px; letter-spacing:.1em; color:var(--faint); font-weight:600; padding-top:3px; }
+.bk-note{ margin-top:9px; font-size:11px; color:var(--muted); line-height:1.55; }
+.bk-err{
+  margin-top:11px; padding:10px 12px; font-size:12px; line-height:1.55;
+  background:var(--red-soft); color:var(--red); border:1px solid var(--red-soft); border-radius:9px;
+}

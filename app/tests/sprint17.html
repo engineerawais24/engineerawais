@@ -99,6 +99,14 @@
   <script src="../js/platform/domain-sync.js"></script>
   <script src="../js/platform/admin-view.js"></script>
 
+  <script>
+    /* Sprint 30: a fresh profile ships blank now — these suites assume the sample profile,
+       so seed it in memory (never written to storage). */
+    if (typeof Profile !== 'undefined' && typeof ProfileStore !== 'undefined') {
+      const _p = Profile.getState(), _d = ProfileStore.demo();   /* Sprint 30 seed */
+      Object.keys(_p).forEach(k => delete _p[k]); Object.assign(_p, _d);
+    }
+  </script>
   <script src="sprint17-tests.js"></script>
 </body>
 </html>

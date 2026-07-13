@@ -164,7 +164,7 @@
     ['4 · Cover letter generation', () => {
       reset();
       const letter = CoverLetter.generate(DD);
-      const p = ProfileStore.defaults();
+      const p = ProfileStore.demo();
 
       /* V2 uses the company, the title, the location, the experience,
          the certifications and the top matching skills */
@@ -336,7 +336,7 @@
   function pinProfile() {
     const p = Profile.getState();
     const snap = JSON.parse(JSON.stringify(p));
-    const d = ProfileStore.defaults();
+    const d = ProfileStore.demo();
     Object.keys(p).forEach(k => delete p[k]);
     Object.assign(p, d);
     return () => {

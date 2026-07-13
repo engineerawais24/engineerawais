@@ -8,9 +8,49 @@ const ProfileStore = (() => {
 
   const KEY = 'careerpilot_profile_v1';
 
-  /* Fresh default profile. Sample data mirrors the master resume
-     in data.js so the demo feels coherent. */
+  /* ============================================================
+     A FRESH PROFILE IS EMPTY (Sprint 30).
+
+     It used to ship with a full sample identity — a name, an employer, a
+     city, a work authorization, certifications and achievements. Those are
+     someone's personal details, and `load()` backfills any missing section
+     from here, so a real user whose profile was cleared would silently be
+     handed the sample one and might never notice.
+
+     So: defaults() is now blank, and the sample lives in demo() where it can
+     only be reached deliberately. Nothing loads demo() automatically.
+     ============================================================ */
   function defaults() {
+    return {
+      personal: { firstName: '', lastName: '', headline: '', summary: '' },
+      contact: { email: '', phone: '', city: '', country: '' },
+      links: { linkedin: '', github: '', portfolio: '', other: '' },
+      employment: {
+        title: '', company: '', startDate: '', type: 'Full-time',
+        current: true, noticePeriod: '', highlights: '',
+      },
+      history: [],
+      skills: [],
+      certifications: [],
+      languages: [],
+      preferences: {
+        targetRoles: '',
+        locations: '',
+        minSalary: 0,
+        monthlyMinSAR: 0,
+        monthlyMinAED: 0,
+        workMode: 'Remote',
+        outsideGccMode: 'Remote + relocation-sponsored',
+        jobType: 'Full-time',
+        relocation: false,
+      },
+      authorization: { status: '', authorizedIn: '', sponsorship: false },
+    };
+  }
+
+  /* The sample profile. Used by the test suites and by an explicit
+     "load demo data" action — never loaded on its own. */
+  function demo() {
     return {
       personal: {
         firstName: 'Mohammad',
@@ -126,5 +166,12 @@ const ProfileStore = (() => {
     try { return localStorage.getItem(KEY) !== null; } catch (e) { return false; }
   }
 
-  return { KEY, defaults, load, save, clear, hasSaved };
+  /* is this value one CareerPilot shipped, rather than one the user typed? */
+  function isSampleValue(path, value) {
+    const at = (obj, p) => p.split('.').reduce((o, k) => (o == null ? o : o[k]), obj);
+    const same = a => JSON.stringify(a) === JSON.stringify(value);
+    return same(at(defaults(), path)) || same(at(demo(), path));
+  }
+
+  return { KEY, defaults, demo, isSampleValue, load, save, clear, hasSaved };
 })();

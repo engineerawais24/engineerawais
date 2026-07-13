@@ -154,7 +154,7 @@ const ResumesView = (() => {
         bullets: (h.highlights || '').split('\n').map(s => s.trim()).filter(Boolean),
       });
     });
-    return roles.length ? roles : ResumesStore.EXPERIENCE;
+    return roles;   /* Sprint 30: no demo fallback — a blank profile shows no roles */
   }
 
   function resumePaper(profile, variant, matchedKws, plan) {

@@ -165,7 +165,7 @@
     ['5 · Match scoring integration', () => {
       reset();
       const job = importGood().job;
-      const snap = JobMatchEngine.snapshotFromProfile(ProfileStore.defaults());
+      const snap = JobMatchEngine.snapshotFromProfile(ProfileStore.demo());
 
       /* the skills are read out of the pasted description */
       ['Terraform', 'Kubernetes', 'Client delivery'].forEach(s =>
@@ -381,7 +381,7 @@
   function pinProfile() {
     const p = Profile.getState();
     const snap = JSON.parse(JSON.stringify(p));
-    const d = ProfileStore.defaults();
+    const d = ProfileStore.demo();
     Object.keys(p).forEach(k => delete p[k]);
     Object.assign(p, d);
     return () => {

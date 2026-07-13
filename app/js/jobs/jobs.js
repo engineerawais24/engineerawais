@@ -322,9 +322,28 @@ const Jobs = (() => {
     JobsStore.save(state);
   }
 
+  /* Sprint 30: an application package is built from the profile. If the
+     essentials are missing the package would go out blank, so say so plainly
+     — but never block the user's decision. */
+  function missingProfileFields() {
+    const p = (typeof Profile !== 'undefined') ? Profile.getState() : null;
+    if (!p) return [];
+    const missing = [];
+    if (!String((p.personal && p.personal.firstName) || '').trim()) missing.push('your name');
+    if (!String((p.contact && p.contact.email) || '').trim()) missing.push('your email');
+    if (!((p.skills || []).length)) missing.push('at least one skill');
+    return missing;
+  }
+
   function approve(id) {
     const item = evaluated().find(x => x.job.id === id);
     if (!item) return;
+
+    const missing = missingProfileFields();
+    if (missing.length && typeof toast === 'function') {
+      toast(`Approved — but your résumé and cover letter will be thin: add ${missing.join(', ')} on the Profile page.`, 'error');
+    }
+
     decide(id, 'approved');
     /* Sprint 10C: build the full application package (tailored copy
        of the locked master, cover letter, provenance-backed answers,
@@ -390,6 +409,8 @@ const Jobs = (() => {
     render, evaluated, statusOf, pendingCount, reload,
     /* Sprint 25 */
     discover, bootDiscovery,
+    /* Sprint 30 */
+    missingProfileFields,
     setSource, toggleHidden, toggleWhy,
     approve, reject, later, undo,
     /* Sprint 19 */

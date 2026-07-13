@@ -38,13 +38,93 @@ const ImportedJobs = (() => {
 
   function all() {
     const list = (typeof AppStorage !== 'undefined') ? AppStorage.get(STORAGE_KEY) : null;
-    return Array.isArray(list) ? list : [];
+    /* read through withSalary so a job imported before the salary fields
+       existed still reports a currency and a period (nothing is rewritten) */
+    return Array.isArray(list) ? list.map(withSalary) : [];
   }
   function persist(list) {
     if (typeof AppStorage !== 'undefined') AppStorage.set(STORAGE_KEY, list);
     return list;
   }
-  function get(id) { return all().find(j => j.id === id) || null; }
+  /* ---------- salary (Sprint 30 fix) ----------
+     A pasted posting states its own currency and period: SAR 32,000/month is
+     not USD 32,000/year. Nothing is estimated and nothing is converted — the
+     figures are stored exactly as the user typed them. */
+
+  const CURRENCIES = ['SAR', 'AED', 'USD', 'EUR', 'GBP', 'PKR', 'Other'];
+  const PERIODS = [{ id: 'month', label: 'Monthly' }, { id: 'year', label: 'Yearly' }];
+
+  const NONE = { salary: null, salaryMax: null, currency: null, salaryPeriod: null, salaryDisclosed: false };
+
+  /* Older imported jobs (before this fix) carry a bare `salary` number and no
+     currency/period. They were always meant as USD per year, so that is what
+     they are read back as. Nothing is rewritten in storage. */
+  function withSalary(job) {
+    if (!job) return job;
+    const j = Object.assign({}, job);
+    if (j.salaryDisclosed === undefined) j.salaryDisclosed = j.salary != null;
+    if (j.salaryMax === undefined) j.salaryMax = null;
+    if (j.salaryDisclosed) {
+      if (!j.currency) j.currency = 'USD';
+      if (!j.salaryPeriod) j.salaryPeriod = 'year';
+    } else {
+      j.salary = null;
+      j.salaryMax = null;
+    }
+    return j;
+  }
+
+  function validateSalary(src) {
+    const s = src || {};
+    const errors = {};
+
+    /* the checkbox wins: nothing is stored */
+    if (s.salaryNotDisclosed === true || s.salaryDisclosed === false) {
+      return { ok: true, errors, salary: Object.assign({}, NONE) };
+    }
+
+    const rawMin = (s.salary !== undefined && s.salary !== null) ? s.salary : s.salaryMin;
+    const hasMin = rawMin !== '' && rawMin != null;
+    const hasMax = s.salaryMax !== '' && s.salaryMax != null;
+
+    if (!hasMin) {
+      /* salary stays optional — but a maximum on its own is meaningless */
+      if (hasMax) errors.salary = 'Enter a minimum salary before a maximum';
+      return { ok: !hasMax, errors, salary: Object.assign({}, NONE) };
+    }
+
+    const min = Number(rawMin);
+    if (isNaN(min) || min <= 0) errors.salary = 'Minimum salary must be a positive number';
+
+    /* a figure without a currency and a period cannot be read later —
+       omitted entirely (an older caller) means the original USD/year */
+    const currency = (s.currency === undefined) ? 'USD' : String(s.currency || '').trim();
+    const period = (s.salaryPeriod === undefined) ? 'year' : String(s.salaryPeriod || '').trim();
+    if (!currency) errors.currency = 'Choose a currency for that salary';
+    else if (CURRENCIES.indexOf(currency) === -1) errors.currency = 'Choose a currency from the list';
+    if (!period) errors.salaryPeriod = 'Choose monthly or yearly';
+    else if (period !== 'month' && period !== 'year') errors.salaryPeriod = 'Choose monthly or yearly';
+
+    let max = null;
+    if (hasMax) {
+      max = Number(s.salaryMax);
+      if (isNaN(max) || max <= 0) errors.salaryMax = 'Maximum salary must be a positive number';
+      else if (!isNaN(min) && max < min) errors.salaryMax = 'Maximum salary must be at least the minimum';
+    }
+
+    const ok = Object.keys(errors).length === 0;
+    return {
+      ok, errors,
+      salary: ok
+        ? { salary: min, salaryMax: max, currency, salaryPeriod: period, salaryDisclosed: true }
+        : null,
+    };
+  }
+
+  function get(id) {
+    const j = all().find(x => x.id === id);
+    return j ? withSalary(j) : null;
+  }
 
   /* the default view hides rejected jobs; they are kept, not deleted */
   function active() { return all().filter(j => j.status !== 'rejected'); }
@@ -106,10 +186,11 @@ const ImportedJobs = (() => {
       }
     }
 
-    const salary = src.salary;
-    if (salary !== '' && salary != null && (isNaN(Number(salary)) || Number(salary) < 0)) {
-      errors.salary = 'Salary must be a number (annual, in thousands)';
-    }
+    /* Sprint 30: the salary block validates itself — currency and period are
+       required once a figure is entered, and a maximum cannot undercut it */
+    const sal = validateSalary(src);
+    Object.keys(sal.errors).forEach(k => { errors[k] = sal.errors[k]; });
+
     if (trim(src.postedDate) && !/^\d{4}-\d{2}-\d{2}$/.test(trim(src.postedDate))) {
       errors.postedDate = 'Posted date must be YYYY-MM-DD';
     }
@@ -150,7 +231,7 @@ const ImportedJobs = (() => {
     const url = trim(src.url);
     const title = trim(src.title);
     const description = trim(src.description);
-    const salary = (src.salary === '' || src.salary == null) ? null : Number(src.salary);
+    const salary = validateSalary(src).salary || Object.assign({}, NONE);
 
     const job = {
       id: 'imp-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7),
@@ -163,8 +244,12 @@ const ImportedJobs = (() => {
       /* "Imported" when the user names no source */
       source: trim(src.source) || DEFAULT_SOURCE,
       description,
-      salary,
-      currency: trim(src.currency) || 'USD',
+      /* the salary exactly as stated: its own currency, its own period */
+      salary: salary.salary,
+      salaryMax: salary.salaryMax,
+      currency: salary.currency,
+      salaryPeriod: salary.salaryPeriod,
+      salaryDisclosed: salary.salaryDisclosed,
       postedDate: trim(src.postedDate) || null,
       skills: extractSkills(title + ' ' + description),
       status: 'new',
@@ -217,9 +302,10 @@ const ImportedJobs = (() => {
       url: job.url,
       postedAt: job.postedDate,
       provider: job.source || DEFAULT_SOURCE,
-      salaryMin: job.salary,
+      salaryMin: job.salaryDisclosed ? job.salary : null,
+      salaryMax: job.salaryDisclosed ? job.salaryMax : null,
       currency: job.currency || 'USD',
-      salaryPeriod: 'year',
+      salaryPeriod: job.salaryPeriod || 'year',
     });
     /* a hand-entered posting is unverified, so it carries a lower provider
        weight than a board feed — it affects confidence, never the match */
@@ -252,10 +338,11 @@ const ImportedJobs = (() => {
       location: job.location,
       workMode: job.workplaceType === 'On Site' ? 'On-site' : job.workplaceType,
       employmentType: 'Full-time',
-      salary: job.salary,
-      salaryDisclosed: job.salary != null,
+      salary: job.salaryDisclosed ? job.salary : null,
+      salaryMax: job.salaryDisclosed ? job.salaryMax : null,
+      salaryDisclosed: !!job.salaryDisclosed,
       currency: job.currency || 'USD',
-      salaryPeriod: 'year',
+      salaryPeriod: job.salaryPeriod || 'year',
       description: job.description,
       skills: job.skills || [],
       applyUrl: job.url,
@@ -288,6 +375,8 @@ const ImportedJobs = (() => {
 
   return {
     STORAGE_KEY, STATUSES, STATUS_LABEL, WORKPLACES, DEFAULT_SOURCE,
+    /* Sprint 30: salary entry (at import time) */
+    CURRENCIES, PERIODS, validateSalary, withSalary,
     all, active, rejected, byStatus, get, remove, clear,
     isValidUrl, canonical, findByUrl, validate, isValidStatus, statusLabel,
     vocabulary, extractSkills,

@@ -13,7 +13,9 @@ const Imports = (() => {
 
   const BLANK = {
     url: '', title: '', company: '', location: '',
-    workplaceType: 'On Site', source: '', salary: '', postedDate: '', description: '',
+    workplaceType: 'On Site', source: '', postedDate: '', description: '',
+    /* Sprint 30: the salary as the posting states it */
+    salaryMin: '', salaryMax: '', currency: 'SAR', salaryPeriod: 'month', salaryNotDisclosed: false,
   };
 
   const ui = {
@@ -23,6 +25,17 @@ const Imports = (() => {
     errors: {},
     open: {},                   // expanded job details
   };
+
+  /* what ImportedJobs.create() expects, from what the form holds */
+  function salaryPayload(f) {
+    return {
+      salary: f.salaryNotDisclosed ? '' : f.salaryMin,
+      salaryMax: f.salaryNotDisclosed ? '' : f.salaryMax,
+      currency: f.currency,
+      salaryPeriod: f.salaryPeriod,
+      salaryNotDisclosed: !!f.salaryNotDisclosed,
+    };
+  }
 
   function refresh() {
     if (typeof currentRoute === 'function' && currentRoute() === 'jobs') navigate();
@@ -78,8 +91,20 @@ const Imports = (() => {
     }
   }
 
+  /* the "Salary not disclosed" checkbox on the import form */
+  function toggleUndisclosed(checked) {
+    ui.form.salaryNotDisclosed = !!checked;
+    if (checked) {
+      delete ui.errors.salary;
+      delete ui.errors.salaryMax;
+      delete ui.errors.currency;
+      delete ui.errors.salaryPeriod;
+    }
+    refresh();
+  }
+
   function submit() {
-    const res = ImportedJobs.create(ui.form);
+    const res = ImportedJobs.create(Object.assign({}, ui.form, salaryPayload(ui.form)));
     if (!res.ok) {
       ui.errors = res.errors;
       ui.formOpen = true;                 // the form must stay open, or the errors are invisible
@@ -142,5 +167,7 @@ const Imports = (() => {
     toggleForm, setField, submit,
     setStatus, toggleDetails, toggleRejected,
     createApplication,
+    /* Sprint 30: salary entry on the import form */
+    toggleUndisclosed,
   };
 })();

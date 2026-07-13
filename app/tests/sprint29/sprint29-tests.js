@@ -20,7 +20,7 @@
   /* the shipped profile: Terraform, Kubernetes, Python, Client delivery, Azure, SQL
      · AZ-104 · Remote · min $110k · Karachi/Pakistan · targets Solutions Engineer,
      Solutions Architect, Technical Consultant */
-  const snap = () => MatchEngineV2.snapshotFromProfile(ProfileStore.defaults(), null);
+  const snap = () => MatchEngineV2.snapshotFromProfile(ProfileStore.demo(), null);
 
   const CASES = [
 
@@ -159,7 +159,7 @@
     }],
 
     ['4 · Skill confidence and grouped gaps', () => {
-      const mine = ProfileStore.defaults().skills;      // Terraform, Kubernetes, Python, Client delivery, Azure, SQL
+      const mine = ProfileStore.demo().skills;      // Terraform, Kubernetes, Python, Client delivery, Azure, SQL
 
       assert(SkillMatcher.classify('Terraform', mine).level === 'exact', 'an exact match was not exact');
       assert(SkillMatcher.classify('K8s', mine).level === 'related', 'a synonym was not related');
@@ -329,7 +329,7 @@
       assert(typeof res.v1Score === 'number', 'the v1 score was not preserved');
 
       /* MatchEngine v1 itself is untouched */
-      const v1 = MatchEngine.evaluate(ARCH, MatchEngine.snapshotFromProfile(ProfileStore.defaults(), null));
+      const v1 = MatchEngine.evaluate(ARCH, MatchEngine.snapshotFromProfile(ProfileStore.demo(), null));
       assert(Object.keys(MatchEngine.WEIGHTS).reduce((n, k) => n + MatchEngine.WEIGHTS[k], 0) === 100,
         'the v1 weights changed');
       const v1Sum = v1.factors.reduce((n, f) => n + f.points, 0);
@@ -361,7 +361,7 @@
   function pinProfile() {
     const p = Profile.getState();
     const snapshot = JSON.parse(JSON.stringify(p));
-    const d = ProfileStore.defaults();
+    const d = ProfileStore.demo();
     Object.keys(p).forEach(k => delete p[k]);
     Object.assign(p, d);
     return () => {

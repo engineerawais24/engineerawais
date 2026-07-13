@@ -73,6 +73,12 @@
   <script src="../../js/jobs/jobs-view.js"></script>
   <script src="../../js/jobs/jobs.js"></script>
 
+  <script>
+    if (typeof Profile !== 'undefined' && typeof ProfileStore !== 'undefined') {
+      const _p = Profile.getState(), _d = ProfileStore.demo();   /* Sprint 30 seed */
+      Object.keys(_p).forEach(k => delete _p[k]); Object.assign(_p, _d);
+    }
+  </script>
   <script src="sprint20-tests.js"></script>
 </body>
 </html>

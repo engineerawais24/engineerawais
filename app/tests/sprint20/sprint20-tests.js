@@ -11,7 +11,7 @@
   /* deterministic snapshot: pin the candidate's level/years so evaluate()
      is fully reproducible regardless of the day the tests are run */
   function snap() {
-    const s = MatchEngine.snapshotFromProfile(ProfileStore.defaults(), null);
+    const s = MatchEngine.snapshotFromProfile(ProfileStore.demo(), null);
     s.years = 7;
     s.level = 'senior';
     return s;

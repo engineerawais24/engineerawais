@@ -239,7 +239,7 @@
       assert(localStorage.getItem(MasterResume.KEY) === null, 'the master résumé file was touched');
 
       /* Sprint 20 scoring contract intact */
-      const res = MatchEngine.evaluate(ARCH, MatchEngine.snapshotFromProfile(ProfileStore.defaults(), null));
+      const res = MatchEngine.evaluate(ARCH, MatchEngine.snapshotFromProfile(ProfileStore.demo(), null));
       ['score', 'factors', 'matched', 'missing', 'filtered', 'filterReason', 'breakdown', 'matchReasons']
         .forEach(k => assert(k in res, 'MatchEngine result contract lost: ' + k));
 
@@ -270,7 +270,7 @@
   function pinProfile() {
     const p = Profile.getState();
     const snapshot = JSON.parse(JSON.stringify(p));
-    const d = ProfileStore.defaults();
+    const d = ProfileStore.demo();
     Object.keys(p).forEach(k => delete p[k]);
     Object.assign(p, d);
     return () => {

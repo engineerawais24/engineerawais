@@ -170,3 +170,27 @@
 .pt-chip.gap{ background:var(--red-soft); color:var(--red); border-color:var(--red-soft); }
 .pt-chip.kw{ background:var(--accent-soft); color:var(--accent-ink); border-color:var(--accent-border); }
 .pt-tips{ margin:0; padding-left:16px; font-size:11.5px; color:var(--body); line-height:1.65; }
+
+/* ---------- Sprint 30: salary visibility ---------- */
+.pkg-salary{
+  font-family:var(--mono); font-size:10.5px; font-weight:600; white-space:nowrap;
+  padding:3px 7px; border-radius:6px;
+  background:var(--subtle); color:var(--body); border:1px solid var(--divider);
+}
+.pkg-salary.s-within{ background:var(--green-soft); color:var(--green); border-color:var(--green-soft); }
+.pkg-salary.s-below{ background:var(--red-soft); color:var(--red); border-color:var(--red-soft); }
+.pkg-salary.s-not_disclosed{ color:var(--muted); }
+.pkg-salary.s-no_target{ color:var(--body); }
+
+/* the dedicated salary field in the package's job information row */
+.pkg-sal-field{ grid-column:1 / -1; }
+.pkg-sal-field dt{ font-family:var(--mono); font-size:9px; letter-spacing:.13em; color:var(--faint); font-weight:600; }
+.pkg-sal-field dd{ margin:3px 0 0; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.pkg-sal-amt{ font-family:var(--mono); font-size:13px; font-weight:700; color:var(--ink); }
+.pkg-sal-badge{
+  font-size:9.5px; font-weight:600; padding:2px 7px; border-radius:6px; letter-spacing:.03em;
+  background:var(--subtle); color:var(--body); border:1px solid var(--divider);
+}
+.pkg-sal-badge.s-within{ background:var(--green-soft); color:var(--green); border-color:var(--green-soft); }
+.pkg-sal-badge.s-below{ background:var(--red-soft); color:var(--red); border-color:var(--red-soft); }
+.pkg-sal-target{ font-size:10.5px; color:var(--muted); }

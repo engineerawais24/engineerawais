@@ -126,6 +126,7 @@ const ApplicationsView = (() => {
 
   function pkgDetail(pkg) {
     const j = pkg.job || {};
+    const sal = (typeof PackageBuilder !== 'undefined') ? PackageBuilder.salaryInfo(j) : null;
     const rows = [
       ['Role', j.title], ['Company', j.company], ['Location', j.location],
       ['Work mode', j.workMode], ['Type', j.employmentType], ['Source', j.source],
@@ -135,9 +136,23 @@ const ApplicationsView = (() => {
       ['Status', ApplicationPackages.statusLabel(pkg.status)],
       ['Status changed', pkg.statusChangedOn],
     ].filter(([, v]) => v != null && v !== '');
+
+    /* Sprint 30: salary gets its own field in the job information row —
+       what the posting pays, what you asked for, and whether it clears it */
+    const salaryField = !sal ? '' : `
+      <div class="pkg-sal-field">
+        <dt>Salary</dt>
+        <dd>
+          <span class="pkg-sal-amt">${esc(sal.text)}</span>
+          <span class="pkg-sal-badge s-${esc(sal.status)}">${esc(sal.label)}</span>
+          ${sal.target ? `<span class="pkg-sal-target">Your minimum: ${esc(sal.target.text)}</span>` : ''}
+        </dd>
+      </div>`;
+
     return `
       <div class="pkg-detail">
         <dl class="pkg-facts">
+          ${salaryField}
           ${rows.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}
         </dl>
         ${pkg.jobSummary ? `<div class="pkg-summary">${esc(pkg.jobSummary)}</div>` : ''}
@@ -147,6 +162,14 @@ const ApplicationsView = (() => {
         <pre class="pkg-cover">${esc(pkg.coverLetter || 'No cover letter in this package.')}</pre>
         ${j.applyUrl ? `<a class="pkg-link" href="${esc(j.applyUrl)}" target="_blank" rel="noopener">Open the original posting ↗</a>` : ''}
       </div>`;
+  }
+
+  /* Sprint 30: salary, as prominent as the match score. Shown in the posting's
+     own currency and period — never estimated, never converted. */
+  function salaryChip(pkg) {
+    if (typeof PackageBuilder === 'undefined') return '';
+    const s = PackageBuilder.salaryInfo(pkg.job);
+    return `<span class="pkg-salary s-${esc(s.status)}" title="${esc(s.label)}${s.target ? ` · your minimum is ${s.target.text}` : ''}">${esc(s.text)}</span>`;
   }
 
   /* Sprint 24: change the status straight from the Applications page */
@@ -166,6 +189,7 @@ const ApplicationsView = (() => {
           <span class="pkg-co">${esc(pkg.job.company)}</span>
           <span class="pkg-pos">${esc(pkg.job.title)}</span>
           ${pkg.matchScore == null ? '' : `<span class="pkg-score">${pkg.matchScore}% match</span>`}
+          ${salaryChip(pkg)}
           <span class="pkg-chip s-${esc(pkg.status)}">${esc(ApplicationPackages.statusLabel(pkg.status))}</span>
         </div>
         <div class="pkg-meta">

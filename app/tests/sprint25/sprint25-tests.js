@@ -11,7 +11,7 @@
   const PROVIDER_IDS = ['linkedin', 'indeed', 'bayt', 'gulftalent'];
 
   function snapshot() {
-    return JobMatchEngine.snapshotFromProfile(ProfileStore.defaults());
+    return JobMatchEngine.snapshotFromProfile(ProfileStore.demo());
   }
 
   /* put the registry back to the four shipped providers after a test
@@ -297,7 +297,7 @@
       /* the original MatchEngine is untouched — Sprints 20–24 depend on it */
       assert(Object.keys(MatchEngine.WEIGHTS).reduce((n, k) => n + MatchEngine.WEIGHTS[k], 0) === 100,
         'MatchEngine weights changed');
-      const res = MatchEngine.evaluate(JobsStore.jobs()[0], MatchEngine.snapshotFromProfile(ProfileStore.defaults(), null));
+      const res = MatchEngine.evaluate(JobsStore.jobs()[0], MatchEngine.snapshotFromProfile(ProfileStore.demo(), null));
       ['score', 'factors', 'matched', 'missing', 'filtered', 'breakdown', 'matchReasons']
         .forEach(k => assert(k in res, 'the MatchEngine contract changed: ' + k));
       assert(JobMatchEngine !== MatchEngine, 'JobMatchEngine must be additive, not a replacement');
@@ -326,7 +326,7 @@
   function pinProfile() {
     const p = Profile.getState();
     const snap = JSON.parse(JSON.stringify(p));
-    const d = ProfileStore.defaults();
+    const d = ProfileStore.demo();
     Object.keys(p).forEach(k => delete p[k]);
     Object.assign(p, d);
     return () => {

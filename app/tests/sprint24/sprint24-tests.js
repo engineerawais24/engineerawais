@@ -248,7 +248,7 @@
   function pinProfile() {
     const p = Profile.getState();
     const snapshot = JSON.parse(JSON.stringify(p));
-    const d = ProfileStore.defaults();
+    const d = ProfileStore.demo();
     Object.keys(p).forEach(k => delete p[k]);
     Object.assign(p, d);
     return () => {

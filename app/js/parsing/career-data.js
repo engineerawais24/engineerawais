@@ -103,9 +103,9 @@ const CareerData = (() => {
     const d = parsed();
     if (d && d.employment.length) return rolesFromParsed(d);     // 2 — approved parse
 
-    /* 3 — demo, but ONLY while no approved résumé exists */
-    if (hasApproved()) return [];
-    return (typeof ResumesStore !== 'undefined') ? (ResumesStore.EXPERIENCE || []) : [];
+    /* 3 — nothing. Sprint 30 removed the sample-experience fallback: an empty
+       profile now yields NO experience rather than someone else's. */
+    return [];
   }
 
   /* ---------- the rest ---------- */

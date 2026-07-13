@@ -277,7 +277,7 @@ const ParsedResume = (() => {
   /* is this record still the untouched demo entry CareerPilot ships with? */
   function isShippedHistory(h) {
     if (typeof ProfileStore === 'undefined') return false;
-    return (ProfileStore.defaults().history || []).some(d =>
+    return (ProfileStore.demo().history || []).some(d =>
       norm(d.company) === norm(h.company)
       && norm(d.title) === norm(h.title)
       && String(d.startDate || '') === String(h.startDate || '')
@@ -285,7 +285,7 @@ const ParsedResume = (() => {
   }
   function isShippedEmployment(e) {
     if (typeof ProfileStore === 'undefined' || !e) return false;
-    const d = ProfileStore.defaults().employment;
+    const d = ProfileStore.demo().employment;
     return norm(d.company) === norm(e.company)
       && norm(d.title) === norm(e.title)
       && String(d.highlights || '') === String(e.highlights || '');

@@ -1,8 +1,10 @@
 /* ============================================================
-   CareerPilot AI — Sprint 1 frontend MVP
-   Hash router + per-screen renderers. UI only: every action
-   mutates in-memory DB (data.js) and re-renders. No backend.
+   CareerPilot AI — Version 1.0
+   Hash router + per-screen renderers. Everything runs in the
+   browser: no backend, no external API, nothing leaves the machine.
    ============================================================ */
+
+const APP_VERSION = '1.0';
 
 /* ---------- ui state (not persisted) ---------- */
 const UI = {
@@ -363,6 +365,45 @@ function renderSettings() {
       </div>
     </div>`;
 
+  /* ---------- Sprint 30: backup & restore ---------- */
+  const bstats = (typeof Backup !== 'undefined') ? Backup.stats() : { keys: 0, bytes: 0, hasPreImport: false };
+  const plan = window.__importPreview || null;
+
+  const previewBlock = !plan ? '' : (!plan.ok
+    ? `<div class="bk-err">${escS(plan.error)}</div>`
+    : `
+      <div class="bk-preview">
+        <div class="bk-row"><span class="bk-k">Backup taken</span><span>${escS(plan.exportedAt || 'unknown')}</span></div>
+        ${plan.profile ? `<div class="bk-row"><span class="bk-k">Profile in file</span>
+          <span><b>${escS(plan.profile.name || 'unnamed')}</b>${plan.profile.email ? ` · ${escS(plan.profile.email)}` : ''}
+          ${plan.profile.employer ? ` · ${escS(plan.profile.employer)}` : ''}
+          · ${plan.profile.skills} skills · ${plan.profile.certifications} certifications</span></div>` : ''}
+        <div class="bk-row"><span class="bk-k">Would replace</span><span>${plan.counts.replaced} key(s)</span></div>
+        <div class="bk-row"><span class="bk-k">Would add</span><span>${plan.counts.added} key(s)</span></div>
+        <div class="bk-row"><span class="bk-k">Already identical</span><span>${plan.counts.identical} key(s)</span></div>
+        <div class="bk-row"><span class="bk-k">Left untouched</span><span>${plan.counts.untouched} key(s) you have that the file does not</span></div>
+        <div class="bk-note">Nothing has been written yet. Restoring takes an automatic backup of your current data first, so it can be undone.</div>
+        <div class="ld-actions">
+          <button class="btn btn-primary" onclick="confirmImport()">Restore this backup</button>
+          <button class="btn btn-ghost" onclick="cancelImport()">Cancel</button>
+        </div>
+      </div>`);
+
+  const backupCard = `
+    <div class="card card-pad">
+      <p class="card-title">Backup &amp; restore</p>
+      <div class="hint" style="margin-bottom:10px">
+        ${bstats.keys} key(s) · ${Math.round(bstats.bytes / 1024)} KB. A backup is a plain JSON file of everything
+        CareerPilot stores in this browser. Importing never overwrites anything until you confirm it.
+      </div>
+      <div class="ld-actions">
+        <button class="btn btn-primary" onclick="Backup.download()">Export backup (JSON)</button>
+        <button class="btn btn-ghost" onclick="pickImportFile()">Import backup…</button>
+        ${bstats.hasPreImport ? `<button class="btn btn-ghost" onclick="undoImport()">Undo last restore</button>` : ''}
+      </div>
+      ${previewBlock}
+    </div>`;
+
   return `
     <p class="screen-intro">Appearance and local data controls are live. Account and search preferences below are UI-only until the backend arrives.</p>
     <div class="set-grid">
@@ -391,6 +432,7 @@ function renderSettings() {
             </select></div>
         </div>
         ${localData}
+        ${backupCard}
       </div>
       <div style="display:flex; flex-direction:column; gap:12px">
         ${profilePrefs}
@@ -521,6 +563,59 @@ function skeletonHtml() {
     </div>
     <div class="skel" style="height:120px; margin-top:12px"></div>
     <div class="skel" style="height:260px; margin-top:12px"></div>`;
+}
+
+/* ---------- Sprint 30: backup & restore (Settings) ----------
+   Reading a file and previewing it writes nothing. Only confirmImport()
+   writes, and it takes an automatic pre-import backup first. */
+
+function pickImportFile() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'application/json,.json';
+  input.onchange = () => {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      window.__importText = reader.result;
+      window.__importPreview = Backup.preview(reader.result);
+      if (!window.__importPreview.ok) toast(window.__importPreview.error, 'error');
+      navigate();
+    };
+    reader.onerror = () => toast('That file could not be read', 'error');
+    reader.readAsText(file);
+  };
+  input.click();
+}
+
+function cancelImport() {
+  window.__importPreview = null;
+  window.__importText = null;
+  navigate();
+}
+
+function confirmImport() {
+  const plan = window.__importPreview;
+  if (!plan || !plan.ok) { toast('There is nothing to restore', 'error'); return; }
+  if (!confirm(`Restore this backup?\n\n${plan.counts.replaced} key(s) will be replaced and ${plan.counts.added} added. `
+    + 'Your current data is backed up automatically first, so this can be undone.')) return;
+
+  const res = Backup.restore(window.__importText, { confirm: true });
+  if (!res.ok) { toast(res.error, 'error'); return; }
+
+  window.__importPreview = null;
+  window.__importText = null;
+  toast(`Restored ${res.restored} key(s) — reloading`);
+  setTimeout(() => location.reload(), 600);
+}
+
+function undoImport() {
+  if (!confirm('Undo the last restore and go back to the data from before it?')) return;
+  const res = Backup.undoRestore({ confirm: true });
+  if (!res.ok) { toast(res.error, 'error'); return; }
+  toast('Restore undone — reloading');
+  setTimeout(() => location.reload(), 600);
 }
 
 function runDailySearch() {

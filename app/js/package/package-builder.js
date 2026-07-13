@@ -46,6 +46,90 @@ const PackageBuilder = (() => {
     return `${bits.join(' · ')} · ${salary}. ${skills}`.trim();
   }
 
+  /* ---------- salary (Sprint 30) ----------
+     Shown exactly as the posting stated it: its own currency, its own period.
+     Nothing is estimated and nothing is converted — a salary we cannot compare
+     like-for-like against a target simply carries no verdict. */
+
+  const NUM = n => Number(n).toLocaleString('en-US');
+
+  /* "SAR 32,000–40,000/mo" · "USD 185k–215k/yr" · "Salary not disclosed" */
+  function salaryText(job) {
+    if (!job || !job.salaryDisclosed) {
+      /* a posting may say "Competitive" / "Negotiable" in words — keep its own */
+      return (job && typeof job.salary === 'string' && job.salary.trim())
+        ? job.salary
+        : 'Salary not disclosed';
+    }
+    const cur = job.currency || 'USD';
+    const monthly = job.salaryPeriod === 'month';
+    const lo = job.salary;
+    const hi = job.salaryMax;
+    if (lo == null && hi == null) return 'Salary not disclosed';
+
+    if (monthly) {
+      /* monthly figures are absolute amounts */
+      return hi != null && lo != null
+        ? `${cur} ${NUM(lo)}–${NUM(hi)}/mo`
+        : `${cur} ${NUM(lo != null ? lo : hi)}/mo`;
+    }
+    /* yearly figures are stored in thousands */
+    return hi != null && lo != null
+      ? `${cur} ${lo}k–${hi}k/yr`
+      : `${cur} ${lo != null ? lo : hi}k/yr`;
+  }
+
+  /* The user's minimum for THIS posting's currency and period. There is one
+     only when it can be compared without converting anything. */
+  function targetFor(job, profile) {
+    const p = profile || ((typeof Profile !== 'undefined') ? Profile.getState() : null);
+    const prefs = (p && p.preferences) || {};
+    const cur = (job && job.currency) || 'USD';
+    const monthly = job && job.salaryPeriod === 'month';
+
+    if (monthly && cur === 'SAR' && Number(prefs.monthlyMinSAR) > 0) {
+      return { value: Number(prefs.monthlyMinSAR), text: `SAR ${NUM(prefs.monthlyMinSAR)}/mo` };
+    }
+    if (monthly && cur === 'AED' && Number(prefs.monthlyMinAED) > 0) {
+      return { value: Number(prefs.monthlyMinAED), text: `AED ${NUM(prefs.monthlyMinAED)}/mo` };
+    }
+    if (!monthly && cur === 'USD' && Number(prefs.minSalary) > 0) {
+      return { value: Number(prefs.minSalary), text: `USD ${prefs.minSalary}k/yr` };
+    }
+    return null;                       // nothing comparable without converting
+  }
+
+  const STATUS_LABEL = {
+    within: 'Within target',
+    below: 'Below target',
+    not_disclosed: 'Not disclosed',
+    no_target: 'No target set',
+  };
+
+  function salaryInfo(job, profile) {
+    const disclosed = !!(job && job.salaryDisclosed)
+      && (job.salary != null || job.salaryMax != null)
+      && typeof (job.salaryMax != null ? job.salaryMax : job.salary) === 'number';
+
+    const text = salaryText(job);
+    if (!disclosed) {
+      return {
+        disclosed: false, text, target: null,
+        status: 'not_disclosed', label: STATUS_LABEL.not_disclosed,
+      };
+    }
+
+    const target = targetFor(job, profile);
+    if (!target) {
+      return { disclosed: true, text, target: null, status: 'no_target', label: STATUS_LABEL.no_target };
+    }
+
+    /* the top of the range is what the role can actually pay */
+    const top = job.salaryMax != null ? job.salaryMax : job.salary;
+    const status = top >= target.value ? 'within' : 'below';
+    return { disclosed: true, text, target, status, label: STATUS_LABEL[status] };
+  }
+
   /* ---------- tailoring preview (suggestions only) ---------- */
 
   /* The résumé the preview is written against: the one selected for this job. */
@@ -214,8 +298,10 @@ const PackageBuilder = (() => {
   function copySummary(pkg) { return copyText(summaryText(pkg)); }
 
   return {
-    CHECKLIST,
+    CHECKLIST, STATUS_LABEL,
     jobSummary, resumeFor, suggestedKeywords, tailoringPreview,
     isVerifiableLink, checklist, summaryText, copyText, copySummary,
+    /* Sprint 30: salary visibility */
+    salaryText, targetFor, salaryInfo,
   };
 })();
