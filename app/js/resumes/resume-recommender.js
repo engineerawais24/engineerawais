@@ -78,14 +78,19 @@ const ResumeRecommender = (() => {
     const p = (typeof Profile !== 'undefined') ? Profile.getState() : { preferences: {}, skills: [] };
     const years = (typeof MatchEngine !== 'undefined' && MatchEngine.yearsFromProfile)
       ? MatchEngine.yearsFromProfile(p) : null;
+    /* Sprint 28: the inputs are resolved by source priority — the user's
+       confirmed profile first, then an approved parsed résumé. Same engine,
+       real data. */
+    const cd = (typeof CareerData !== 'undefined') ? CareerData : null;
+    const totalYears = cd ? cd.totalYears() : years;
     return {
-      targetRoles: (p.preferences && p.preferences.targetRoles) || '',
+      targetRoles: cd ? cd.targetRoles() : ((p.preferences && p.preferences.targetRoles) || ''),
       level: (typeof MatchEngine !== 'undefined' && MatchEngine.levelFromYears)
-        ? MatchEngine.levelFromYears(years) : 'mid',
-      years,
+        ? MatchEngine.levelFromYears(totalYears) : 'mid',
+      years: totalYears,
       /* Sprint 27 */
-      certifications: certificationsHeld(p),
-      employer: (p.employment && p.employment.company) || '',
+      certifications: cd ? cd.certifications() : certificationsHeld(p),
+      employer: cd ? cd.employer().company : ((p.employment && p.employment.company) || ''),
     };
   }
 

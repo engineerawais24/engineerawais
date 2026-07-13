@@ -22,6 +22,9 @@ const SCREENS = {
   review:    { label: 'Application Review', title: 'Application Review', render: () => Prep.renderReview(), hidden: true },
   applications: { label: 'Applications', title: 'Applications Board',   render: () => Applications.render() },
   resumes:   { label: 'Resume Library',  title: 'Resume Library',       render: () => Resumes.render() },
+  /* Sprint 28: review the locally parsed master résumé before it touches the
+     profile. Reached from the Résumé Library — not a new nav entry. */
+  resumeReview: { label: 'Resume Review', title: 'Master Resume Review', render: () => ResumeParsing.render(), hidden: true },
   tracker:   { label: 'Tracker',         title: 'Applications Tracker', render: renderTracker },
   interview: { label: 'Interview Prep',  title: 'Interview Prep',       render: () => Interview.render() },
   settings:  { label: 'Settings',        title: 'Settings',             render: renderSettings },

@@ -185,3 +185,122 @@
   .doc-tools{ margin-left:0; width:100%; }
   .doc-tools .btn{ flex:1; justify-content:center; }
 }
+
+/* ---------- Sprint 28: master résumé parsing ---------- */
+.rp-strip{
+  margin-bottom:16px; padding:11px 14px;
+  background:var(--card); border:1px solid var(--divider); border-radius:12px;
+}
+.rp-row{ display:flex; align-items:center; gap:9px; flex-wrap:wrap; }
+.rp-lbl{ font-family:var(--mono); font-size:9px; letter-spacing:.13em; color:var(--faint); font-weight:600; }
+.rp-spacer{ flex:1; }
+.rp-file{ font-size:12px; color:var(--body); font-weight:600; }
+.rp-chip{
+  font-size:9.5px; font-weight:600; padding:3px 8px; border-radius:6px; letter-spacing:.03em;
+  background:var(--subtle); color:var(--body); border:1px solid var(--divider);
+}
+.rp-chip.s-not_parsed{ background:var(--subtle); color:var(--muted); }
+.rp-chip.s-parsing{ background:var(--accent-soft); color:var(--accent-ink); border-color:var(--accent-border); }
+.rp-chip.s-needs_review{ background:var(--amber-soft); color:var(--amber); border-color:var(--amber-soft); }
+.rp-chip.s-approved{ background:var(--green-soft); color:var(--green); border-color:var(--green-soft); }
+.rp-chip.s-failed{ background:var(--red-soft); color:var(--red); border-color:var(--red-soft); }
+.rp-note{ margin-top:7px; font-size:11.5px; color:var(--muted); line-height:1.5; }
+.rp-note.ok{ color:var(--green); }
+.rp-err{
+  margin-top:8px; padding:9px 11px; font-size:11.5px; line-height:1.55;
+  background:var(--red-soft); color:var(--red); border:1px solid var(--red-soft); border-radius:8px;
+}
+.rp-strip .btn{ font-size:11.5px; padding:5px 11px; }
+
+/* the review screen */
+.rp-head{ display:flex; align-items:center; gap:9px; flex-wrap:wrap; margin-bottom:13px; }
+.rp-card{ margin-bottom:13px; padding:16px 18px; }
+.rp-card h3{ font-family:var(--disp); font-size:14px; font-weight:700; margin:0 0 11px; }
+.rp-lead{ font-size:12px; color:var(--muted); line-height:1.55; margin:0 0 11px; }
+.rp-grid{ display:grid; grid-template-columns:1fr 1fr; gap:0 14px; }
+.rp-grid > .field{ grid-column:1 / -1; }
+.rp-grid > .field.half{ grid-column:auto; }
+.rp-card textarea{
+  width:100%; padding:8px 10px; font:inherit; font-size:12.5px; line-height:1.55;
+  color:var(--ink); background:var(--bg); border:1px solid var(--divider); border-radius:8px; resize:vertical;
+}
+.rp-meta{ font-size:11px; color:var(--muted); }
+.rp-none{ font-size:12px; color:var(--faint); }
+.rp-count{ font-family:var(--mono); font-size:10.5px; color:var(--muted); font-weight:500; }
+.rp-block{ margin-bottom:4px; }
+.rp-skills{ display:flex; flex-wrap:wrap; gap:5px; margin-bottom:10px; }
+.rp-skill{
+  display:inline-flex; align-items:center; gap:5px; font-size:11px; padding:3px 5px 3px 9px;
+  border-radius:7px; background:var(--subtle); border:1px solid var(--divider); color:var(--body);
+}
+.rp-skill button{ border:none; background:none; cursor:pointer; color:var(--muted); font-size:13px; line-height:1; padding:0 2px; }
+.rp-skill button:hover{ color:var(--red); }
+.rp-add{ display:flex; gap:7px; align-items:center; }
+.rp-add input{
+  flex:1; max-width:320px; padding:7px 10px; font:inherit; font-size:12px;
+  color:var(--ink); background:var(--bg); border:1px solid var(--divider); border-radius:8px;
+}
+.rp-emp{ padding:11px 13px; margin-bottom:9px; background:var(--subtle); border:1px solid var(--divider); border-radius:9px; }
+.rp-emp-grid{ display:grid; grid-template-columns:1fr 1fr; gap:0 12px; }
+.rp-emp-foot{ display:flex; align-items:center; gap:10px; margin-top:6px; }
+.rp-emp-foot .btn{ margin-left:auto; font-size:11px; padding:3px 9px; }
+.rp-bullets{ margin:6px 0 0; padding-left:17px; font-size:11.5px; color:var(--body); line-height:1.6; }
+.rp-cert{ display:flex; gap:10px; align-items:flex-end; margin-bottom:8px; }
+.rp-cert .field{ flex:1; margin-bottom:0; }
+.rp-cert .btn{ font-size:11px; padding:5px 9px; }
+
+/* the comparison table — nothing is written until it is confirmed */
+.rp-diff{ width:100%; border-collapse:collapse; font-size:12px; }
+.rp-diff th{
+  text-align:left; padding:6px 8px; font-family:var(--mono); font-size:9px;
+  letter-spacing:.1em; color:var(--faint); font-weight:600; border-bottom:1px solid var(--divider);
+}
+.rp-diff td{ padding:8px; border-bottom:1px solid var(--divider); vertical-align:top; }
+.rp-diff tr.off{ opacity:.45; }
+.rp-diff .rp-f{ font-weight:600; }
+.rp-diff .rp-cur{ color:var(--muted); }
+.rp-diff .rp-new{ color:var(--green); }
+.rp-diff i{ color:var(--faint); font-style:normal; }
+.rp-same{ padding:12px 14px; font-size:12px; color:var(--muted); background:var(--subtle); border:1px dashed var(--divider); border-radius:9px; }
+.rp-actions{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:13px; }
+@media (max-width:640px){ .rp-grid, .rp-emp-grid{ grid-template-columns:1fr; } }
+
+/* ---- Sprint 28 fix: additive merge + restore ---- */
+.rp-tag{
+  margin-left:6px; font-size:9px; font-weight:600; padding:2px 5px; border-radius:5px;
+  background:var(--green-soft); color:var(--green); letter-spacing:.03em;
+}
+.rp-add-cell{ display:flex; flex-direction:column; gap:4px; font-size:11.5px; }
+.rp-add-cell .rp-k{
+  display:inline-block; min-width:96px; font-family:var(--mono); font-size:9px;
+  letter-spacing:.1em; color:var(--faint); font-weight:600;
+}
+.rp-keep{ color:var(--ink); }
+.rp-plus{ color:var(--green); font-weight:600; }
+.rp-never{ margin-top:2px; font-size:10.5px; color:var(--muted); font-style:italic; }
+.rp-restore{
+  display:flex; align-items:center; gap:9px; flex-wrap:wrap;
+  padding:11px 13px; margin-bottom:12px; font-size:12px; line-height:1.55;
+  background:var(--amber-soft); color:var(--ink);
+  border:1px solid var(--amber-soft); border-radius:9px;
+}
+.rp-restore .btn{ margin-left:auto; font-size:11.5px; padding:5px 11px; }
+
+/* ---- Sprint 28 recovery: certification restore preview ---- */
+.rp-recover{
+  margin-top:10px; padding:11px 13px; font-size:12px; line-height:1.6;
+  background:var(--amber-soft); color:var(--ink);
+  border:1px solid var(--amber-soft); border-radius:9px;
+}
+.rp-recover .btn{ margin-left:8px; font-size:11.5px; padding:5px 11px; }
+.rp-recover.open{ background:var(--subtle); border-color:var(--divider); }
+.rp-rec-head{ display:flex; align-items:center; gap:9px; margin-bottom:9px; }
+.rp-rec-row{ display:flex; gap:10px; align-items:flex-start; padding:5px 0; border-top:1px solid var(--divider); }
+.rp-rec-row .rp-k{
+  width:130px; flex:none; font-family:var(--mono); font-size:9px;
+  letter-spacing:.1em; color:var(--faint); font-weight:600; padding-top:3px;
+}
+.rp-rec-row .rp-v{ flex:1; font-size:11.5px; color:var(--ink); }
+.rp-rec-row .rp-v i{ color:var(--faint); font-style:normal; }
+.rp-rec-foot{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:11px; padding-top:10px; border-top:1px solid var(--divider); }
+.rp-rec-foot .btn{ margin-left:0; }

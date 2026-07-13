@@ -85,9 +85,15 @@ const CoverLetter = (() => {
       .some(w => text.indexOf(w.slice(0, 5)) !== -1);
   }
 
-  /* the two experience bullets this résumé leads with, best first */
+  /* the two experience bullets this résumé leads with, best first.
+     Sprint 28: the roles come from CareerData, which resolves them by source
+     priority — the user's confirmed profile, then an approved parsed résumé,
+     and the sample history ONLY while no approved résumé exists. That is what
+     keeps demo companies and demo achievements out of a real cover letter. */
   function evidenceFor(resume, profile) {
-    const roles = (typeof ResumesStore !== 'undefined') ? (ResumesStore.EXPERIENCE || []) : [];
+    const roles = (typeof CareerData !== 'undefined')
+      ? CareerData.experience()
+      : ((typeof ResumesStore !== 'undefined') ? (ResumesStore.EXPERIENCE || []) : []);
     const kws = resumeKeywords(resume, profile);
     const scored = [];
     roles.forEach(r => (r.bullets || []).forEach(b => {
@@ -201,10 +207,11 @@ const CoverLetter = (() => {
       resumeKeywords: kws,
       matchedSkills, resumeSkills, otherSkills, gapSkills,
       evidence: evidenceFor(resume, profile),
-      /* Sprint 27: the certifications the profile actually holds */
-      certifications: (profile.certifications || [])
-        .map(c => (c && c.name) ? c.name : String(c))
-        .filter(Boolean),
+      /* Sprint 27: the certifications actually held. Sprint 28 resolves them
+         through CareerData, so an approved parsed résumé feeds the letter. */
+      certifications: (typeof CareerData !== 'undefined')
+        ? CareerData.certifications()
+        : (profile.certifications || []).map(c => (c && c.name) ? c.name : String(c)).filter(Boolean),
     };
 
     return Object.assign({

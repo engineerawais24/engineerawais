@@ -388,6 +388,7 @@ const ResumesView = (() => {
   function render(state) {
     return `
       <p class="screen-intro">One master resume, generated live from your profile — tailored variants and cover letters per application. Download as PDF or copy as plain text for online forms.</p>
+      ${typeof ParsingView !== 'undefined' ? ParsingView.statusStrip() : ''}
       <div class="doc-layout">
         <div class="doc-side">${workbench(state)}</div>
         ${preview(state)}
