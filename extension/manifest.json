@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "CareerPilot Helper",
+  "version": "1.0.0",
+  "description": "Save the job you're viewing into CareerPilot and autofill application forms from your own profile. Fills only empty fields, never overwrites your answers, never submits.",
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "CareerPilot Helper"
+  },
+  "permissions": ["activeTab", "scripting"],
+  "host_permissions": ["http://127.0.0.1:8000/*"]
+}

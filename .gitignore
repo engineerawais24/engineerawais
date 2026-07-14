@@ -5,3 +5,6 @@
 .venv/
 .pytest_cache/
 __pycache__/
+
+# Local SQLite databases — user data, never committed
+*.db
