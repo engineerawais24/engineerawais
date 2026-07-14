@@ -6,11 +6,40 @@
 
 - **Last updated:** 2026-07-13
 - **Status:** 🟢 **v1.0 SHIPPED** (2026-07-13)
-- **Branch:** `main` — clean, and `main == origin/main` (nothing unpushed)
-- **Head:** `e4ec18a` — .gitignore repair
+- **Branch:** `main` — clean, **ahead of origin by 1** (`88732e7` unpushed; pushes need explicit approval)
+- **Head:** `88732e7` — CLAUDE.md operating rules + this handoff
 - **Remote:** github.com/engineerawais24/engineerawais
 
 ---
+
+## Milestones
+
+| # | Milestone | Sprints | Status |
+|---|-----------|---------|--------|
+| M1 | Core product — profile, résumé library, job board, approvals, tracker, interview prep | 1–13 | ✅ Done |
+| M2 | Platform & backend — storage abstraction, connectors, FastAPI + two-way sync, search engine | 14–18 | ✅ Done |
+| M3 | Intelligence — saved searches, scoring v1/v2, résumé recommendation, cover letters, packages, discovery, imports, parsing | 19–29 | ✅ Done |
+| M4 | **v1.0 release** — stabilization, demo-data isolation, backup/restore, salary visibility | 30 | ✅ **Shipped 2026-07-13** |
+| M5 | Post-v1 hardening — repo hygiene, `v1.0` tag, user data recovery | — | 🔶 In progress (see To-do) |
+
+## To-do (v1.0 → v1.0-tagged)
+
+**Done since release:**
+- [x] `.gitignore` repaired — `.claude/` ignored, corrupted UTF-16 `.venv` entry fixed (`e4ec18a`)
+- [x] Cross-session handoff protocol — CLAUDE.md rules + HANDOFF.md state doc (`88732e7`)
+- [x] Memory notes for future sessions (test-runner technique, data-safety rules, approval rules)
+
+**Open — code/repo (each ≈ one commit):**
+- [ ] Un-track `.venv/` — 5,397 files still in git (`git rm -r --cached .venv`); ignore rule alone doesn't untrack
+- [ ] Delete dead root files: `index.html`, `index_backup.html`, `test` (the app is `app/index.html`)
+- [ ] Push `88732e7` (+ any hygiene commits) — **needs explicit approval**
+- [ ] Tag `v1.0` after hygiene lands — **pushing the tag needs explicit approval**
+- [ ] Decide: pre-salary-field packages still read "Salary not disclosed" with no UI to fix them — leave, or add a one-off fixer
+
+**Open — user-side (browser, Chrome Profile 4; not code):**
+- [ ] Run certification recovery — Resume Library → amber banner → **Restore** (built, never executed)
+- [ ] Re-enter six unrecoverable profile fields: target roles, preferred locations, languages, work mode, job type, sponsorship flag
+- [ ] Optionally recover work authorization / minSalary / LinkedIn from `careerpilot_prep_v1` + stored cover letters (console snippets in chat history)
 
 ## Current State
 
@@ -32,26 +61,10 @@ prep, and an optional FastAPI backend with two-way sync.
 
 ## Next Up
 
-Nothing is mid-flight. These are the open post-v1 items, in rough priority order.
-
-### User-side (not code — needs the user in the browser, Chrome Profile 4)
-
-1. **Run certification recovery.** It is built but has never been executed. The
-   preview/Restore button is on the **Resume Library** page. Until it is pressed, the
-   user's recovered certifications are not back in the profile.
-2. **Re-enter six unrecoverable profile fields by hand:** target roles, preferred
-   locations, languages, work mode, job type, sponsorship flag. (Work authorization,
-   minSalary and LinkedIn URL *are* recoverable from `careerpilot_prep_v1` / stored
-   cover letters, if those keys exist.)
-
-### Code / repo
-
-3. **Packages created before the salary fields existed** still read "Salary not
-   disclosed", and after the salary-edit revert there is **no UI to correct them**.
-   Decide: leave as-is, or add a narrow one-off fixer.
-4. **Repo hygiene before tagging** — see Open Issues #1 and #2. Roughly one commit.
-5. **Tag `v1.0`** once the above is settled. **Pushing the tag needs explicit
-   approval — ask.**
+Nothing is mid-flight. Work through the **To-do** list above, top to bottom: the next
+concrete action is the repo-hygiene pair (un-track `.venv/`, delete the three dead
+root files), then ask for approval to push, then tag `v1.0`. The user-side recovery
+items can happen in parallel whenever the user is in their browser.
 
 ## Open Issues
 
@@ -83,8 +96,9 @@ kill a test harness mid-run.
 
 | Sprint | Commit | Summary |
 |--------|--------|---------|
-| 30 | `9e67065` | Version 1 final stabilization; salary-edit UI removed |
+| — | `88732e7` | CLAUDE.md operating rules + HANDOFF.md handoff protocol |
 | — | `e4ec18a` | .gitignore repair (`.claude/`, corrupted UTF-16 `.venv` entry) |
+| 30 | `9e67065` | Version 1 final stabilization; salary-edit UI removed — **v1.0** |
 | 29 | `2c3e7df` | Intelligent weighted job matching |
 | 28 | `4d6f10f` | Profile recovery & résumé parsing stabilization |
 | 27 | `8e8928f` | Résumé tailoring & application package builder |
