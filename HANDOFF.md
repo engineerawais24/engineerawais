@@ -6,7 +6,7 @@
 
 - **Last updated:** 2026-07-14
 - **Status:** 🟢 **v1.0 SHIPPED** (2026-07-13) · Chrome-extension MVP built 2026-07-14
-- **Branch:** `main` — clean, **ahead of origin by 3** (unpushed; pushes need explicit approval)
+- **Branch:** `main` — clean; pushed through `64ae7e2` except this handoff update (pushes need explicit approval)
 - **Head:** `276f7a0` — Chrome extension MVP
 - **Remote:** github.com/engineerawais24/engineerawais
 
@@ -35,7 +35,7 @@
 
 **Open — code/repo:**
 - [ ] Delete dead root files: `index.html`, `index_backup.html`, `test` (the app is `app/index.html`)
-- [ ] Push the 3 unpushed commits — **needs explicit approval**
+- [x] Push through `64ae7e2` — extension MVP, .venv untrack, handoff (pushed 2026-07-14)
 - [ ] Tag `v1.0` after hygiene lands — **pushing the tag needs explicit approval**
 - [ ] Decide: pre-salary-field packages still read "Salary not disclosed" with no UI to fix them — leave, or add a one-off fixer
 
