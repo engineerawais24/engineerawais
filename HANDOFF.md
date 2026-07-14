@@ -31,7 +31,7 @@
 - [x] Memory notes for future sessions (test-runner technique, data-safety rules, approval rules)
 - [x] Un-track `.venv/` — repo dropped 5,599 → 202 tracked files (`a0a1d22`)
 - [x] Backend venv rebuilt on **Python 3.12** (3.13 can't build the pinned `pydantic-core`); pins unchanged; **pytest works: 30/30**
-- [x] **Chrome extension MVP** (`/extension`, `276f7a0`) — Save Current Job (`POST /api/jobs`, 409 = already saved), Autofill from `/api/profile` (+preferences/+employment), Open CareerPilot; detectors for LinkedIn/Bayt/GulfTalent/Workday/Greenhouse/Lever/generic; fills only empty visible fields, never submits; unknown questions listed in the popup; functional harness 15/15; `*.db` gitignored
+- [x] **Chrome extension MVP** (`/extension`, `276f7a0`) — Save Current Job (`POST /api/jobs`, 409 = already saved), Autofill from `/api/profile` (+preferences/+employment), Open CareerPilot; detectors for LinkedIn/Bayt/GulfTalent/Workday/Greenhouse/Lever/generic; fills only empty visible fields, never submits; unknown questions listed in the popup; functional harness 15/15; `*.db` gitignored · autofill v1.1: nationality/gender/marital/years from `authorization.*` (text+select+radio), 4 template essay answers (≤70 words, own headline/summary only), salary/comp/bonus/package NEVER filled (34/34 harness)
 
 **Open — code/repo:**
 - [ ] Delete dead root files: `index.html`, `index_backup.html`, `test` (the app is `app/index.html`)

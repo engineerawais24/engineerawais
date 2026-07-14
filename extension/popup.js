@@ -110,16 +110,22 @@ async function loadProfile() {
     country: profile.country || '',
     currentTitle: current.title || profile.headline || '',
     currentCompany: current.company || '',
-    yearsExperience: years != null ? String(years) : '',
+    /* essay templates are built from these — the user's own words only */
+    headline: profile.headline || '',
+    summary: profile.summary || '',
+    /* explicit value wins; otherwise computed from employment history */
+    yearsExperience: (auth.years_experience != null && auth.years_experience !== '')
+      ? String(auth.years_experience)
+      : (years != null ? String(years) : ''),
     /* not stored in the backend — left blank on purpose, never guessed */
     noticePeriod: '',
-    currentSalary: '',
-    expectedSalary: (preferences.min_salary && preferences.min_salary > 0)
-      ? String(preferences.min_salary * 1000) : '',
-    /* nationality is only derivable when the user IS a citizen of the
-       country they're authorized in — anything else would be a guess */
-    nationality: (String(auth.status || '').toLowerCase() === 'citizen' && auth.authorizedIn)
-      ? String(auth.authorizedIn).split(',')[0].trim() : '',
+    /* explicit nationality wins; the citizen derivation is the fallback */
+    nationality: auth.nationality
+      ? String(auth.nationality).trim()
+      : ((String(auth.status || '').toLowerCase() === 'citizen' && auth.authorizedIn)
+        ? String(auth.authorizedIn).split(',')[0].trim() : ''),
+    gender: auth.gender ? String(auth.gender).trim() : '',
+    maritalStatus: auth.marital_status ? String(auth.marital_status).trim() : '',
     workAuthorization: [auth.status, auth.authorizedIn ? `authorized in ${auth.authorizedIn}` : '']
       .filter(Boolean).join(' — '),
     needsSponsorship: typeof auth.sponsorship === 'boolean' ? auth.sponsorship : null,

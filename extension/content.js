@@ -180,8 +180,14 @@
   function pickOption(sel, wanted) {
     const w = String(wanted).toLowerCase();
     const opts = Array.from(sel.options);
+    /* exact → option contains value → value contains option
+       ("Pakistani" must find "Pakistan", and the other way round) */
     const hit = opts.find(o => txt(o).toLowerCase() === w || o.value.toLowerCase() === w)
-      || opts.find(o => txt(o).toLowerCase().includes(w));
+      || opts.find(o => txt(o).toLowerCase().includes(w))
+      || opts.find(o => {
+        const t = txt(o).toLowerCase();
+        return t.length > 3 && w.includes(t);
+      });
     if (!hit) return false;
     sel.value = hit.value;
     sel.dispatchEvent(new Event('change', { bubbles: true }));
@@ -197,9 +203,65 @@
     return true;
   }
 
+  /* ---------- short essay answers (local templates, no AI) ----------
+     Built ONLY from things that are true: the user's own headline and
+     summary, plus the company/title read off this very page. If the
+     profile carries neither a headline nor a summary there is nothing
+     honest to say, so the question is surfaced instead of answered. */
+
+  function cap70(text) {
+    const words = String(text).replace(/\s+/g, ' ').trim().split(' ');
+    if (words.length <= 70) return words.join(' ');
+    let cut = words.slice(0, 70).join(' ');
+    const lastStop = cut.lastIndexOf('.');
+    if (lastStop > 40) cut = cut.slice(0, lastStop + 1);
+    return /[.!?]$/.test(cut) ? cut : cut + '.';
+  }
+
+  function firstSentence(s, maxWords = 30) {
+    const one = String(s || '').replace(/\s+/g, ' ').trim().split(/(?<=[.!?])\s+/)[0] || '';
+    const words = one.split(' ');
+    return words.length > maxWords ? '' : one;
+  }
+
+  function essayAnswers(p) {
+    const job = detect();
+    const company = job.company || 'your company';
+    const title = job.title || 'this role';
+    const head = (p.headline || '').trim();
+    const sum = firstSentence(p.summary);
+    if (!head && !sum) return null;              // nothing honest to write
+
+    const asA = head ? ` as a ${head.toLowerCase()}` : '';
+    const summarySay = sum ? ` ${sum}` : '';
+
+    return {
+      whyCompany: cap70(
+        `The work ${company} is doing is exactly where I want to apply my experience${asA}.${summarySay} ` +
+        `That overlap between what ${company} needs and what I do every day is why I'm applying.`),
+      whyRole: cap70(
+        `The ${title} position lines up directly with my background${asA}.${summarySay} ` +
+        `This role is a natural next step for me, and one where I can contribute quickly.`),
+      whyHire: cap70(
+        `My background${asA} maps directly onto what the ${title} role calls for.${summarySay} ` +
+        `I bring that experience ready to use, not to learn on the job.`),
+      whatInterests: cap70(
+        `What draws me to this opportunity is the fit: the ${title} role at ${company} asks for ` +
+        `the work I already do${asA}.${summarySay}`),
+    };
+  }
+
   /* Ordered rules: the FIRST rule whose pattern matches wins, so the
-     specific ones (first/last name) sit above the generic (full name). */
-  const RULES = p => [
+     specific ones (first/last name) sit above the generic (full name).
+     A rule may carry `el` — an extra predicate on the element itself. */
+  const isTextarea = el => el.tagName === 'TEXTAREA';
+
+  const RULES = (p, essays) => [
+    /* SALARY — never filled, whatever the profile holds. Sits first so a
+       compensation textarea can never fall through to an essay template. */
+    { key: 'Salary / compensation', v: '',
+      re: /salary|compensation|remuneration|\bctc\b|bonus|\bpackage\b|\bpay\b|\bwage/ },
+
     { key: 'First name', v: p.firstName, re: /first[\s_-]?name|given[\s_-]?name|\bfname\b|forename/ },
     { key: 'Last name', v: p.lastName, re: /last[\s_-]?name|sur[\s_-]?name|family[\s_-]?name|\blname\b/ },
     { key: 'Email', v: p.email, re: /e-?mail/, type: t => t === 'email' },
@@ -207,21 +269,98 @@
     { key: 'LinkedIn', v: p.linkedin, re: /linked[\s_-]?in/ },
     { key: 'Full name', v: p.fullName, re: /full[\s_-]?name|your[\s_-]?name|applicant[\s_-]?name|legal[\s_-]?name|^name$|"name"|\bname\b(?!.*(user|company|file))/ },
     { key: 'City', v: p.city, re: /\bcity\b|\btown\b/ },
-    { key: 'Country', v: p.country, re: /country(?!.*code)/ },
     { key: 'Nationality', v: p.nationality, re: /nationality|citizenship(?!.*status)/ },
+    { key: 'Country', v: p.country, re: /country(?!.*code)/ },
+    { key: 'Gender', v: p.gender, re: /\bgender\b|\bsex\b(?!ual)/ },
+    { key: 'Marital status', v: p.maritalStatus, re: /marital[\s_-]?status|civil[\s_-]?status|\bmarital\b/ },
     { key: 'Current job title', v: p.currentTitle, re: /current.{0,12}(title|role|position)|job[\s_-]?title|designation/ },
     { key: 'Current company', v: p.currentCompany, re: /current.{0,12}(company|employer)|employer[\s_-]?name|company[\s_-]?name(?!.*previous)/ },
-    { key: 'Years of experience', v: p.yearsExperience, re: /years?[\s_-]?(of)?[\s_-]?(work\s)?experience|total[\s_-]?experience|\bexperience[\s_-]?\(?years/ },
+    { key: 'Years of experience', v: p.yearsExperience,
+      re: /(years?|yrs).{0,12}experience|experience.{0,12}(years?|yrs)|total[\s_-]?experience/ },
+    /* a bare "Experience" label counts only on a NUMBER input — a bare-worded
+       textarea ("describe your experience…") is prose, not a number */
+    { key: 'Years of experience', v: p.yearsExperience, re: /\bexperience\b/,
+      el: el => (el.type || '').toLowerCase() === 'number' },
     { key: 'Notice period', v: p.noticePeriod, re: /notice[\s_-]?period|availability[\s_-]?to[\s_-]?(start|join)|when.{0,12}start/ },
-    { key: 'Current salary', v: p.currentSalary, re: /current.{0,12}(salary|compensation|ctc|pay)/ },
-    { key: 'Expected salary', v: p.expectedSalary, re: /expected.{0,12}(salary|compensation|pay)|desired.{0,12}(salary|compensation|pay)|salary[\s_-]?expectation/ },
     { key: 'Work authorization', v: p.workAuthorization, re: /work[\s_-]?(authori[sz]ation|permit)|authori[sz]ed[\s_-]?to[\s_-]?work|right[\s_-]?to[\s_-]?work|visa[\s_-]?status|immigration/ },
     { key: 'Sponsorship', bool: p.needsSponsorship, re: /sponsor/ },
     { key: 'Willing to relocate', bool: p.willRelocate, re: /reloc/ },
+
+    /* ESSAYS — textareas only, and only these four question shapes.
+       Anything else stays untouched and is surfaced in the popup. */
+    { key: 'Why this company', v: essays && essays.whyCompany, el: isTextarea,
+      re: /why.{0,40}(join|work (at|for|with|here)|(this|our) (company|organi[sz]ation)|\bus\b)/ },
+    { key: 'Why this role', v: essays && essays.whyRole, el: isTextarea,
+      re: /why.{0,30}interest.{0,30}(role|position|job)|why.{0,20}(this|the) (role|position)|why.{0,20}apply/ },
+    { key: 'Why hire you', v: essays && essays.whyHire, el: isTextarea,
+      re: /why should we hire|why.{0,20}(hire|choose) you|what makes you.{0,20}(good|right|strong) (fit|candidate)/ },
+    { key: 'What interests you', v: essays && essays.whatInterests, el: isTextarea,
+      re: /what interests you.{0,20}(about )?(this|the) (opportunity|role|position|job)|what.{0,15}(excites|attracts) you/ },
   ];
 
+  /* ---------- radio groups ----------
+     A radio group is one QUESTION (from the fieldset legend or the group's
+     container label) with the individual radios as its OPTIONS. A group with
+     any button already selected is never touched. */
+
+  function radioGroups() {
+    const groups = new Map();
+    for (const r of document.querySelectorAll('input[type=radio]')) {
+      const key = (r.form ? 'f' : 'd') + '::' + (r.name || r.id || '');
+      if (!key.endsWith('::')) (groups.get(key) || groups.set(key, []).get(key)).push(r);
+    }
+    return Array.from(groups.values());
+  }
+
+  function radioQuestion(radios) {
+    const fs = radios[0].closest('fieldset');
+    if (fs) {
+      const legend = fs.querySelector('legend');
+      if (legend && txt(legend)) return txt(legend).toLowerCase();
+    }
+    /* the deepest ancestor containing EVERY radio in the group */
+    let holder = radios[0].parentElement;
+    while (holder && !radios.every(r => holder.contains(r))) holder = holder.parentElement;
+    if (holder) {
+      const lab = holder.querySelector('legend, .label, [class*="label"], label:not(:has(input))')
+        || holder.querySelector('label');
+      if (lab && txt(lab)) return txt(lab).toLowerCase();
+    }
+    return '';
+  }
+
+  function radioLabel(radio) {
+    if (radio.id) {
+      const lab = document.querySelector(`label[for="${CSS.escape(radio.id)}"]`);
+      if (lab) return txt(lab);
+    }
+    const wrap = radio.closest('label');
+    if (wrap) return txt(wrap);
+    return radio.value || '';
+  }
+
+  function pickRadio(radios, rule) {
+    let hit = null;
+    if (rule.bool !== undefined && rule.bool !== null) {
+      const re = rule.bool ? /^\s*yes\b/i : /^\s*no\b/i;
+      hit = radios.find(r => re.test(radioLabel(r)));
+    } else if (rule.v) {
+      const w = String(rule.v).toLowerCase();
+      hit = radios.find(r => radioLabel(r).toLowerCase() === w)
+        || radios.find(r => radioLabel(r).toLowerCase().includes(w))
+        || radios.find(r => {
+          const t = radioLabel(r).toLowerCase();
+          return t.length > 3 && w.includes(t);
+        });
+    }
+    if (!hit || !visible(hit)) return false;
+    hit.click();                              // selects the option — submits nothing
+    return true;
+  }
+
   function autofill(profile) {
-    const rules = RULES(profile);
+    const essays = essayAnswers(profile);
+    const rules = RULES(profile, essays);
     const fields = Array.from(document.querySelectorAll(
       'input:not([type=hidden]):not([type=checkbox]):not([type=radio]):not([type=file])'
       + ':not([type=password]):not([type=submit]):not([type=button]), textarea, select'));
@@ -237,7 +376,8 @@
       if (!hay) continue;
 
       const rule = rules.find(r =>
-        r.re.test(hay) || (r.type && r.type((el.type || '').toLowerCase())));
+        (!r.el || r.el(el))
+        && (r.re.test(hay) || (r.type && r.type((el.type || '').toLowerCase()))));
 
       if (!rule) {
         /* an unmatched EMPTY field is a question we can't answer */
@@ -262,9 +402,29 @@
       if (ok) filled.push(rule.key);
       else {
         /* matched the question but we hold no answer (notice period,
-           current salary, an unlisted select option…) — surface it */
+           salary — never filled, an unlisted select option…) — surface it */
         const label = `${rule.key} — ${hay.slice(0, 60)}`;
         if (!seenUnknown.has(rule.key)) { seenUnknown.add(rule.key); unknown.push(label); }
+      }
+    }
+
+    /* radio groups: one question each */
+    for (const radios of radioGroups()) {
+      if (radios.some(r => r.checked)) { skipped++; continue; }   // never overwrite
+      if (!radios.some(visible)) continue;
+      const question = radioQuestion(radios);
+      if (!question) continue;
+
+      const rule = rules.find(r => !r.el && r.re.test(question));
+      if (!rule) {
+        const label = question.slice(0, 90);
+        if (!seenUnknown.has(label)) { seenUnknown.add(label); unknown.push(label); }
+        continue;
+      }
+      if (pickRadio(radios, rule)) filled.push(rule.key);
+      else if (!seenUnknown.has(rule.key)) {
+        seenUnknown.add(rule.key);
+        unknown.push(`${rule.key} — ${question.slice(0, 60)}`);
       }
     }
 
