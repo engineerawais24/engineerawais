@@ -4,10 +4,10 @@
 **Next Up**. Rules, project shape, and how to run the tests live in
 [CLAUDE.md](CLAUDE.md) — read that too.
 
-- **Last updated:** 2026-07-13
-- **Status:** 🟢 **v1.0 SHIPPED** (2026-07-13)
-- **Branch:** `main` — clean, **ahead of origin by 1** (`88732e7` unpushed; pushes need explicit approval)
-- **Head:** `88732e7` — CLAUDE.md operating rules + this handoff
+- **Last updated:** 2026-07-14
+- **Status:** 🟢 **v1.0 SHIPPED** (2026-07-13) · Chrome-extension MVP built 2026-07-14
+- **Branch:** `main` — clean, **ahead of origin by 3** (unpushed; pushes need explicit approval)
+- **Head:** `276f7a0` — Chrome extension MVP
 - **Remote:** github.com/engineerawais24/engineerawais
 
 ---
@@ -21,6 +21,7 @@
 | M3 | Intelligence — saved searches, scoring v1/v2, résumé recommendation, cover letters, packages, discovery, imports, parsing | 19–29 | ✅ Done |
 | M4 | **v1.0 release** — stabilization, demo-data isolation, backup/restore, salary visibility | 30 | ✅ **Shipped 2026-07-13** |
 | M5 | Post-v1 hardening — repo hygiene, `v1.0` tag, user data recovery | — | 🔶 In progress (see To-do) |
+| M6 | **Real-application helper** — Chrome extension: save the open job, autofill from profile | — | ✅ Built 2026-07-14 (`/extension`, needs a real-posting smoke test) |
 
 ## To-do (v1.0 → v1.0-tagged)
 
@@ -28,15 +29,19 @@
 - [x] `.gitignore` repaired — `.claude/` ignored, corrupted UTF-16 `.venv` entry fixed (`e4ec18a`)
 - [x] Cross-session handoff protocol — CLAUDE.md rules + HANDOFF.md state doc (`88732e7`)
 - [x] Memory notes for future sessions (test-runner technique, data-safety rules, approval rules)
+- [x] Un-track `.venv/` — repo dropped 5,599 → 202 tracked files (`a0a1d22`)
+- [x] Backend venv rebuilt on **Python 3.12** (3.13 can't build the pinned `pydantic-core`); pins unchanged; **pytest works: 30/30**
+- [x] **Chrome extension MVP** (`/extension`, `276f7a0`) — Save Current Job (`POST /api/jobs`, 409 = already saved), Autofill from `/api/profile` (+preferences/+employment), Open CareerPilot; detectors for LinkedIn/Bayt/GulfTalent/Workday/Greenhouse/Lever/generic; fills only empty visible fields, never submits; unknown questions listed in the popup; functional harness 15/15; `*.db` gitignored
 
-**Open — code/repo (each ≈ one commit):**
-- [ ] Un-track `.venv/` — 5,397 files still in git (`git rm -r --cached .venv`); ignore rule alone doesn't untrack
+**Open — code/repo:**
 - [ ] Delete dead root files: `index.html`, `index_backup.html`, `test` (the app is `app/index.html`)
-- [ ] Push `88732e7` (+ any hygiene commits) — **needs explicit approval**
+- [ ] Push the 3 unpushed commits — **needs explicit approval**
 - [ ] Tag `v1.0` after hygiene lands — **pushing the tag needs explicit approval**
 - [ ] Decide: pre-salary-field packages still read "Salary not disclosed" with no UI to fix them — leave, or add a one-off fixer
 
 **Open — user-side (browser, Chrome Profile 4; not code):**
+- [ ] Load the extension (`chrome://extensions` → Load unpacked → `/extension`; see `extension/README.md`) and smoke-test Save + Autofill on a real posting — selectors for the six sites are untested against live DOMs
+- [ ] Extension autofill reads the **backend** profile — populate it first (Settings → backend sync, or `PUT /api/profile`); the browser-localStorage profile is not what the extension sees
 - [ ] Run certification recovery — Resume Library → amber banner → **Restore** (built, never executed)
 - [ ] Re-enter six unrecoverable profile fields: target roles, preferred locations, languages, work mode, job type, sponsorship flag
 - [ ] Optionally recover work authorization / minSalary / LinkedIn from `careerpilot_prep_v1` + stored cover letters (console snippets in chat history)
@@ -62,25 +67,21 @@ prep, and an optional FastAPI backend with two-way sync.
 ## Next Up
 
 Nothing is mid-flight. Work through the **To-do** list above, top to bottom: the next
-concrete action is the repo-hygiene pair (un-track `.venv/`, delete the three dead
-root files), then ask for approval to push, then tag `v1.0`. The user-side recovery
-items can happen in parallel whenever the user is in their browser.
+concrete action is deleting the three dead root files, then ask for approval to push,
+then tag `v1.0`. The user-side items (load + smoke-test the extension, populate the
+backend profile, run cert recovery) can happen in parallel whenever the user is in
+their browser.
 
 ## Open Issues
 
-1. **`.venv/` is still tracked in git — 5,397 files.** The `.gitignore` rule landed in
-   `e4ec18a`, but the files were committed *before* it and were never un-tracked;
-   ignore rules do not apply to already-tracked paths. Fix: `git rm -r --cached .venv`,
-   then commit. It dwarfs the ~180 files of real source and makes every diff review
-   painful.
-2. **Dead files at repo root.** `index.html` and `index_backup.html` are "Bundled Page"
+1. **Dead files at repo root.** `index.html` and `index_backup.html` are "Bundled Page"
    artifacts from the initial commit — **not** the app (the app is
    [app/index.html](app/index.html)). There is also an empty file literally named
    `test`. All three are deletion candidates.
-3. **Historical commits carry `Co-Authored-By: Claude`** (through `e4ec18a`). The
+2. **Historical commits carry `Co-Authored-By: Claude`** (through `e4ec18a`). The
    no-AI-attribution rule applies **going forward**; history is not being rewritten
    without an explicit request.
-4. **Sprint 18's harness cannot run headlessly.** Needs a real browser window. Known.
+3. **Sprint 18's harness cannot run headlessly.** Needs a real browser window. Known.
 
 ## Historical Incident — do not repeat
 
@@ -96,6 +97,9 @@ kill a test harness mid-run.
 
 | Sprint | Commit | Summary |
 |--------|--------|---------|
+| — | `276f7a0` | Chrome extension MVP: save job + autofill from profile |
+| — | `a0a1d22` | Un-track `.venv` (5,397 files) |
+| — | `1a5e718` | Handoff: milestones table + v1.0 to-do list |
 | — | `88732e7` | CLAUDE.md operating rules + HANDOFF.md handoff protocol |
 | — | `e4ec18a` | .gitignore repair (`.claude/`, corrupted UTF-16 `.venv` entry) |
 | 30 | `9e67065` | Version 1 final stabilization; salary-edit UI removed — **v1.0** |
