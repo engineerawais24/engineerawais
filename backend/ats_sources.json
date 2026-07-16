@@ -1,0 +1,9 @@
+{
+  "_comment": "Public ATS job feeds to import via POST /api/ats/import (or `python -m app.services.ats_import`). Set enabled:true to include a company. 'ats' is 'greenhouse' or 'lever'. 'slug' is the Greenhouse board token or the Lever company slug — the part in the public board URL, e.g. https://boards.greenhouse.io/<token> or https://jobs.lever.co/<slug>. Sample entries below are real public boards but left DISABLED.",
+  "companies": [
+    { "name": "Stripe",     "ats": "greenhouse", "slug": "stripe",     "enabled": false },
+    { "name": "Airtable",   "ats": "greenhouse", "slug": "airtable",   "enabled": false },
+    { "name": "Vercel",     "ats": "lever",      "slug": "vercel",     "enabled": false },
+    { "name": "Netlify",    "ats": "lever",      "slug": "netlify",    "enabled": false }
+  ]
+}
