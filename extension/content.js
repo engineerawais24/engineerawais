@@ -121,6 +121,88 @@
     return { title, company, location: loc, url: location.href, source, detectedBy };
   }
 
+  /* ================= 1b. LINKEDIN LIST HARVEST =================
+     Read the job cards ALREADY rendered on the logged-in LinkedIn Jobs
+     search page. Nothing is fetched and nothing is scraped server-side —
+     this only reads the DOM the user is already looking at. It returns the
+     five fields CareerPilot stores (title/company/location/url/source); the
+     popup saves them and the backend rejects duplicates. */
+
+  /* LinkedIn doubles link text into a visually-hidden span, so "Senior
+     Engineer" arrives as "Senior EngineerSenior Engineer" — halve it. */
+  function undouble(s) {
+    const t = (s || '').replace(/\s+/g, ' ').trim();
+    if (!t) return t;
+    const half = t.length / 2;
+    if (t.length % 2 === 0 && t.slice(0, half) === t.slice(half)) return t.slice(0, half).trim();
+    const m = t.match(/^(.+?)\1$/);            // repeated with no separator
+    return m ? m[1].trim() : t;
+  }
+
+  function jobIdFrom(anchor, card) {
+    const href = anchor.getAttribute('href') || '';
+    const m = href.match(/\/jobs\/view\/(\d+)/) || href.match(/currentJobId=(\d+)/);
+    if (m) return m[1];
+    const dj = (card && card.getAttribute('data-job-id'))
+      || anchor.getAttribute('data-job-id')
+      || (card && (card.querySelector('[data-job-id]') || {}).getAttribute?.('data-job-id'));
+    return dj && /^\d+$/.test(dj) ? dj : '';
+  }
+
+  function collectLinkedIn() {
+    /* the popup already refuses to invoke this off LinkedIn; this flag is only
+       reported, not enforced — the `/jobs/view/` selector scopes it anyway */
+    const onLinkedIn = /(^|\.)linkedin\.com$/.test(location.hostname.toLowerCase());
+
+    const anchors = Array.from(document.querySelectorAll('a[href*="/jobs/view/"]'));
+    const seen = new Set();
+    const jobs = [];
+
+    for (const a of anchors) {
+      if (!a.getBoundingClientRect().height) continue;      // only what's on screen/rendered
+      const card = a.closest(
+        '.job-card-container, .scaffold-layout__list-item, li.jobs-search-results__list-item, '
+        + '[data-job-id], li.occludable-update, div.job-card-list');
+      const id = jobIdFrom(a, card);
+
+      let title = undouble(a.getAttribute('aria-label') || txt(a));
+      if (!title || title.length > 160) continue;
+
+      const scope = card || a.parentElement;
+      const company = undouble(firstIn(scope, [
+        '.job-card-container__primary-description',
+        '.artdeco-entity-lockup__subtitle',
+        '.job-card-container__company-name',
+        '.job-card-list__company-name',
+      ]));
+      const loc = undouble(firstIn(scope, [
+        '.job-card-container__metadata-item',
+        '.artdeco-entity-lockup__caption',
+        'ul.job-card-container__metadata-wrapper li',
+      ]));
+
+      const url = id
+        ? `https://www.linkedin.com/jobs/view/${id}/`
+        : (a.href || '').split(/[?#]/)[0];
+      const key = url.toLowerCase();
+      if (!url || seen.has(key)) continue;                 // dedupe within the batch, by URL
+      seen.add(key);
+
+      jobs.push({ title, company, location: loc, url, source: 'LinkedIn' });
+    }
+
+    return { ok: true, onLinkedIn, jobs, count: jobs.length };
+  }
+
+  /* first() scoped to a subtree (LinkedIn cards) — same "first non-empty" rule */
+  function firstIn(root, sels) {
+    for (const s of sels) {
+      const el = (root || document).querySelector(s);
+      if (el && txt(el)) return txt(el);
+    }
+    return '';
+  }
+
   /* ================= 2. AUTOFILL ================= */
 
   /* everything we can learn about what a field is asking */
@@ -436,6 +518,7 @@
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     try {
       if (msg.type === 'detect') sendResponse(detect());
+      else if (msg.type === 'collectLinkedIn') sendResponse(collectLinkedIn());
       else if (msg.type === 'autofill') sendResponse(autofill(msg.profile || {}));
     } catch (e) {
       sendResponse({ error: e.message, filled: [], skipped: 0, unknown: [] });

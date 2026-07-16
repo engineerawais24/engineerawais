@@ -177,6 +177,63 @@ $('save').addEventListener('click', async () => {
   }
 });
 
+/* ---------- Import LinkedIn Jobs ----------
+   Reads the job cards already on the open LinkedIn search page and saves each
+   via the SAME POST /api/jobs used by Save Current Job. Duplicates are handled
+   by the backend (same canonical URL → same source_job_id → 409), so re-running
+   on the same page adds nothing new. */
+
+$('importli').addEventListener('click', async () => {
+  setStatus('Reading LinkedIn job cards…');
+  showQuestions([]);
+  showJob(null);
+  try {
+    const tab = await activeTab();
+    if (!/^https?:\/\/([\w-]+\.)*linkedin\.com\//.test(tab.url || '')) {
+      setStatus('Open a LinkedIn Jobs search page first, then click this.', 'err');
+      return;
+    }
+    const res = await askPage(tab, { type: 'collectLinkedIn' });
+    if (!res || !res.ok || !res.jobs.length) {
+      setStatus('No LinkedIn job cards found on this page.\nScroll the results list so cards render, then try again.', 'err');
+      return;
+    }
+
+    let saved = 0, dup = 0, failed = 0;
+    for (const job of res.jobs) {
+      const canonical = (job.url || '').split(/[?#]/)[0];
+      try {
+        await api('/api/jobs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            source: 'LinkedIn',
+            source_job_id: hashId(canonical),      // stable per URL → dedup by URL
+            title: job.title,
+            company: job.company || '',
+            location: job.location || '',
+            apply_url: job.url,
+            canonical_url: canonical,
+            posted_date: new Date().toISOString().slice(0, 10),   // date found
+            raw: { detectedBy: 'LinkedIn-list' },
+          }),
+        });
+        saved++;
+      } catch (e) {
+        if (e.status === 409) dup++;
+        else failed++;
+      }
+    }
+
+    const bits = [`Found ${res.jobs.length} · saved ${saved}`];
+    if (dup) bits.push(`${dup} already in CareerPilot`);
+    if (failed) bits.push(`${failed} failed`);
+    setStatus(bits.join(' · '), failed ? 'err' : 'ok');
+  } catch (e) {
+    setStatus(e.message, 'err');
+  }
+});
+
 /* ---------- Autofill Application ---------- */
 
 $('fill').addEventListener('click', async () => {

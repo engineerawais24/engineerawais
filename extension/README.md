@@ -30,6 +30,7 @@ your machine.
 | Button | What it does |
 |---|---|
 | **Save Current Job** | Reads the posting (title, company, location, URL, source) off the open tab and saves it via `POST /api/jobs`. Saving the same URL twice is detected ("Already saved"). |
+| **Import LinkedIn Jobs** | On an open **LinkedIn Jobs search** page (you must be logged in), reads the job cards already rendered on screen and saves each one (title, company, location, URL, `source = LinkedIn`, date found) via the same `POST /api/jobs`. Duplicates are rejected by URL, so re-running adds nothing new. Reads only the DOM you're already looking at — nothing is fetched or scraped. Scroll the results list first so more cards render. |
 | **Autofill Application** | Loads your profile from `/api/profile` (+ preferences and employment), then fills **empty, visible** fields on the page: name, email, phone, city, country, current title/company, years of experience, expected salary, nationality, work authorization, sponsorship (Yes/No), relocation (Yes/No), LinkedIn. Anything it couldn't answer is listed under **Needs your answer** in the popup. |
 | **Open CareerPilot** | Opens the app (`app/index.html`). Needs the file-URL toggle from step 6. |
 

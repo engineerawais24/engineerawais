@@ -44,6 +44,67 @@ def test_save_same_job_twice_is_409(client):
     assert len(client.get("/api/jobs").json()) == 1
 
 
+def _li_hash(url: str) -> str:
+    """Mirror of popup.js hashId() — FNV-1a over the canonical URL.
+    Two different LinkedIn job URLs must produce two different ids so the
+    'dedup by URL' behaviour rides on the endpoint's (source, source_job_id)
+    uniqueness."""
+    h = 2166136261
+    for ch in url:
+        h ^= ord(ch)
+        h = (h * 16777619) & 0xFFFFFFFF
+    return "ext-" + format(h, "x")
+
+
+def _li_job(job_id: str, title: str, company: str):
+    url = f"https://www.linkedin.com/jobs/view/{job_id}/"
+    return {
+        "source": "LinkedIn",
+        "source_job_id": _li_hash(url),
+        "title": title,
+        "company": company,
+        "location": "Dubai, United Arab Emirates",
+        "apply_url": url,
+        "canonical_url": url,
+        "posted_date": "2026-07-14",
+        "raw": {"detectedBy": "LinkedIn-list"},
+    }
+
+
+def test_linkedin_import_saves_each_distinct_job(client):
+    """The 'Import LinkedIn Jobs' batch: distinct URLs all save (201)."""
+    batch = [
+        _li_job("111", "Senior Solutions Engineer", "Careem"),
+        _li_job("222", "Cloud Consultant", "stc"),
+        _li_job("333", "Platform Engineer", "noon"),
+    ]
+    for job in batch:
+        assert client.post("/api/jobs", json=job).status_code == 201
+
+    saved = client.get("/api/jobs").json()
+    assert len(saved) == 3
+    assert {j["source"] for j in saved} == {"LinkedIn"}
+    assert all(j["apply_url"].startswith("https://www.linkedin.com/jobs/view/") for j in saved)
+    # distinct URLs -> distinct ids (dedup key is per-URL)
+    assert len({j["source_job_id"] for j in saved}) == 3
+
+
+def test_linkedin_reimport_is_all_duplicates(client):
+    """Re-running the import on the same page adds nothing new — every 409."""
+    jobs = [_li_job("111", "Senior Solutions Engineer", "Careem"),
+            _li_job("222", "Cloud Consultant", "stc")]
+    for job in jobs:
+        assert client.post("/api/jobs", json=job).status_code == 201
+
+    # same page, imported again
+    for job in jobs:
+        dup = client.post("/api/jobs", json=job)
+        assert dup.status_code == 409
+        assert dup.json()["error"]["code"] == "duplicate"
+
+    assert len(client.get("/api/jobs").json()) == 2   # no growth
+
+
 def test_autofill_profile_shape(client):
     """popup.js loadProfile() reads these exact keys from the three GETs."""
     profile = client.get("/api/profile").json()
