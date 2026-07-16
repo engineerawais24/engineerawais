@@ -139,55 +139,74 @@
     return m ? m[1].trim() : t;
   }
 
-  function jobIdFrom(anchor, card) {
-    const href = anchor.getAttribute('href') || '';
-    const m = href.match(/\/jobs\/view\/(\d+)/) || href.match(/currentJobId=(\d+)/);
-    if (m) return m[1];
-    const dj = (card && card.getAttribute('data-job-id'))
-      || anchor.getAttribute('data-job-id')
-      || (card && (card.querySelector('[data-job-id]') || {}).getAttribute?.('data-job-id'));
-    return dj && /^\d+$/.test(dj) ? dj : '';
+  /* the job's numeric id — the stable dedup key. On the search page the LEFT
+     list cards link via `?currentJobId=<id>` (or carry data-*job-id); only the
+     RIGHT detail pane uses `/jobs/view/<id>`. Read every source. */
+  function cardJobId(card, anchor) {
+    let id = card.getAttribute('data-occludable-job-id')
+      || card.getAttribute('data-job-id') || '';
+    if (!id) {
+      const holder = card.querySelector('[data-occludable-job-id], [data-job-id]');
+      if (holder) id = holder.getAttribute('data-occludable-job-id') || holder.getAttribute('data-job-id') || '';
+    }
+    if (!id && anchor) {
+      const href = anchor.getAttribute('href') || '';
+      const m = href.match(/\/jobs\/view\/(\d+)/) || href.match(/currentJobId=(\d+)/);
+      if (m) id = m[1];
+    }
+    return /^\d+$/.test(id) ? id : '';
   }
 
   function collectLinkedIn() {
-    /* the popup already refuses to invoke this off LinkedIn; this flag is only
-       reported, not enforced — the `/jobs/view/` selector scopes it anyway */
+    /* the popup already refuses to invoke this off LinkedIn; only reported here */
     const onLinkedIn = /(^|\.)linkedin\.com$/.test(location.hostname.toLowerCase());
 
-    const anchors = Array.from(document.querySelectorAll('a[href*="/jobs/view/"]'));
+    /* iterate CARD CONTAINERS, not `/jobs/view/` anchors — the left results
+       list is what we want, and its cards don't use /jobs/view/ hrefs. Nested
+       matches (li + inner div) are fine: dedup by URL collapses them. */
+    const cards = Array.from(document.querySelectorAll(
+      'li[data-occludable-job-id], [data-job-id], div.job-card-container, '
+      + 'li.jobs-search-results__list-item, li.scaffold-layout__list-item, '
+      + 'div.job-card-list, [data-view-name="job-card"]'));
+
     const seen = new Set();
     const jobs = [];
 
-    for (const a of anchors) {
-      if (!a.getBoundingClientRect().height) continue;      // only what's on screen/rendered
-      const card = a.closest(
-        '.job-card-container, .scaffold-layout__list-item, li.jobs-search-results__list-item, '
-        + '[data-job-id], li.occludable-update, div.job-card-list');
-      const id = jobIdFrom(a, card);
+    for (const card of cards) {
+      /* rendered only — display:none has no client rects; occluded-but-present
+         list items DO have rects, so they're kept, and truly not-yet-rendered
+         placeholders fall out below on an empty title (scroll reveals them) */
+      if (!card.getClientRects().length) continue;
 
-      let title = undouble(a.getAttribute('aria-label') || txt(a));
-      if (!title || title.length > 160) continue;
+      const anchor = card.querySelector(
+        'a.job-card-container__link, a.job-card-list__title, '
+        + 'a[href*="/jobs/view/"], a[href*="currentJobId="], a[href*="/jobs/"]');
 
-      const scope = card || a.parentElement;
-      const company = undouble(firstIn(scope, [
+      const id = cardJobId(card, anchor);
+      if (!id) continue;
+
+      const url = `https://www.linkedin.com/jobs/view/${id}/`;
+      const key = url.toLowerCase();
+      if (seen.has(key)) continue;                          // dedupe within the batch, by URL
+
+      let title = undouble((anchor && (anchor.getAttribute('aria-label') || txt(anchor)))
+        || firstIn(card, ['.job-card-list__title', '.artdeco-entity-lockup__title',
+          '.job-card-container__link', 'a[href*="/jobs/"]']));
+      if (!title || title.length > 160) continue;           // placeholder / junk
+
+      const company = undouble(firstIn(card, [
         '.job-card-container__primary-description',
         '.artdeco-entity-lockup__subtitle',
         '.job-card-container__company-name',
         '.job-card-list__company-name',
       ]));
-      const loc = undouble(firstIn(scope, [
+      const loc = undouble(firstIn(card, [
         '.job-card-container__metadata-item',
         '.artdeco-entity-lockup__caption',
         'ul.job-card-container__metadata-wrapper li',
       ]));
 
-      const url = id
-        ? `https://www.linkedin.com/jobs/view/${id}/`
-        : (a.href || '').split(/[?#]/)[0];
-      const key = url.toLowerCase();
-      if (!url || seen.has(key)) continue;                 // dedupe within the batch, by URL
       seen.add(key);
-
       jobs.push({ title, company, location: loc, url, source: 'LinkedIn' });
     }
 
