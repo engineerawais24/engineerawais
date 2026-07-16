@@ -135,82 +135,113 @@
     if (!t) return t;
     const half = t.length / 2;
     if (t.length % 2 === 0 && t.slice(0, half) === t.slice(half)) return t.slice(0, half).trim();
-    const m = t.match(/^(.+?)\1$/);            // repeated with no separator
+    /* two identical halves, adjacent OR whitespace-separated:
+       "TitleTitle" and "Title Title" (spans joined by textContent) both halve */
+    const m = t.match(/^(.+?)\s*\1$/);
     return m ? m[1].trim() : t;
   }
 
-  /* the job's numeric id — the stable dedup key. On the search page the LEFT
-     list cards link via `?currentJobId=<id>` (or carry data-*job-id); only the
-     RIGHT detail pane uses `/jobs/view/<id>`. Read every source. */
-  function cardJobId(card, anchor) {
-    let id = card.getAttribute('data-occludable-job-id')
-      || card.getAttribute('data-job-id') || '';
-    if (!id) {
-      const holder = card.querySelector('[data-occludable-job-id], [data-job-id]');
-      if (holder) id = holder.getAttribute('data-occludable-job-id') || holder.getAttribute('data-job-id') || '';
+  const firstLine = s => (s || '').split('\n').map(x => x.trim()).find(Boolean) || '';
+
+  /* the visible parent card of a job link. The search results are a list, so
+     the nearest <li> is almost always the card; failing that, climb to the
+     first ancestor that actually holds more than one line of text. Structural,
+     not class-based — resilient to LinkedIn's class churn. */
+  function nearestCard(anchor) {
+    let el = anchor;
+    for (let i = 0; i < 8 && el.parentElement; i++) {
+      el = el.parentElement;
+      if (el.tagName === 'LI') return el;
+      if (el.hasAttribute && (el.hasAttribute('data-occludable-job-id') || el.hasAttribute('data-job-id'))) return el;
     }
-    if (!id && anchor) {
-      const href = anchor.getAttribute('href') || '';
-      const m = href.match(/\/jobs\/view\/(\d+)/) || href.match(/currentJobId=(\d+)/);
-      if (m) id = m[1];
+    el = anchor.parentElement;
+    for (let i = 0; i < 8 && el; i++) {
+      if ((el.innerText || '').split('\n').filter(s => s.trim()).length >= 2) return el;
+      el = el.parentElement;
     }
-    return /^\d+$/.test(id) ? id : '';
+    return anchor.parentElement || anchor;
+  }
+
+  /* boilerplate that appears in a card but is never company or location */
+  const CARD_NOISE = /^(easy apply|promoted|viewed|saved?|save|actively (reviewing|hiring)|be an early applicant|reposted|new|with verification|see how you compare|show more|hiring|am i a good fit\??|try premium.*|·|\+?\d+ (applicants?|connections?|school alumni|alum.*)|.*\bago\b.*|·.*)$/i;
+
+  /* company + location, WITHOUT relying on class names: read the card's text
+     lines, drop the title and the boilerplate, and take what's left. (A couple
+     of known class hints are tried first only as a fast path.) */
+  function extractCompanyLocation(card, title) {
+    let company = undouble(firstIn(card, [
+      '.job-card-container__primary-description', '.artdeco-entity-lockup__subtitle',
+      '.job-card-container__company-name', '.job-card-list__company-name',
+    ]));
+    let location = undouble(firstIn(card, [
+      '.job-card-container__metadata-item', '.artdeco-entity-lockup__caption',
+      'ul.job-card-container__metadata-wrapper li',
+    ]));
+    if (company && location) return { company, location };
+
+    const t = undouble(title);
+    const lines = (card.innerText || '').split('\n').map(s => s.trim())
+      .filter(Boolean)
+      .filter(l => undouble(l) !== t && !CARD_NOISE.test(l));
+    const looksLikeLocation = l =>
+      /,/.test(l) || /\((remote|hybrid|on-?site)\)/i.test(l)
+      || /\b(remote|hybrid|on-?site)\b/i.test(l)
+      || /\b(united arab emirates|saudi arabia|uae|ksa|pakistan|india|egypt|qatar|kuwait|bahrain|oman|dubai|abu dhabi|riyadh|jeddah|karachi|cairo|remote)\b/i.test(l);
+
+    if (!company) company = lines.find(l => !looksLikeLocation(l)) || lines[0] || '';
+    if (!location) location = lines.find(l => l !== company && looksLikeLocation(l))
+      || lines.filter(l => l !== company)[0] || '';
+    return { company, location };
   }
 
   function collectLinkedIn() {
     /* the popup already refuses to invoke this off LinkedIn; only reported here */
     const onLinkedIn = /(^|\.)linkedin\.com$/.test(location.hostname.toLowerCase());
 
-    /* iterate CARD CONTAINERS, not `/jobs/view/` anchors — the left results
-       list is what we want, and its cards don't use /jobs/view/ hrefs. Nested
-       matches (li + inner div) are fine: dedup by URL collapses them. */
-    const cards = Array.from(document.querySelectorAll(
-      'li[data-occludable-job-id], [data-job-id], div.job-card-container, '
-      + 'li.jobs-search-results__list-item, li.scaffold-layout__list-item, '
-      + 'div.job-card-list, [data-view-name="job-card"]'));
+    /* ANCHOR-first, by href only — the one stable signal. Every job link on the
+       search page carries either ?currentJobId=<id> (left list) or
+       /jobs/view/<id> (right detail pane). No class guessing. */
+    const anchors = Array.from(document.querySelectorAll(
+      'a[href*="currentJobId="], a[href*="/jobs/view/"]'));
+
+    const idOf = a => {
+      const href = a.getAttribute('href') || '';
+      const m = href.match(/currentJobId=(\d+)/) || href.match(/\/jobs\/view\/(\d+)/);
+      return m ? m[1] : '';
+    };
+
+    const allIds = new Set();
+    anchors.forEach(a => { const id = idOf(a); if (id) allIds.add(id); });
 
     const seen = new Set();
     const jobs = [];
 
-    for (const card of cards) {
-      /* rendered only — display:none has no client rects; occluded-but-present
-         list items DO have rects, so they're kept, and truly not-yet-rendered
-         placeholders fall out below on an empty title (scroll reveals them) */
-      if (!card.getClientRects().length) continue;
+    for (const a of anchors) {
+      const id = idOf(a);
+      if (!id || seen.has(id)) continue;                    // dedupe by job id (#5)
 
-      const anchor = card.querySelector(
-        'a.job-card-container__link, a.job-card-list__title, '
-        + 'a[href*="/jobs/view/"], a[href*="currentJobId="], a[href*="/jobs/"]');
+      const card = nearestCard(a);
+      /* the card must actually be rendered — display:none has no client rects */
+      if (card.getClientRects && !card.getClientRects().length) continue;
 
-      const id = cardJobId(card, anchor);
-      if (!id) continue;
+      let title = undouble(firstLine(txt(a)) || a.getAttribute('aria-label') || '');
+      if (!title || title.length > 160) continue;
 
-      const url = `https://www.linkedin.com/jobs/view/${id}/`;
-      const key = url.toLowerCase();
-      if (seen.has(key)) continue;                          // dedupe within the batch, by URL
+      const { company, location: loc } = extractCompanyLocation(card, title);
 
-      let title = undouble((anchor && (anchor.getAttribute('aria-label') || txt(anchor)))
-        || firstIn(card, ['.job-card-list__title', '.artdeco-entity-lockup__title',
-          '.job-card-container__link', 'a[href*="/jobs/"]']));
-      if (!title || title.length > 160) continue;           // placeholder / junk
-
-      const company = undouble(firstIn(card, [
-        '.job-card-container__primary-description',
-        '.artdeco-entity-lockup__subtitle',
-        '.job-card-container__company-name',
-        '.job-card-list__company-name',
-      ]));
-      const loc = undouble(firstIn(card, [
-        '.job-card-container__metadata-item',
-        '.artdeco-entity-lockup__caption',
-        'ul.job-card-container__metadata-wrapper li',
-      ]));
-
-      seen.add(key);
-      jobs.push({ title, company, location: loc, url, source: 'LinkedIn' });
+      seen.add(id);
+      jobs.push({
+        title, company, location: loc,
+        url: `https://www.linkedin.com/jobs/view/${id}/`,     // canonical (#3)
+        source: 'LinkedIn',
+      });
     }
 
-    return { ok: true, onLinkedIn, jobs, count: jobs.length };
+    return {
+      ok: true, onLinkedIn, jobs, count: jobs.length,
+      /* temporary diagnostics for the popup */
+      debug: { links: anchors.length, uniqueIds: allIds.size, parsed: jobs.length },
+    };
   }
 
   /* first() scoped to a subtree (LinkedIn cards) — same "first non-empty" rule */

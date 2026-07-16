@@ -194,8 +194,12 @@ $('importli').addEventListener('click', async () => {
       return;
     }
     const res = await askPage(tab, { type: 'collectLinkedIn' });
+    /* temporary debug — links matched / unique ids / cards parsed */
+    const dbg = res && res.debug
+      ? `\n[debug] links ${res.debug.links} · ids ${res.debug.uniqueIds} · parsed ${res.debug.parsed}` : '';
+    if (res && res.debug) console.log('CareerPilot LinkedIn import', res.debug, res.jobs);
     if (!res || !res.ok || !res.jobs.length) {
-      setStatus('No LinkedIn job cards found on this page.\nScroll the results list so cards render, then try again.', 'err');
+      setStatus('No LinkedIn job cards found on this page.\nScroll the results list so cards render, then try again.' + dbg, 'err');
       return;
     }
 
@@ -228,7 +232,7 @@ $('importli').addEventListener('click', async () => {
     const bits = [`Found ${res.jobs.length} · saved ${saved}`];
     if (dup) bits.push(`${dup} already in CareerPilot`);
     if (failed) bits.push(`${failed} failed`);
-    setStatus(bits.join(' · '), failed ? 'err' : 'ok');
+    setStatus(bits.join(' · ') + dbg, failed ? 'err' : 'ok');
   } catch (e) {
     setStatus(e.message, 'err');
   }
