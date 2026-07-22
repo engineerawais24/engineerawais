@@ -25,7 +25,7 @@ is an unfinished task.
 
 Update these sections: `Current State`, `Next Up`, `Open Issues`, and add a line to
 `Sprint Log`. Keep it factual and short. Delete stale entries rather than letting
-them pile up.
+them pile up. **Then commit and push** (rule 2) so GitHub mirrors the latest state.
 
 ## 3. Hard rules — never violate
 
@@ -34,8 +34,13 @@ them pile up.
    Admin/diagnostic UIs display **boolean status only** for secrets
    ("configured" / "missing") — never values. `.env` is never committed;
    `backend/.env.example` carries placeholders only.
-2. **Every `git push` needs explicit approval, every time.** Commit freely. Ask
-   before every push — prior approval never carries over to the next push.
+2. **Auto-backup is ON — commit and push without asking.** The user gave standing
+   authorization (2026-07-22) to keep GitHub as a live backup: after each completed
+   unit of work, commit **and** `git push` to `origin/main` automatically, no
+   approval prompt. This authorization does not weaken rule 1 or the §5 data-safety
+   invariants — those are the guardrail. The push is only ever safe because
+   `.gitignore` excludes `.env`, `*.db`, and `.claude/`; if you add anything
+   sensitive, gitignore it **before** the next auto-push. Never `--force`-push.
 3. **No AI attribution in commits.** No `Co-Authored-By: Claude`, no "Generated
    with Claude Code", no AI mention in commit messages or PR bodies.
 

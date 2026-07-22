@@ -8,3 +8,10 @@ __pycache__/
 
 # Local SQLite databases — user data, never committed
 *.db
+
+# Environment / secrets — never committed (only *.example placeholders belong in git)
+.env
+**/.env
+.env.*
+!.env.example
+!**/.env.example

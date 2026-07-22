@@ -78,13 +78,17 @@ prep, and an optional FastAPI backend with two-way sync.
   entry survives only for **imported** jobs; the salary chip and the import-form
   currency/period fields were deliberately kept ("Edit UI only" revert scope).
 - **No `v1.0` git tag exists yet** — the release was a push to `main`, not a tag.
+- **Auto-backup is ON (2026-07-22).** GitHub (`origin/main`) is now a live backup:
+  after each unit of work, commit **and** push automatically, no approval prompt
+  (CLAUDE.md rule 2). `.gitignore` excludes `.env`, `*.db`, `.claude/` — that is the
+  guardrail that keeps auto-push safe.
 
 ## Next Up
 
-Nothing is mid-flight. Immediate: **ask to push the 2 unpushed commits** (`961c6a0`,
-`88b4e46`), then the repo-hygiene items (delete the 3 dead root files) and the `v1.0`
-tag. The user-side items — live-DOM smoke test of the extension, enabling ATS
-companies, cert recovery — happen whenever the user is at their browser.
+Nothing is mid-flight. Repo-hygiene items remain: delete the 3 dead root files
+(`index.html`, `index_backup.html`, and the stray `test`/) and cut the `v1.0` tag.
+The user-side items — live-DOM smoke test of the extension, enabling ATS companies,
+cert recovery — happen whenever the user is at their browser.
 
 The extension and ATS importer are the current active thread; the app itself (Sprints
 1–30) is stable and shipped.
