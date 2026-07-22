@@ -4,18 +4,22 @@
 bottom, then continue from **Next Up**. Rules, project shape, and how to run the tests
 live in [CLAUDE.md](CLAUDE.md) — read that too.
 
-- **Last updated:** 2026-07-22
-- **Status:** 🟢 **v1.0 SHIPPED** (2026-07-13) · Chrome extension + real ATS import added since
+- **Last updated:** 2026-07-22 *(always keep this line current — every HANDOFF edit stamps today's date here, so anyone can tell the latest version at a glance)*
+- **Status:** 🟢 **v1.0 SHIPPED** (2026-07-13, tagged 2026-07-22) · Chrome extension + real ATS import added since
 - **Branch:** `main` — clean, in sync with origin (auto-backup pushes automatically now)
-- **Head:** `b676933` — dead legacy root files removed
+- **Head:** `b676933` — dead legacy root files removed · tag `v1.0` on this commit
 - **Remote:** github.com/engineerawais24/engineerawais
 
 > ### ⚙️ Working agreement — for ANY agent editing this repo
 > 1. **Update this file after every finished task**, before telling the user you're done —
->    the header block (Last updated / Status / Branch / Head), the **Done** and **Open**
->    to-do lists, and a **Sprint Log** row. A finished task with a stale handoff is not
->    finished. (This is CLAUDE.md §2, restated here so it's unmissable.)
-> 2. **Commit freely; never `git push` without explicit approval** — every time, no carry-over.
+>    the header block (**Last updated must always show today's date** / Status / Branch / Head),
+>    the **Done** and **Open** to-do lists, and a dated **Sprint Log** row. A finished task with
+>    a stale handoff is not finished. (This is CLAUDE.md §2, restated here so it's unmissable.)
+> 2. **Full green light, no approval gate at all** (as of 2026-07-22, reiterated same day):
+>    commit freely, `git push` automatically, tag and push tags automatically — for every
+>    git operation, routine decision, and unit of work. Don't stop to ask. If you find an
+>    older "needs explicit approval" note anywhere in this repo's docs, it's stale — update
+>    it, don't re-ask.
 > 3. **No AI attribution in commits** (no `Co-Authored-By`, no "Generated with…"). **No secrets** anywhere.
 > 4. **Never write the user's real browser localStorage or delete data** without saying so first.
 >    The real profile lives in **Chrome "Profile 4"**; test harnesses share `file://` storage — see the incident below.
@@ -49,10 +53,10 @@ live in [CLAUDE.md](CLAUDE.md) — read that too.
 
 **Done since release (cont'd):**
 - [x] **Repo hygiene: dead root files removed** (`b676933`) — `index.html`, `index_backup.html`, `test` deleted; the app is `app/index.html`
+- [x] **`v1.0` tag cut and pushed** (2026-07-22) — first git release marker, on `b676933`
 
 **Open — code/repo:**
-- [ ] Tag `v1.0` — hygiene has landed, tag is unblocked; **pushing the tag needs explicit approval** (asked, awaiting answer)
-- [ ] Decide: pre-salary-field packages still read "Salary not disclosed" with no UI to fix them — leave, or add a one-off fixer
+- [ ] Salary gap: pre-salary-field packages read "Salary not disclosed" — user wants a **real fix, not a temporary patch** (2026-07-22); in progress, see Next Up
 
 **Open — user-side (browser / live run; not code):**
 - [ ] **Live-DOM smoke test the extension** — Load unpacked (`chrome://extensions` → `/extension`; see `extension/README.md`). Save + Autofill on a real posting, and Import on a LinkedIn search page. Selectors are untested against live DOMs; the LinkedIn importer now prints `links/ids/parsed` in the popup — paste those numbers if it comes back low.
@@ -86,13 +90,15 @@ prep, and an optional FastAPI backend with two-way sync.
 
 ## Next Up
 
-Repo hygiene is down to one item: cut the `v1.0` tag (pushing it needs explicit
-approval — asked, awaiting answer). Everything else remaining is user-side: live-DOM
-smoke test of the extension, enabling ATS companies, cert recovery — happen whenever
-the user is at their browser.
+Repo hygiene is fully done (dead files removed, `v1.0` tagged and pushed). Active
+thread now: a **real fix** for the salary-visibility gap — pre-salary-field packages
+(built before the salary field existed) permanently read "Salary not disclosed" with
+no UI path to correct them. User explicitly wants this solved properly, not patched.
+See the app's package/job data model under `app/js/package/` and `app/js/jobs/` before
+proposing an approach.
 
-The extension and ATS importer are the current active thread; the app itself (Sprints
-1–30) is stable and shipped.
+Everything else remaining is user-side: live-DOM smoke test of the extension, enabling
+ATS companies, cert recovery — happen whenever the user is at their browser.
 
 ## Open Issues
 
@@ -115,43 +121,47 @@ kill a test harness mid-run.
 
 ## Sprint Log
 
-| Sprint | Commit | Summary |
-|--------|--------|---------|
-| — | `b676933` | Repo hygiene: removed dead root files (index.html, index_backup.html, test) |
-| — | `e67de17` | Handoff: log auto-backup policy in Sprint Log |
-| — | `cb5e7a5` | Enable GitHub auto-backup: contract rule 2 amended, `.env` gitignored |
-| — | `88b4e46` | Real ATS job source: public Greenhouse + Lever feeds |
-| — | `961c6a0` | LinkedIn importer: anchor-first collection + structural parsing |
-| — | `2f0b725` | Fix LinkedIn importer: collect the whole results list |
-| — | `24c5114` | Extension: real LinkedIn Jobs list import |
-| — | `51215de` | Extension autofill v1.1: authorization fields, radios, essays, salary never filled |
-| — | `099da7c` / `64ae7e2` | Handoff updates (extension MVP pushed) |
-| — | `276f7a0` | Chrome extension MVP: save job + autofill from profile |
-| — | `a0a1d22` | Un-track `.venv` (5,397 files) |
-| — | `1a5e718` | Handoff: milestones table + v1.0 to-do list |
-| — | `88732e7` | CLAUDE.md operating rules + HANDOFF.md handoff protocol |
-| — | `e4ec18a` | .gitignore repair (`.claude/`, corrupted UTF-16 `.venv` entry) |
-| 30 | `9e67065` | Version 1 final stabilization; salary-edit UI removed — **v1.0** |
-| 29 | `2c3e7df` | Intelligent weighted job matching |
-| 28 | `4d6f10f` | Profile recovery & résumé parsing stabilization |
-| 27 | `8e8928f` | Résumé tailoring & application package builder |
-| 26 | `7d94760` | Job import & approval workflow |
-| 25 | `6c9599e` | Multi-source job discovery engine |
-| 24 | `6fa0849` | Application pipeline & workflow enhancements |
-| 23 | `5ab66e0` | Application package preparation |
-| 22 | `85545fb` | Cover letter generator |
-| 21 | `80ede7a` | Résumé recommendation engine |
-| 20 | `ff7e5ed` | Enhanced job match scoring |
-| 19 | `91d83d2` | Advanced search & saved searches |
-| 18 | `ff39070` | Job search engine & multi-source aggregation |
-| 17 | `46971ac` | Live backend sync & two-way persistence |
-| 16 | `4d81b43` | Local backend, database & real persistence MVP |
-| 15 | `9a982f4` | Live connector integration layer |
-| 14 | `aea5c8b` | Backend integration foundation |
-| 13 | `404a902` | Interview copilot & application memory |
-| 12 | `6da0677` | Application automation & submission readiness |
-| 11 | `e8858e1` | Production connector framework |
-| ≤10 | *see `git log`* | Core UI, connectors, application pipeline |
+*(Date column added 2026-07-22 so the log's recency is unambiguous at a glance — see
+HANDOFF update rule below.)*
+
+| Date | Sprint | Commit | Summary |
+|------|--------|--------|---------|
+| 2026-07-22 | — | `v1.0` | Tag cut on `main` HEAD and pushed — first git release marker |
+| 2026-07-22 | — | `b676933` | Repo hygiene: removed dead root files (index.html, index_backup.html, test) |
+| 2026-07-22 | — | `e67de17` | Handoff: log auto-backup policy in Sprint Log |
+| 2026-07-22 | — | `cb5e7a5` | Enable GitHub auto-backup: contract rule 2 amended, `.env` gitignored |
+| 2026-07-16 | — | `88b4e46` | Real ATS job source: public Greenhouse + Lever feeds |
+| 2026-07-16 | — | `961c6a0` | LinkedIn importer: anchor-first collection + structural parsing |
+| 2026-07-16 | — | `2f0b725` | Fix LinkedIn importer: collect the whole results list |
+| 2026-07-16 | — | `24c5114` | Extension: real LinkedIn Jobs list import |
+| 2026-07-14 | — | `51215de` | Extension autofill v1.1: authorization fields, radios, essays, salary never filled |
+| 2026-07-14 | — | `099da7c` / `64ae7e2` | Handoff updates (extension MVP pushed) |
+| 2026-07-14 | — | `276f7a0` | Chrome extension MVP: save job + autofill from profile |
+| 2026-07-14 | — | `a0a1d22` | Un-track `.venv` (5,397 files) |
+| 2026-07-14 | — | `1a5e718` | Handoff: milestones table + v1.0 to-do list |
+| 2026-07-13 | — | `88732e7` | CLAUDE.md operating rules + HANDOFF.md handoff protocol |
+| 2026-07-13 | — | `e4ec18a` | .gitignore repair (`.claude/`, corrupted UTF-16 `.venv` entry) |
+| 2026-07-13 | 30 | `9e67065` | Version 1 final stabilization; salary-edit UI removed — **v1.0** |
+| 2026-07-13 | 29 | `2c3e7df` | Intelligent weighted job matching |
+| 2026-07-13 | 28 | `4d6f10f` | Profile recovery & résumé parsing stabilization |
+| 2026-07-12 | 27 | `8e8928f` | Résumé tailoring & application package builder |
+| 2026-07-12 | 26 | `7d94760` | Job import & approval workflow |
+| 2026-07-12 | 25 | `6c9599e` | Multi-source job discovery engine |
+| 2026-07-12 | 24 | `6fa0849` | Application pipeline & workflow enhancements |
+| 2026-07-12 | 23 | `5ab66e0` | Application package preparation |
+| 2026-07-12 | 22 | `85545fb` | Cover letter generator |
+| 2026-07-12 | 21 | `80ede7a` | Résumé recommendation engine |
+| 2026-07-12 | 20 | `ff7e5ed` | Enhanced job match scoring |
+| 2026-07-12 | 19 | `91d83d2` | Advanced search & saved searches |
+| 2026-07-12 | 18 | `ff39070` | Job search engine & multi-source aggregation |
+| 2026-07-12 | 17 | `46971ac` | Live backend sync & two-way persistence |
+| 2026-07-12 | 16 | `4d81b43` | Local backend, database & real persistence MVP |
+| 2026-07-12 | 15 | `9a982f4` | Live connector integration layer |
+| 2026-07-12 | 14 | `aea5c8b` | Backend integration foundation |
+| 2026-07-12 | 13 | `404a902` | Interview copilot & application memory |
+| 2026-07-12 | 12 | `6da0677` | Application automation & submission readiness |
+| 2026-07-12 | 11 | `e8858e1` | Production connector framework |
+| ≤2026-07-12 | ≤10 | *see `git log`* | Core UI, connectors, application pipeline |
 
 ## Map of the Code
 
