@@ -118,6 +118,7 @@ kill a test harness mid-run.
 
 | Sprint | Commit | Summary |
 |--------|--------|---------|
+| — | `cb5e7a5` | Enable GitHub auto-backup: contract rule 2 amended, `.env` gitignored |
 | — | `88b4e46` | Real ATS job source: public Greenhouse + Lever feeds |
 | — | `961c6a0` | LinkedIn importer: anchor-first collection + structural parsing |
 | — | `2f0b725` | Fix LinkedIn importer: collect the whole results list |
