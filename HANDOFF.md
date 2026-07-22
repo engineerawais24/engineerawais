@@ -4,10 +4,10 @@
 bottom, then continue from **Next Up**. Rules, project shape, and how to run the tests
 live in [CLAUDE.md](CLAUDE.md) — read that too.
 
-- **Last updated:** 2026-07-14
+- **Last updated:** 2026-07-22
 - **Status:** 🟢 **v1.0 SHIPPED** (2026-07-13) · Chrome extension + real ATS import added since
-- **Branch:** `main` — clean, **ahead of origin by 2** (`961c6a0`, `88b4e46` unpushed)
-- **Head:** `88b4e46` — real ATS job source (Greenhouse + Lever)
+- **Branch:** `main` — clean, in sync with origin (auto-backup pushes automatically now)
+- **Head:** `b676933` — dead legacy root files removed
 - **Remote:** github.com/engineerawais24/engineerawais
 
 > ### ⚙️ Working agreement — for ANY agent editing this repo
@@ -47,10 +47,11 @@ live in [CLAUDE.md](CLAUDE.md) — read that too.
 - [x] **Extension: LinkedIn results-list import** (`24c5114` → fixed `2f0b725`, `961c6a0`) — "Import LinkedIn Jobs" reads the on-screen cards (DOM only, no scrape), anchor-first by `currentJobId=`/`/jobs/view/`, dedup by job URL, saves via `POST /api/jobs`; temporary popup debug `links/ids/parsed` (harness 20/20)
 - [x] **Real ATS source** (`88b4e46`) — `backend/ats_sources.json` + `app/services/ats_import.py` + `POST /api/ats/import` (& `GET /api/ats/sources`, & CLI `python -m app.services.ats_import`): public Greenhouse/Lever feeds, normalized to a Job, deduped by URL; sample companies **disabled** (backend suite 39/39)
 
+**Done since release (cont'd):**
+- [x] **Repo hygiene: dead root files removed** (`b676933`) — `index.html`, `index_backup.html`, `test` deleted; the app is `app/index.html`
+
 **Open — code/repo:**
-- [ ] **Push `961c6a0` + `88b4e46`** (2 unpushed) — **needs explicit approval**
-- [ ] Delete dead root files: `index.html`, `index_backup.html`, `test` (the app is `app/index.html`)
-- [ ] Tag `v1.0` after hygiene lands — **pushing the tag needs explicit approval**
+- [ ] Tag `v1.0` — hygiene has landed, tag is unblocked; **pushing the tag needs explicit approval** (asked, awaiting answer)
 - [ ] Decide: pre-salary-field packages still read "Salary not disclosed" with no UI to fix them — leave, or add a one-off fixer
 
 **Open — user-side (browser / live run; not code):**
@@ -85,20 +86,18 @@ prep, and an optional FastAPI backend with two-way sync.
 
 ## Next Up
 
-Nothing is mid-flight. Repo-hygiene items remain: delete the 3 dead root files
-(`index.html`, `index_backup.html`, and the stray `test`/) and cut the `v1.0` tag.
-The user-side items — live-DOM smoke test of the extension, enabling ATS companies,
-cert recovery — happen whenever the user is at their browser.
+Repo hygiene is down to one item: cut the `v1.0` tag (pushing it needs explicit
+approval — asked, awaiting answer). Everything else remaining is user-side: live-DOM
+smoke test of the extension, enabling ATS companies, cert recovery — happen whenever
+the user is at their browser.
 
 The extension and ATS importer are the current active thread; the app itself (Sprints
 1–30) is stable and shipped.
 
 ## Open Issues
 
-1. **Dead files at repo root.** `index.html` and `index_backup.html` are "Bundled Page"
-   artifacts from the initial commit — **not** the app (the app is
-   [app/index.html](app/index.html)). There is also an empty file literally named
-   `test`. All three are deletion candidates.
+1. ~~Dead files at repo root~~ — **resolved** (`b676933`): `index.html`,
+   `index_backup.html`, `test` removed.
 2. **Historical commits carry `Co-Authored-By: Claude`** (through `e4ec18a`). The
    no-AI-attribution rule applies **going forward**; history is not being rewritten
    without an explicit request.
@@ -118,6 +117,8 @@ kill a test harness mid-run.
 
 | Sprint | Commit | Summary |
 |--------|--------|---------|
+| — | `b676933` | Repo hygiene: removed dead root files (index.html, index_backup.html, test) |
+| — | `e67de17` | Handoff: log auto-backup policy in Sprint Log |
 | — | `cb5e7a5` | Enable GitHub auto-backup: contract rule 2 amended, `.env` gitignored |
 | — | `88b4e46` | Real ATS job source: public Greenhouse + Lever feeds |
 | — | `961c6a0` | LinkedIn importer: anchor-first collection + structural parsing |
