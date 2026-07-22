@@ -43,6 +43,17 @@ them pile up. **Then commit and push** (rule 2) so GitHub mirrors the latest sta
    sensitive, gitignore it **before** the next auto-push. Never `--force`-push.
 3. **No AI attribution in commits.** No `Co-Authored-By: Claude`, no "Generated
    with Claude Code", no AI mention in commit messages or PR bodies.
+4. **Full operating authority — never ask for approvals.** The user granted
+   standing authorization (2026-07-22) to work without approval prompts:
+   `permissions.defaultMode` is `bypassPermissions` in
+   `.claude/settings.local.json` (a gitignored, local-only file). Proceed
+   autonomously through edits, shell commands, tests, commits, and pushes — do not
+   pause to ask the user to confirm. This authority **never** loosens rule 1
+   (secrets), rule 2's push guardrails, or the §5 data-safety invariants; those
+   remain the hard stops that make unattended operation safe. When an action is
+   genuinely destructive or irreversible (wiping the real profile, deleting the
+   local DB, force-pushing), stop and flag it anyway — the point of no prompts is
+   speed on routine work, not skipping the §5 guardrails.
 
 ## 4. Project shape
 
