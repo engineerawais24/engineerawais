@@ -7,7 +7,7 @@ live in [CLAUDE.md](CLAUDE.md) — read that too.
 - **Last updated:** 2026-07-22 *(always keep this line current — every HANDOFF edit stamps today's date here, so anyone can tell the latest version at a glance)*
 - **Status:** 🟢 **v1.0 SHIPPED** (2026-07-13, tagged 2026-07-22) · Chrome extension + real ATS import added since
 - **Branch:** `main` — clean, in sync with origin (auto-backup pushes automatically now)
-- **Head:** salary-gap real fix committed (see Sprint Log for hash) · tag `v1.0` on `b676933`
+- **Head:** `d247d2f` — salary-gap real fix (packages self-heal on read) · tag `v1.0` on `b676933`
 - **Remote:** github.com/engineerawais24/engineerawais
 
 > ### ⚙️ Working agreement — for ANY agent editing this repo
@@ -138,7 +138,7 @@ HANDOFF update rule below.)*
 
 | Date | Sprint | Commit | Summary |
 |------|--------|--------|---------|
-| 2026-07-22 | — | *(pending)* | Salary-gap real fix: `ApplicationPackages.repairSalary` self-heals pre-Sprint-30 frozen packages on read; sprint30 case 13 added (13/13) |
+| 2026-07-22 | — | `d247d2f` | Salary-gap real fix: `ApplicationPackages.repairSalary` self-heals pre-Sprint-30 frozen packages on read; sprint30 case 13 added (13/13) |
 | 2026-07-22 | — | `v1.0` | Tag cut on `main` HEAD and pushed — first git release marker |
 | 2026-07-22 | — | `b676933` | Repo hygiene: removed dead root files (index.html, index_backup.html, test) |
 | 2026-07-22 | — | `e67de17` | Handoff: log auto-backup policy in Sprint Log |
