@@ -578,6 +578,80 @@
       return 'SAR/mo · USD/yr · range + currency + period validated · undisclosed · legacy jobs · no editing UI';
     }],
 
+    ['13 · Salary repair for packages frozen before the fix', () => {
+      reset();
+      ImportedJobs.clear();
+      ApplicationPackages.clear();
+      const p = setProfile(ProfileStore.demo());   // min $110k/yr
+
+      /* an imported job exactly like the pre-Sprint-30 shape: a bare `salary`
+         number, no currency/period/salaryDisclosed. ImportedJobs.withSalary()
+         already reads this back as USD/year (case 12's "legacy" scenario). */
+      const legacyImport = { id: 'imp-legacy-pkg', url: 'https://x.example/legacy-pkg',
+        canonicalUrl: 'x.example/legacy-pkg', title: 'Old Solutions Role', company: 'Legacy Co',
+        location: '', workplaceType: 'On Site', source: 'Imported', description: 'An old import.',
+        salary: 150, currency: 'USD', postedDate: null, skills: [], status: 'approved',
+        createdAt: Date.now(), createdOn: '2026-07-01' };
+      AppStorage.set(ImportedJobs.STORAGE_KEY, [legacyImport]);
+      assert(ImportedJobs.get('imp-legacy-pkg').salaryDisclosed === true,
+        'setup broke: the live import no longer resolves a salary');
+
+      /* the package as it would have been frozen by the OLD (pre-fix) toBoardJob:
+         salaryDisclosed false and salary null, because the field didn't exist
+         yet when this package was approved — not because the posting hid it. */
+      const frozenJob = JobSchema.normalized({
+        id: 'imp-legacy-pkg', source: 'Imported', sourceJobId: 'imp-legacy-pkg',
+        title: 'Old Solutions Role', company: 'Legacy Co', workMode: 'On-site',
+        employmentType: 'Full-time', salary: null, salaryMax: null, salaryDisclosed: false,
+        description: 'An old import.', skills: [], applyUrl: 'https://x.example/legacy-pkg',
+        postedDate: '2026-07-01',
+      });
+      const stalePkg = {
+        id: 'pkg-imp-legacy-pkg', jobId: 'imp-legacy-pkg', job: frozenJob,
+        resumeId: null, resumeName: null, coverLetter: '', coverLetterResumeId: null,
+        matchScore: null, approvedOn: '2026-07-01', approvedAt: Date.parse('2026-07-01'),
+        status: 'ready_to_apply', appliedOn: null,
+        jobSummary: PackageBuilder.jobSummary(frozenJob), reviewedAt: null,
+      };
+      AppStorage.set(ApplicationPackages.STORAGE_KEY, [stalePkg]);
+
+      /* read back: the gap is filled in from the still-live import, without
+         a migration script and without touching what's on disk */
+      const healed = ApplicationPackages.get('pkg-imp-legacy-pkg');
+      assert(healed.job.salaryDisclosed === true && healed.job.salary === 150 && healed.job.currency === 'USD',
+        'a pre-fix package did not pick up its still-live imported salary: ' + JSON.stringify(healed.job));
+      assert(PackageBuilder.salaryText(healed.job) === 'USD 150k/yr', 'the healed chip is wrong: ' + PackageBuilder.salaryText(healed.job));
+      assert(healed.jobSummary.indexOf('Salary not disclosed') === -1 && healed.jobSummary.indexOf('USD 150k') !== -1,
+        'the frozen job summary was not refreshed: ' + healed.jobSummary);
+      assert(PackageBuilder.salaryInfo(healed.job, p).status === 'within', 'USD 150k should clear the $110k target once repaired');
+
+      const rawStill = AppStorage.get(ApplicationPackages.STORAGE_KEY)[0];
+      assert(rawStill.job.salaryDisclosed === false, 'the repair rewrote storage instead of re-deriving it on read');
+
+      /* a genuinely undisclosed import (no salary anywhere) must stay that way */
+      const neverSaid = { id: 'imp-none-pkg', url: 'https://x.example/none-pkg',
+        canonicalUrl: 'x.example/none-pkg', title: 'Quiet Role', company: 'Vercel',
+        location: '', workplaceType: 'On Site', source: 'Imported', description: 'No figure given.',
+        salary: null, currency: null, postedDate: null, skills: [], status: 'approved',
+        createdAt: Date.now(), createdOn: '2026-07-01' };
+      AppStorage.set(ImportedJobs.STORAGE_KEY, [legacyImport, neverSaid]);
+      const stalePkg2 = Object.assign({}, stalePkg, {
+        id: 'pkg-imp-none-pkg', jobId: 'imp-none-pkg',
+        job: Object.assign({}, frozenJob, { id: 'imp-none-pkg', title: 'Quiet Role', company: 'Vercel' }),
+      });
+      AppStorage.set(ApplicationPackages.STORAGE_KEY, [stalePkg, stalePkg2]);
+      const stillHidden = ApplicationPackages.get('pkg-imp-none-pkg');
+      assert(stillHidden.job.salaryDisclosed === false, 'a genuinely undisclosed import was fabricated a salary');
+
+      /* if the import was since deleted there is nothing left to recover —
+         the frozen package is served exactly as it was, not invented */
+      ImportedJobs.clear();
+      const orphaned = ApplicationPackages.get('pkg-imp-legacy-pkg');
+      assert(orphaned.job.salaryDisclosed === false, 'a repair was invented with no live import to back it');
+
+      return 'pre-fix packages self-heal from their live import on every read · genuinely undisclosed stays untouched · storage itself is never rewritten · deleted imports leave the frozen copy as-is';
+    }],
+
     ['10 · Version and no destructive defaults', () => {
       assert(typeof APP_VERSION !== 'undefined' && APP_VERSION === '1.0', 'the app version is not 1.0');
 

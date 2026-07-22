@@ -38,9 +38,48 @@ const ApplicationPackages = (() => {
   const today = () => new Date().toISOString().slice(0, 10);
   function isValidStatus(s) { return STATUSES.indexOf(s) !== -1; }
 
+  /* ---------- salary repair (read-time, like ImportedJobs.withSalary) ----------
+     A package freezes a JSON copy of the job the moment it's approved — by
+     design, so the record of what was actually sent never drifts (Sprint 23).
+     That's correct for genuine edits made *after* approval. It's the wrong
+     behavior for jobs approved before Sprint 30 added currency/period/
+     salaryDisclosed to imported jobs: those older freezes locked in "Salary
+     not disclosed" purely because the field didn't exist yet, not because the
+     posting never stated one. ImportedJobs.withSalary() already knows how to
+     re-derive the true figure from an old bare `salary` number on the LIVE
+     imported record — this only ever fills that specific historical gap by
+     consulting it, and never touches a package whose salary was legitimately
+     frozen as undisclosed at approval time. Nothing is rewritten in storage;
+     it's re-derived on every read, so it can never regress and needs no
+     one-off migration to run. */
+  function repairSalary(pkg) {
+    const job = pkg && pkg.job;
+    if (!job || job.salaryDisclosed) return job;                 // already fine, or genuinely undisclosed
+    if (typeof ImportedJobs === 'undefined') return job;
+    if (String(pkg.jobId || '').indexOf('imp-') !== 0) return job; // only imported jobs have a live source to consult
+    const live = ImportedJobs.get(pkg.jobId);
+    if (!live || !live.salaryDisclosed) return job;               // import was deleted, or truly never disclosed
+    return Object.assign({}, job, {
+      salary: live.salary,
+      salaryMax: live.salaryMax,
+      currency: live.currency,
+      salaryPeriod: live.salaryPeriod,
+      salaryDisclosed: true,
+    });
+  }
+
+  function decorate(pkg) {
+    if (!pkg) return pkg;
+    const job = repairSalary(pkg);
+    if (job === pkg.job) return pkg;                              // nothing to repair
+    const fixed = Object.assign({}, pkg, { job });
+    fixed.jobSummary = (typeof PackageBuilder !== 'undefined') ? PackageBuilder.jobSummary(job) : pkg.jobSummary;
+    return fixed;
+  }
+
   function all() {
     const list = (typeof AppStorage !== 'undefined') ? AppStorage.get(STORAGE_KEY) : null;
-    return Array.isArray(list) ? list : [];
+    return Array.isArray(list) ? list.map(decorate) : [];
   }
   function persist(list) {
     if (typeof AppStorage !== 'undefined') AppStorage.set(STORAGE_KEY, list);
@@ -248,5 +287,8 @@ const ApplicationPackages = (() => {
     createFrom, setResume, syncToResume, setStatus, markApplied, copyCoverLetter, remove, clear,
     /* Sprint 27 */
     markReviewed, checklist, summaryText, copySummary,
+    /* salary-gap fix: re-derive a pre-Sprint-30 frozen package's undisclosed
+       salary from its still-live imported job, on every read */
+    repairSalary,
   };
 })();

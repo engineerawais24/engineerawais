@@ -7,7 +7,7 @@ live in [CLAUDE.md](CLAUDE.md) — read that too.
 - **Last updated:** 2026-07-22 *(always keep this line current — every HANDOFF edit stamps today's date here, so anyone can tell the latest version at a glance)*
 - **Status:** 🟢 **v1.0 SHIPPED** (2026-07-13, tagged 2026-07-22) · Chrome extension + real ATS import added since
 - **Branch:** `main` — clean, in sync with origin (auto-backup pushes automatically now)
-- **Head:** `b676933` — dead legacy root files removed · tag `v1.0` on this commit
+- **Head:** salary-gap real fix committed (see Sprint Log for hash) · tag `v1.0` on `b676933`
 - **Remote:** github.com/engineerawais24/engineerawais
 
 > ### ⚙️ Working agreement — for ANY agent editing this repo
@@ -54,9 +54,25 @@ live in [CLAUDE.md](CLAUDE.md) — read that too.
 **Done since release (cont'd):**
 - [x] **Repo hygiene: dead root files removed** (`b676933`) — `index.html`, `index_backup.html`, `test` deleted; the app is `app/index.html`
 - [x] **`v1.0` tag cut and pushed** (2026-07-22) — first git release marker, on `b676933`
+- [x] **Salary-gap real fix, not a patch** (2026-07-22) — root cause: `ApplicationPackages.createFrom`
+  freezes a JSON snapshot of the job at approval time (deliberate, Sprint 23); a package approved
+  before Sprint 30 added `salaryDisclosed`/`currency`/`salaryPeriod` to imported jobs froze in
+  "Salary not disclosed" *permanently*, even though `ImportedJobs.withSalary()` (Sprint 30) can
+  correctly re-derive that same job's real figure from the still-live import record. Fix: added
+  `ApplicationPackages.repairSalary(pkg)` — read-time re-derivation, same pattern as
+  `ImportedJobs.withSalary()`, wired into `all()`/`get()` so every package self-heals on every
+  read, forever, with **no migration script and no rewrite of what's on disk**. Only fills a gap
+  (never overwrites a legitimately-frozen "not disclosed"), only applies to `imp-`-prefixed job
+  ids (an imported job's own id — the only place a live source of truth still exists), and leaves
+  a package alone if its import was since deleted. New regression test: sprint30 case 13 (13/13
+  green). Sprint23/24/26/27/29 (all consume `ApplicationPackages`) re-run green too — 6/6, 5/5,
+  10/10, 8/8, 8/8. Sprint25/28 use `ApplicationPackages.forJob()` only on non-imported (discovered)
+  jobs, so they're unaffected by code-path inspection; their async headless run didn't produce
+  clean console output this session (known flaky pattern, same family as sprint18) so they weren't
+  independently re-confirmed — not a regression risk given the code path they exercise.
 
 **Open — code/repo:**
-- [ ] Salary gap: pre-salary-field packages read "Salary not disclosed" — user wants a **real fix, not a temporary patch** (2026-07-22); in progress, see Next Up
+- Nothing open right now — all v1.0 → v1.0-tagged code/repo items above are done.
 
 **Open — user-side (browser / live run; not code):**
 - [ ] **Live-DOM smoke test the extension** — Load unpacked (`chrome://extensions` → `/extension`; see `extension/README.md`). Save + Autofill on a real posting, and Import on a LinkedIn search page. Selectors are untested against live DOMs; the LinkedIn importer now prints `links/ids/parsed` in the popup — paste those numbers if it comes back low.
@@ -76,13 +92,15 @@ prep, and an optional FastAPI backend with two-way sync.
 - **18 browser test suites green.** Sprint 18 cannot run headlessly (async
   multi-source search never settles offline) — known, **not** a regression.
 - Sprint 30 (*Version 1 Final Stabilization*, harness at
-  [app/tests/sprint30/sprint30.html](app/tests/sprint30/sprint30.html), 12 cases) is
-  complete, including demo-data isolation, additive résumé sync, cert recovery, and
-  backup export/import.
+  [app/tests/sprint30/sprint30.html](app/tests/sprint30/sprint30.html), now **13 cases**) is
+  complete, including demo-data isolation, additive résumé sync, cert recovery, backup
+  export/import, and (case 13, 2026-07-22) the salary self-heal described above.
 - `9e67065` removed the salary-editing UI for discovered jobs ahead of release. Salary
   entry survives only for **imported** jobs; the salary chip and the import-form
-  currency/period fields were deliberately kept ("Edit UI only" revert scope).
-- **No `v1.0` git tag exists yet** — the release was a push to `main`, not a tag.
+  currency/period fields were deliberately kept ("Edit UI only" revert scope). There is
+  still deliberately **no editing UI** anywhere (sprint30 case 12 enforces this) — the
+  2026-07-22 fix only re-derives a figure the app already knew, never lets the user type one in.
+- **`v1.0` git tag exists**, cut and pushed 2026-07-22, on `b676933`.
 - **Auto-backup is ON (2026-07-22).** GitHub (`origin/main`) is now a live backup:
   after each unit of work, commit **and** push automatically, no approval prompt
   (CLAUDE.md rule 2). `.gitignore` excludes `.env`, `*.db`, `.claude/` — that is the
@@ -90,14 +108,8 @@ prep, and an optional FastAPI backend with two-way sync.
 
 ## Next Up
 
-Repo hygiene is fully done (dead files removed, `v1.0` tagged and pushed). Active
-thread now: a **real fix** for the salary-visibility gap — pre-salary-field packages
-(built before the salary field existed) permanently read "Salary not disclosed" with
-no UI path to correct them. User explicitly wants this solved properly, not patched.
-See the app's package/job data model under `app/js/package/` and `app/js/jobs/` before
-proposing an approach.
-
-Everything else remaining is user-side: live-DOM smoke test of the extension, enabling
+Nothing is mid-flight. Repo hygiene, the `v1.0` tag, and the salary-gap real fix are
+all done. Everything remaining is user-side: live-DOM smoke test of the extension, enabling
 ATS companies, cert recovery — happen whenever the user is at their browser.
 
 ## Open Issues
@@ -126,6 +138,7 @@ HANDOFF update rule below.)*
 
 | Date | Sprint | Commit | Summary |
 |------|--------|--------|---------|
+| 2026-07-22 | — | *(pending)* | Salary-gap real fix: `ApplicationPackages.repairSalary` self-heals pre-Sprint-30 frozen packages on read; sprint30 case 13 added (13/13) |
 | 2026-07-22 | — | `v1.0` | Tag cut on `main` HEAD and pushed — first git release marker |
 | 2026-07-22 | — | `b676933` | Repo hygiene: removed dead root files (index.html, index_backup.html, test) |
 | 2026-07-22 | — | `e67de17` | Handoff: log auto-backup policy in Sprint Log |
