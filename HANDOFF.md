@@ -5,9 +5,9 @@ bottom, then continue from **Next Up**. Rules, project shape, and how to run the
 live in [CLAUDE.md](CLAUDE.md) — read that too.
 
 - **Last updated:** 2026-07-25 *(always keep this line current — every HANDOFF edit stamps today's date here, so anyone can tell the latest version at a glance)*
-- **Status:** 🟢 **v1.0 SHIPPED** (2026-07-13, tagged 2026-07-22) · since: Chrome extension, real ATS import, ATS Engine v1, Universal Autofill v2 + profile auto-sync + resilient extension storage
-- **Branch:** `main` — **ahead of origin (not pushed yet — awaiting user confirmation)**
-- **Head:** `f21d7e7` — Universal Autofill v2 + ProfileAutoSync + extension storage fix · tag `v1.0` on `b676933`
+- **Status:** 🟢 **v1.0 SHIPPED** (2026-07-13, tagged 2026-07-22) · since: Chrome extension, real ATS import, ATS Engine v1, Universal Autofill v2 + profile auto-sync + resilient extension storage, Application Queue v1
+- **Branch:** `main` — clean, in sync with origin
+- **Head:** `d30af44` — Application Queue v1 (process approved jobs one at a time) · tag `v1.0` on `b676933`
 - **Remote:** github.com/engineerawais24/engineerawais
 
 > ### ⚙️ Working agreement — for ANY agent editing this repo
@@ -38,7 +38,8 @@ live in [CLAUDE.md](CLAUDE.md) — read that too.
 | M6 | **Chrome extension** — save the open job, autofill from profile, import a LinkedIn results list | — | ✅ Built 2026-07-14 (`/extension`; needs a live-DOM smoke test) |
 | M7 | **Real ATS job source** — import public Greenhouse + Lever feeds into the backend | — | ✅ Built 2026-07-14 (`88b4e46`; sample companies disabled) |
 | M8 | **ATS Engine v1** — detect which ATS a job page uses (Greenhouse, Lever, Workday, SuccessFactors, SmartRecruiters, Taleo, Oracle, iCIMS); returns `{ats, company, supported, confidence}` | — | ✅ Built 2026-07-25 (detection only — no autofill/submit; `app/js/ats/ats-engine.js`; harness 22/22) |
-| M9 | **Universal Autofill v2 + profile auto-sync + resilient storage** — extension fills all common field types incl. checkboxes & résumé upload; backend profile stays populated; storage never crashes | — | ✅ Built 2026-07-25 (`f21d7e7`; harnesses 19/19 + 8/8 + 7/7, backend 42/42; **not pushed yet**) |
+| M9 | **Universal Autofill v2 + profile auto-sync + resilient storage** — extension fills all common field types incl. checkboxes & résumé upload; backend profile stays populated; storage never crashes | — | ✅ Shipped 2026-07-25 (`f21d7e7`; harnesses 19/19 + 8/8 + 7/7, backend 42/42) |
+| M10 | **Application Queue v1** — process approved jobs one at a time from Approvals: open in a new tab, Mark Applied / Needs Attention / Skip / Open Next, auto-advance, refresh-safe | — | ✅ Shipped 2026-07-25 (`d30af44`; reuses `ApplicationPackages`; never submits; harness 11/11) |
 
 ## To-do (v1.0 → v1.0-tagged)
 
@@ -127,6 +128,16 @@ prep, and an optional FastAPI backend with two-way sync.
     so a missing/late `storage` permission can't crash the popup ("reading 'local'"); falls back to
     an in-memory session store (never website localStorage). Harness
     [extension/tests/storage/](extension/tests/storage/storage.html) **7/7**.
+- **Application Queue v1 (2026-07-25, `d30af44`).** Process approved jobs one at a time. The queue
+  runs over the existing Sprint 23 packages at `ready_to_apply` (`ApplicationPackages.ready()`) — no
+  new job/approval store, only a small persisted session (order + per-job outcome + current job).
+  `ApplicationQueue` (`app/js/queue/queue-store.js`) + `QueueView` (`app/js/queue/queue-view.js`,
+  an additive card on Approvals using existing CSS). **Start Applying** opens the first job in a new
+  tab; per job: **Mark Applied** (→ `ApplicationPackages.markApplied`, feeds the board), **Needs
+  Attention** (flag + stay), **Skip**, **Open Next**; Applied/Skip auto-advance. Duplicate processing
+  is prevented (idempotent apply, applied-elsewhere skipped, Start resumes an active queue) and state
+  survives a refresh (AppStorage). **Never submits — only opens apply URLs.** Harness
+  [app/tests/queue/](app/tests/queue/queue.html) **11/11**.
 - **Auto-backup is ON (2026-07-22).** GitHub (`origin/main`) is now a live backup:
   after each unit of work, commit **and** push automatically, no approval prompt
   (CLAUDE.md rule 2). `.gitignore` excludes `.env`, `*.db`, `.claude/` — that is the
@@ -134,14 +145,10 @@ prep, and an optional FastAPI backend with two-way sync.
 
 ## Next Up
 
-- **Push `f21d7e7` (Autofill v2 + ProfileAutoSync + storage fix) to `origin/main`** once the user
-  confirms — it is committed locally but **deliberately not pushed yet** at the user's request, so
-  `main` is currently ahead of origin. (This is the one exception to the standing auto-push rule.)
-- After that, `main` is back to auto-backup as usual.
-
-Otherwise nothing is mid-flight. Everything else remaining is user-side: reload the extension so the
-`storage` permission goes live, live-DOM smoke test, enabling ATS companies, cert recovery — whenever
-the user is at their browser.
+Nothing is mid-flight — Autofill v2, ProfileAutoSync, the storage fix and Application Queue v1 are all
+shipped and pushed. Everything remaining is user-side: reload the extension so the `storage` permission
+goes live, live-DOM smoke test, enabling ATS companies, cert recovery — whenever the user is at their
+browser.
 
 ## Open Issues
 
@@ -169,7 +176,8 @@ HANDOFF update rule below.)*
 
 | Date | Sprint | Commit | Summary |
 |------|--------|--------|---------|
-| 2026-07-25 | — | `f21d7e7` | Universal Autofill v2 (checkboxes + résumé upload) · ProfileAutoSync (local→backend profile upsert, fixes "backend profile empty") · SafeStorage extension fix. Harnesses 19/19 + 8/8 + 7/7, backend 42/42. **Not pushed — awaiting confirmation.** |
+| 2026-07-25 | — | `d30af44` | Application Queue v1: process approved jobs one at a time (Start Applying → open in new tab · Mark Applied / Needs Attention / Skip / Open Next · auto-advance · dup-prevention · refresh-safe · never submits). Reuses `ApplicationPackages`. Harness 11/11 |
+| 2026-07-25 | — | `f21d7e7` | Universal Autofill v2 (checkboxes + résumé upload) · ProfileAutoSync (local→backend profile upsert, fixes "backend profile empty") · SafeStorage extension fix. Harnesses 19/19 + 8/8 + 7/7, backend 42/42 |
 | 2026-07-25 | — | `7aa5985` | ATS Engine v1 (detection only): `AtsEngine.detect` identifies Greenhouse/Lever/Workday/SuccessFactors/SmartRecruiters/Taleo/Oracle/iCIMS from a job URL (or embedded HTML); returns `{ats, company, supported, confidence}`; harness 22/22 |
 | 2026-07-22 | — | `d247d2f` | Salary-gap real fix: `ApplicationPackages.repairSalary` self-heals pre-Sprint-30 frozen packages on read; sprint30 case 13 added (13/13) |
 | 2026-07-22 | — | `v1.0` | Tag cut on `main` HEAD and pushed — first git release marker |
