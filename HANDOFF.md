@@ -4,10 +4,10 @@
 bottom, then continue from **Next Up**. Rules, project shape, and how to run the tests
 live in [CLAUDE.md](CLAUDE.md) — read that too.
 
-- **Last updated:** 2026-07-22 *(always keep this line current — every HANDOFF edit stamps today's date here, so anyone can tell the latest version at a glance)*
-- **Status:** 🟢 **v1.0 SHIPPED** (2026-07-13, tagged 2026-07-22) · Chrome extension + real ATS import added since
+- **Last updated:** 2026-07-25 *(always keep this line current — every HANDOFF edit stamps today's date here, so anyone can tell the latest version at a glance)*
+- **Status:** 🟢 **v1.0 SHIPPED** (2026-07-13, tagged 2026-07-22) · Chrome extension + real ATS import + ATS Engine v1 (detection) added since
 - **Branch:** `main` — clean, in sync with origin (auto-backup pushes automatically now)
-- **Head:** `d247d2f` — salary-gap real fix (packages self-heal on read) · tag `v1.0` on `b676933`
+- **Head:** `PENDING_ATS` — ATS Engine v1 (detects the ATS on a job page; detection only) · tag `v1.0` on `b676933`
 - **Remote:** github.com/engineerawais24/engineerawais
 
 > ### ⚙️ Working agreement — for ANY agent editing this repo
@@ -37,6 +37,7 @@ live in [CLAUDE.md](CLAUDE.md) — read that too.
 | M5 | Post-v1 hardening — repo hygiene, `v1.0` tag, user data recovery | — | 🔶 In progress (see To-do) |
 | M6 | **Chrome extension** — save the open job, autofill from profile, import a LinkedIn results list | — | ✅ Built 2026-07-14 (`/extension`; needs a live-DOM smoke test) |
 | M7 | **Real ATS job source** — import public Greenhouse + Lever feeds into the backend | — | ✅ Built 2026-07-14 (`88b4e46`; sample companies disabled) |
+| M8 | **ATS Engine v1** — detect which ATS a job page uses (Greenhouse, Lever, Workday, SuccessFactors, SmartRecruiters, Taleo, Oracle, iCIMS); returns `{ats, company, supported, confidence}` | — | ✅ Built 2026-07-25 (detection only — no autofill/submit; `app/js/ats/ats-engine.js`; harness 22/22) |
 
 ## To-do (v1.0 → v1.0-tagged)
 
@@ -101,6 +102,12 @@ prep, and an optional FastAPI backend with two-way sync.
   still deliberately **no editing UI** anywhere (sprint30 case 12 enforces this) — the
   2026-07-22 fix only re-derives a figure the app already knew, never lets the user type one in.
 - **`v1.0` git tag exists**, cut and pushed 2026-07-22, on `b676933`.
+- **ATS Engine v1 (2026-07-25)** — `app/js/ats/ats-engine.js` (global `AtsEngine`, dependency-free,
+  no network/storage/UI). `AtsEngine.detect(url | {url, html})` and `detectPage()` return
+  `{ats, company, supported, confidence}` for Greenhouse / Lever / Workday / SuccessFactors /
+  SmartRecruiters / Taleo / Oracle / iCIMS. Detection only — no autofill, no submission. Harness
+  [app/tests/ats/ats.html](app/tests/ats/ats.html) is **22/22** (pure functions, touches no
+  localStorage). Registered in `app/index.html`; inert until called (no dashboard/UI change).
 - **Auto-backup is ON (2026-07-22).** GitHub (`origin/main`) is now a live backup:
   after each unit of work, commit **and** push automatically, no approval prompt
   (CLAUDE.md rule 2). `.gitignore` excludes `.env`, `*.db`, `.claude/` — that is the
@@ -138,6 +145,7 @@ HANDOFF update rule below.)*
 
 | Date | Sprint | Commit | Summary |
 |------|--------|--------|---------|
+| 2026-07-25 | — | `PENDING_ATS` | ATS Engine v1 (detection only): `AtsEngine.detect` identifies Greenhouse/Lever/Workday/SuccessFactors/SmartRecruiters/Taleo/Oracle/iCIMS from a job URL (or embedded HTML); returns `{ats, company, supported, confidence}`; harness 22/22 |
 | 2026-07-22 | — | `d247d2f` | Salary-gap real fix: `ApplicationPackages.repairSalary` self-heals pre-Sprint-30 frozen packages on read; sprint30 case 13 added (13/13) |
 | 2026-07-22 | — | `v1.0` | Tag cut on `main` HEAD and pushed — first git release marker |
 | 2026-07-22 | — | `b676933` | Repo hygiene: removed dead root files (index.html, index_backup.html, test) |
