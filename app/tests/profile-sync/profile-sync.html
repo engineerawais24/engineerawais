@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CareerPilot · Profile → Backend auto-sync tests</title>
+  <style>
+    :root{ color-scheme: light dark; }
+    body{ font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif; margin:0; padding:28px; background:#0e0f1a; color:#e7e8f0; }
+    h1{ font-size:18px; margin:0 0 4px; }
+    .sub{ color:#9aa0b5; font-size:12px; margin-bottom:18px; max-width:880px; }
+    #summary{ display:inline-block; font-weight:700; font-size:13px; padding:4px 12px; border-radius:8px; margin-bottom:16px; }
+    #summary.ok{ background:#123524; color:#4ade80; } #summary.bad{ background:#3a1620; color:#f87171; }
+    .t{ display:flex; gap:12px; align-items:flex-start; padding:11px 13px; border:1px solid #23263a; border-radius:10px; margin-bottom:8px; background:#151728; }
+    .t.fail{ border-color:#5b2130; background:#1e1420; }
+    .badge{ font:600 10px/1 ui-monospace,monospace; padding:5px 7px; border-radius:6px; letter-spacing:.06em; }
+    .t.pass .badge{ background:#123524; color:#4ade80; } .t.fail .badge{ background:#3a1620; color:#f87171; }
+    b{ font-weight:600; } .detail{ color:#9aa0b5; font-size:12px; margin-top:3px; font-family:ui-monospace,monospace; }
+    .note{ margin-top:18px; color:#7b8196; font-size:11.5px; max-width:880px; }
+  </style>
+</head>
+<body>
+  <h1>Profile → Backend auto-sync (bug fix)</h1>
+  <div class="sub">
+    Drives the real <code>ProfileAutoSync</code> with the real <code>APIClient</code>, <code>Backend</code> and
+    <code>Migration.buildBundle()</code> — only the HTTP transport is faked, so requests are captured instead of sent.
+    Proves the local profile is <b>upserted</b> (PUT, never the insert-only /api/migrate), is one-time/hash-gated,
+    skips when the backend is unreachable, and never pushes a blank profile. localStorage is snapshotted and restored.
+  </div>
+  <div id="summary">running…</div>
+  <div id="results"></div>
+  <div class="note">Reproduces the reported bug: UI has a full profile, backend GET returns empty. The fix keeps the
+    backend row populated so the Chrome extension stops reporting "Your backend profile is empty."</div>
+
+  <script>
+    /* the app defaults to local mode; make sure the harness starts clean */
+    try { localStorage.removeItem('careerpilot_backend_cfg'); } catch (e) {}
+  </script>
+
+  <!-- real modules under test; SessionManager/Telemetry/ErrorCenter are optional and absent here -->
+  <script src="../../js/platform/api-client.js"></script>
+  <script src="../../js/profile/profile-store.js"></script>
+  <script src="../../js/platform/backend.js"></script>
+  <script src="../../js/platform/profile-autosync.js"></script>
+  <script src="profile-sync-tests.js"></script>
+</body>
+</html>

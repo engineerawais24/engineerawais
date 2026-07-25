@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CareerPilot Helper · Universal Autofill v2 tests</title>
+  <style>
+    :root{ color-scheme: light dark; }
+    body{ font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif; margin:0; padding:28px; background:#0e0f1a; color:#e7e8f0; }
+    h1{ font-size:18px; margin:0 0 4px; }
+    .sub{ color:#9aa0b5; font-size:12px; margin-bottom:18px; max-width:860px; }
+    #summary{ display:inline-block; font-weight:700; font-size:13px; padding:4px 12px; border-radius:8px; margin-bottom:16px; }
+    #summary.ok{ background:#123524; color:#4ade80; } #summary.bad{ background:#3a1620; color:#f87171; }
+    .t{ display:flex; gap:12px; align-items:flex-start; padding:11px 13px; border:1px solid #23263a; border-radius:10px; margin-bottom:8px; background:#151728; }
+    .t.fail{ border-color:#5b2130; background:#1e1420; }
+    .badge{ font:600 10px/1 ui-monospace,monospace; padding:5px 7px; border-radius:6px; letter-spacing:.06em; }
+    .t.pass .badge{ background:#123524; color:#4ade80; } .t.fail .badge{ background:#3a1620; color:#f87171; }
+    b{ font-weight:600; } .detail{ color:#9aa0b5; font-size:12px; margin-top:3px; font-family:ui-monospace,monospace; }
+    /* the mock application form is hidden off to the side — it exists only to be filled */
+    #app-under-test{ position:absolute; left:-9999px; top:0; width:600px; }
+  </style>
+</head>
+<body>
+  <h1>Universal Autofill Engine v2 — field-type coverage</h1>
+  <div class="sub">
+    Drives the <b>real</b> <code>extension/content.js</code> against a mock ATS application form covering every
+    supported control. No network, no backend, no localStorage touched — <code>chrome.*</code> is stubbed and the
+    résumé is a synthetic in-memory data URL. Verifies: fills empty fields of every type, uploads the résumé, and
+    <i>never</i> fills salary, overwrites an answer, ticks a consent box, or submits.
+  </div>
+  <div id="summary">running…</div>
+  <div id="results"></div>
+
+  <!-- the form the engine will fill; built by the test script -->
+  <div id="app-under-test"></div>
+
+  <!-- Stub chrome.* BEFORE content.js loads, so its onMessage listener is captured. -->
+  <script>
+    window.__cpListener = null;
+    window.chrome = {
+      runtime: { onMessage: { addListener: function (fn) { window.__cpListener = fn; } } },
+    };
+  </script>
+
+  <!-- the engine under test -->
+  <script src="../../content.js"></script>
+  <script src="autofill-tests.js"></script>
+</body>
+</html>

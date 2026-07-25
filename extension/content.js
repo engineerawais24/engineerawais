@@ -1,15 +1,24 @@
 /* ============================================================
    CareerPilot Helper — content script (injected on click).
 
-   Two jobs, both DOM-only:
+   Universal Autofill Engine v2. Two jobs, both DOM-only:
      detect   → read the job posting off the page
      autofill → fill EMPTY, VISIBLE fields from the profile
 
+   v2 covers, across real ATS forms (Greenhouse / Lever / Workday / …):
+     text · email · phone · number · textarea · select · radio ·
+     checkbox · résumé file upload (from the extension's default résumé) ·
+     LinkedIn · nationality · city · country · gender · marital status ·
+     years of experience · work authorization · sponsorship.
+
    Hard rules, enforced here:
-     • a field with ANY existing value is never touched
+     • a field with ANY existing value is never touched (no overwrite)
      • hidden/disabled/readonly fields are never touched
-     • nothing is ever submitted — no clicks, no form.submit()
-     • no network access from this script
+     • current/expected salary is NEVER filled, whatever the profile holds
+     • consent / legal / marketing checkboxes are NEVER auto-ticked —
+       they are surfaced for the user to decide
+     • nothing is ever submitted — no submit clicks, no form.submit()
+     • no network access from this script (the résumé arrives from the popup)
    ============================================================ */
 
 (() => {
@@ -335,6 +344,57 @@
     return true;
   }
 
+  /* ---------- checkboxes & file uploads (v2) ---------- */
+
+  function labelFor(el) {
+    if (el.id) {
+      const lab = document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
+      if (lab) return lab;
+    }
+    return el.closest('label');
+  }
+
+  /* Native checkbox/file controls are often visually replaced by a custom
+     widget (Greenhouse, Workday), so the real <input> can be zero-sized. It
+     still counts as usable if it is not disabled/hidden and either renders or
+     has a real label. Stricter than nothing, looser than visible()'s size gate. */
+  function formVisible(el) {
+    if (el.disabled || el.readOnly || el.type === 'hidden') return false;
+    const s = getComputedStyle(el);
+    if (s.display === 'none' || s.visibility === 'hidden') return false;
+    return el.getClientRects().length > 0 || !!labelFor(el);
+  }
+
+  /* consent / legal / marketing — never auto-ticked; the user must decide */
+  const CONSENT_RE = /\b(agree|consent|terms|privacy|policy|gdpr|acknowledg|certif|declar|opt[\s_-]?in|subscribe|newsletter|marketing)\b|receive.*(email|update|communication)|contact me/i;
+  const RESUME_RE = /resume|r[ée]sum[ée]|\bcv\b|curriculum[\s_-]?vitae/i;
+  const COVER_RE = /cover[\s_-]?letter/i;
+  const PHOTO_RE = /photo|image|picture|logo|avatar|headshot|profile[\s_-]?pic/i;
+
+  /* data: URL (as stored by MasterResume) → a real File the input accepts */
+  function dataUrlToFile(dataUrl, name, mime) {
+    const comma = String(dataUrl || '').indexOf(',');
+    if (comma === -1) return null;
+    const bin = atob(dataUrl.slice(comma + 1));
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new File([bytes], name || 'resume.pdf', { type: mime || 'application/octet-stream' });
+  }
+
+  /* set an <input type=file> the way a picker would, so the ATS notices */
+  function setFile(el, file) {
+    try {
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      el.files = dt.files;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      return el.files && el.files.length > 0;
+    } catch (e) {
+      return false;
+    }
+  }
+
   /* ---------- short essay answers (local templates, no AI) ----------
      Built ONLY from things that are true: the user's own headline and
      summary, plus the company/title read off this very page. If the
@@ -490,7 +550,7 @@
     return true;
   }
 
-  function autofill(profile) {
+  function autofill(profile, resume) {
     const essays = essayAnswers(profile);
     const rules = RULES(profile, essays);
     const fields = Array.from(document.querySelectorAll(
@@ -560,6 +620,69 @@
       }
     }
 
+    /* ---------- checkboxes ----------
+       Consent/legal/marketing are surfaced (never auto-ticked). A few map to
+       profile booleans — we only ever TICK an affirmative we actually hold;
+       leaving a box unticked is the honest "no", so a false value needs no
+       action. Everything else is surfaced as needing an answer. */
+    for (const el of document.querySelectorAll('input[type=checkbox]')) {
+      if (!formVisible(el)) continue;
+      if (el.checked) { skipped++; continue; }             // never overwrite / uncheck
+      const hay = haystack(el);
+      if (!hay) continue;
+
+      if (CONSENT_RE.test(hay)) {                           // the user must decide
+        const label = hay.slice(0, 90);
+        if (!seenUnknown.has(label)) { seenUnknown.add(label); unknown.push(label); }
+        continue;
+      }
+
+      let key = null, want = false, known = false;
+      if (/reloc/.test(hay)) { key = 'Willing to relocate'; want = profile.willRelocate === true; known = true; }
+      else if (/sponsor/.test(hay)) { key = 'Sponsorship'; want = profile.needsSponsorship === true; known = true; }
+      else if (/authori[sz]ed[\s_-]?to[\s_-]?work|eligible[\s_-]?to[\s_-]?work|right[\s_-]?to[\s_-]?work|work[\s_-]?authori[sz]ation/.test(hay)) {
+        key = 'Work authorization'; want = !!profile.workAuthorization; known = true;
+      }
+
+      if (known) {
+        if (want) { el.click(); filled.push(key); }        // ticks only; never unticks
+        continue;
+      }
+
+      const label = hay.slice(0, 90);                       // unknown question
+      if (!seenUnknown.has(label)) { seenUnknown.add(label); unknown.push(label); }
+    }
+
+    /* ---------- résumé upload ----------
+       The default résumé (handed in by the popup) fills the one résumé/CV file
+       input when it is empty. Cover-letter and photo inputs are never touched.
+       Never overwrites a file the user already chose; nothing is submitted. */
+    const uploads = Array.from(document.querySelectorAll('input[type=file]'))
+      .filter(formVisible)
+      .filter(el => !PHOTO_RE.test(haystack(el) + ' ' + (el.accept || '')));
+
+    let resumeSlot = uploads.find(el => {
+      const hay = haystack(el) + ' ' + (el.accept || '');
+      return RESUME_RE.test(hay) && !COVER_RE.test(hay);
+    });
+    /* a lone document upload that isn't a cover letter is the résumé slot */
+    if (!resumeSlot && uploads.length === 1 && !COVER_RE.test(haystack(uploads[0]))) {
+      resumeSlot = uploads[0];
+    }
+
+    if (resumeSlot) {
+      if (resumeSlot.files && resumeSlot.files.length) {
+        skipped++;                                          // user already attached one
+      } else if (resume && resume.dataUrl) {
+        const file = dataUrlToFile(resume.dataUrl, resume.name, resume.mime);
+        if (file && setFile(resumeSlot, file)) filled.push('Resume');
+        else if (!seenUnknown.has('Resume')) { seenUnknown.add('Resume'); unknown.push('Resume — attach your résumé manually'); }
+      } else if (!seenUnknown.has('Resume')) {
+        seenUnknown.add('Resume');
+        unknown.push('Resume — set a default résumé in the extension, or attach manually');
+      }
+    }
+
     return { filled, skipped, unknown };
   }
 
@@ -569,7 +692,7 @@
     try {
       if (msg.type === 'detect') sendResponse(detect());
       else if (msg.type === 'collectLinkedIn') sendResponse(collectLinkedIn());
-      else if (msg.type === 'autofill') sendResponse(autofill(msg.profile || {}));
+      else if (msg.type === 'autofill') sendResponse(autofill(msg.profile || {}, msg.resume || null));
     } catch (e) {
       sendResponse({ error: e.message, filled: [], skipped: 0, unknown: [] });
     }

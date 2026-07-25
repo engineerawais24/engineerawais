@@ -638,6 +638,13 @@ window.addEventListener('DOMContentLoaded', () => {
     try { Backend.boot(); } catch (e) { /* stay local */ }
     window.addEventListener('online', () => { try { Backend.onOnline(); } catch (e) { /* stay local */ } });
   }
+  /* Push the local profile to the backend if it isn't there yet, so the
+     Chrome extension (which reads GET /api/profile) sees a populated
+     profile. Best-effort + silent: skips when the backend is unreachable
+     or the profile is unchanged, and never blocks the UI. */
+  if (typeof ProfileAutoSync !== 'undefined') {
+    try { ProfileAutoSync.maybeSync(); } catch (e) { /* stay local */ }
+  }
   /* Sprint 25: populate Today's Jobs from the Job Discovery Engine. Runs in
      the BACKGROUND and only when the board has never been populated, so it
      never blocks the first paint and never overwrites a search the user has

@@ -15,10 +15,39 @@ const APP_URL = 'file:///C:/Users/m.awais/Desktop/Job%20Prject/app/index.html';
 
 const $ = id => document.getElementById(id);
 
+/* the default résumé the autofill engine uploads. It lives in the
+   extension's own storage (the backend keeps no résumé binary), set once
+   from the popup and reused on every autofill. */
+const RESUME_KEY = 'cp_default_resume';
+const RESUME_MAX = 2.5 * 1024 * 1024;   // matches the app's MasterResume cap
+
 function setStatus(text, cls) {
   const el = $('status');
   el.textContent = text;
   el.className = cls || '';
+}
+
+/* ---------- default résumé (via SafeStorage) ----------
+   SafeStorage wraps chrome.storage.local and never throws if it's
+   unavailable (e.g. the extension was updated but not reloaded, so the
+   "storage" permission isn't live yet) — it falls back to an in-memory
+   session store. It never touches website localStorage. */
+
+function getResume() { return SafeStorage.get(RESUME_KEY); }
+function saveResume(rec) { return SafeStorage.set(RESUME_KEY, rec); }
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = () => reject(new Error('Could not read that file'));
+    r.readAsDataURL(file);
+  });
+}
+async function showResumeInfo() {
+  const rec = await getResume();
+  $('resumeinfo').textContent = rec
+    ? `Default résumé: ${rec.name}`
+    : 'Default résumé: none set';
 }
 
 function showJob(job) {
@@ -238,6 +267,41 @@ $('importli').addEventListener('click', async () => {
   }
 });
 
+/* ---------- Set Default Résumé ----------
+   Cached in the extension so autofill can attach it. Same PDF/DOCX + size
+   rules as the app's master-résumé upload. Nothing is sent anywhere. */
+
+$('resume').addEventListener('click', () => $('resumefile').click());
+
+$('resumefile').addEventListener('change', async () => {
+  const file = $('resumefile').files && $('resumefile').files[0];
+  if (!file) return;
+  const ext = (file.name.split('.').pop() || '').toLowerCase();
+  if (ext !== 'pdf' && ext !== 'docx') {
+    setStatus('Only PDF or DOCX résumés are supported.', 'err');
+    return;
+  }
+  if (file.size > RESUME_MAX) {
+    setStatus('Résumé too large — 2.5 MB max.', 'err');
+    return;
+  }
+  try {
+    const dataUrl = await fileToDataUrl(file);
+    const r = await saveResume({ name: file.name, mime: file.type || (ext === 'pdf' ? 'application/pdf' : ''), size: file.size, dataUrl, savedAt: Date.now() });
+    await showResumeInfo();
+    if (r && r.persisted === false) {
+      /* SafeStorage kept it in memory only — storage isn't live yet */
+      setStatus(`Default résumé set for this session — ${file.name}\nReload the extension (chrome://extensions → Reload) to keep it.`, 'ok');
+    } else {
+      setStatus(`Default résumé set — ${file.name}`, 'ok');
+    }
+  } catch (e) {
+    setStatus(e.message, 'err');
+  } finally {
+    $('resumefile').value = '';   // allow re-picking the same file later
+  }
+});
+
 /* ---------- Autofill Application ---------- */
 
 $('fill').addEventListener('click', async () => {
@@ -249,12 +313,14 @@ $('fill').addEventListener('click', async () => {
       setStatus('Your backend profile is empty. Open CareerPilot → Settings and sync, or fill the profile via the API first.', 'err');
       return;
     }
+    const resume = await getResume();      // may be null — the engine copes
     setStatus('Filling empty fields…');
     const tab = await activeTab();
-    const res = await askPage(tab, { type: 'autofill', profile });
+    const res = await askPage(tab, { type: 'autofill', profile, resume });
     if (!res) { setStatus('No form found on this page.', 'err'); return; }
 
     const bits = [`Filled ${res.filled.length} field${res.filled.length === 1 ? '' : 's'}`];
+    if (res.filled.indexOf('Resume') !== -1) bits.push('résumé attached');
     if (res.skipped) bits.push(`left ${res.skipped} already-answered alone`);
     setStatus(bits.join(' · ') + '\nReview everything before you submit — nothing was sent.',
       res.filled.length ? 'ok' : '');
@@ -269,3 +335,6 @@ $('fill').addEventListener('click', async () => {
 $('open').addEventListener('click', () => {
   chrome.tabs.create({ url: APP_URL });
 });
+
+/* show which résumé is set the moment the popup opens */
+showResumeInfo();

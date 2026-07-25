@@ -144,3 +144,59 @@ def test_autofill_reads_back_what_was_saved(client):
     current = [r for r in rows if r["is_current"]]
     assert current and current[0]["company"] == "Vercel"
     assert current[0]["start_date"] == "2021-03"       # years-of-experience input
+
+
+# ---------------------------------------------------------------------------
+# Regression: "Your backend profile is empty" (ProfileAutoSync).
+#
+# The bug: the app is local-first, so the profile lived only in the browser
+# and was never pushed. The extension's own GET /api/profile then AUTO-CREATED
+# an empty row — so it read blanks and reported the profile empty. These tests
+# pin the exact behaviour the frontend ProfileAutoSync relies on to fix it.
+# ---------------------------------------------------------------------------
+
+def test_get_profile_autocreates_an_empty_row(client):
+    """A first GET returns a blank profile (this is what the extension saw)."""
+    p = client.get("/api/profile").json()
+    assert p["first_name"] == "" and p["last_name"] == "" and p["email"] == ""
+
+
+def test_put_upserts_the_autocreated_empty_row(client):
+    """The fix pushes with PUT, which must POPULATE the empty row a prior GET
+    created — the whole point of using PUT over the insert-only /api/migrate."""
+    # the extension (or anything) reads first → an empty row now exists
+    assert client.get("/api/profile").json()["first_name"] == ""
+
+    # ProfileAutoSync upserts the local profile
+    put = client.put("/api/profile", json={
+        "first_name": "Alex", "last_name": "Morgan", "email": "alex.morgan@example.com",
+        "city": "Dubai", "country": "United Arab Emirates",
+        "links": {"linkedin": "https://linkedin.com/in/alexmorgan"},
+        "authorization": {"status": "Citizen", "authorizedIn": "United Arab Emirates", "sponsorship": False},
+    })
+    assert put.status_code == 200
+
+    # the extension re-reads and now sees a populated profile (bug resolved)
+    p = client.get("/api/profile").json()
+    assert p["first_name"] == "Alex"
+    assert p["email"] == "alex.morgan@example.com"
+    assert p["links"]["linkedin"].endswith("/alexmorgan")
+
+    # exactly one profile row exists — PUT updated in place, never duplicated
+    assert p["id"] == put.json()["id"]
+
+
+def test_migrate_would_not_repair_an_existing_empty_row(client):
+    """Why PUT and not POST /api/migrate: migration is insert-only, so once
+    the empty row exists it is SKIPPED and stays blank. This documents the
+    trap ProfileAutoSync deliberately avoids."""
+    assert client.get("/api/profile").json()["first_name"] == ""   # empty row exists
+
+    res = client.post("/api/migrate", json={
+        "profile": {"first_name": "Alex", "last_name": "Morgan", "email": "alex.morgan@example.com"},
+    })
+    assert res.status_code == 200
+    body = res.json()
+    # profile was skipped (already exists) — nothing was written
+    assert body["counts"].get("profile", {}).get("skipped", 0) == 1
+    assert client.get("/api/profile").json()["first_name"] == ""   # still blank — hence PUT

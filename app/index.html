@@ -167,6 +167,9 @@
   <script src="js/platform/job-cache.js"></script>
   <script src="js/platform/backend.js"></script>
   <script src="js/platform/domain-sync.js"></script>
+  <!-- keep the backend profile in step with the local one so the Chrome
+       extension (which reads the backend) never sees an empty profile -->
+  <script src="js/platform/profile-autosync.js"></script>
   <script src="js/platform/admin-view.js"></script>
   <script src="js/platform/backup.js"></script>
   <script src="js/search/providers/base-provider.js"></script>

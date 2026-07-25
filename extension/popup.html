@@ -47,7 +47,11 @@
   <button id="save" class="primary">💾 Save Current Job</button>
   <button id="importli">📋 Import LinkedIn Jobs</button>
   <button id="fill">✍️ Autofill Application</button>
+  <button id="resume">📎 Set Default Résumé</button>
   <button id="open">🧭 Open CareerPilot</button>
+
+  <!-- hidden picker for the default résumé; the button above triggers it -->
+  <input type="file" id="resumefile" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden>
 
   <div id="job"></div>
   <div id="status"></div>
@@ -58,9 +62,11 @@
   </div>
 
   <div class="foot">
+    <span id="resumeinfo">Default résumé: none set</span><br>
     Backend: http://127.0.0.1:8000 · profile is read locally, nothing leaves your machine.
   </div>
 
+  <script src="storage.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

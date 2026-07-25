@@ -207,6 +207,9 @@ const Profile = (() => {
     savedSnap = JSON.stringify(working);
     refresh();
     toast('Profile saved — stored in this browser');
+    /* mirror the saved profile to the backend if it's reachable, so the
+       Chrome extension picks up the edit (best-effort, never blocks save) */
+    if (typeof ProfileAutoSync !== 'undefined') { try { ProfileAutoSync.maybeSync(); } catch (e) { /* stay local */ } }
     return true;
   }
 
@@ -221,6 +224,7 @@ const Profile = (() => {
     Object.assign(working.preferences, partial); // mirror into the live copy
     savedSnap = JSON.stringify(saved);           // dirty = only other pending edits
     updateDirtyUI();
+    if (typeof ProfileAutoSync !== 'undefined') { try { ProfileAutoSync.maybeSync(); } catch (e) { /* stay local */ } }
     return saved.preferences;
   }
 
