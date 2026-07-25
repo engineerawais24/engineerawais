@@ -7,7 +7,7 @@ live in [CLAUDE.md](CLAUDE.md) — read that too.
 - **Last updated:** 2026-07-25 *(always keep this line current — every HANDOFF edit stamps today's date here, so anyone can tell the latest version at a glance)*
 - **Status:** 🟢 **v1.0 SHIPPED** (2026-07-13, tagged 2026-07-22) · Chrome extension + real ATS import + ATS Engine v1 (detection) added since
 - **Branch:** `main` — clean, in sync with origin (auto-backup pushes automatically now)
-- **Head:** `PENDING_ATS` — ATS Engine v1 (detects the ATS on a job page; detection only) · tag `v1.0` on `b676933`
+- **Head:** `7aa5985` — ATS Engine v1 (detects the ATS on a job page; detection only) · tag `v1.0` on `b676933`
 - **Remote:** github.com/engineerawais24/engineerawais
 
 > ### ⚙️ Working agreement — for ANY agent editing this repo
@@ -145,7 +145,7 @@ HANDOFF update rule below.)*
 
 | Date | Sprint | Commit | Summary |
 |------|--------|--------|---------|
-| 2026-07-25 | — | `PENDING_ATS` | ATS Engine v1 (detection only): `AtsEngine.detect` identifies Greenhouse/Lever/Workday/SuccessFactors/SmartRecruiters/Taleo/Oracle/iCIMS from a job URL (or embedded HTML); returns `{ats, company, supported, confidence}`; harness 22/22 |
+| 2026-07-25 | — | `7aa5985` | ATS Engine v1 (detection only): `AtsEngine.detect` identifies Greenhouse/Lever/Workday/SuccessFactors/SmartRecruiters/Taleo/Oracle/iCIMS from a job URL (or embedded HTML); returns `{ats, company, supported, confidence}`; harness 22/22 |
 | 2026-07-22 | — | `d247d2f` | Salary-gap real fix: `ApplicationPackages.repairSalary` self-heals pre-Sprint-30 frozen packages on read; sprint30 case 13 added (13/13) |
 | 2026-07-22 | — | `v1.0` | Tag cut on `main` HEAD and pushed — first git release marker |
 | 2026-07-22 | — | `b676933` | Repo hygiene: removed dead root files (index.html, index_backup.html, test) |
