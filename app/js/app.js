@@ -218,6 +218,7 @@ function renderApprovals() {
 
   return `
     <p class="screen-intro">Every application package waits here for your explicit sign-off — nothing is ever sent without you. Approving moves it to today's submission queue (mock).</p>
+    ${typeof QueueView !== 'undefined' ? QueueView.card() : ''}
     ${typeof PrepView !== 'undefined' ? PrepView.approvalsCard(Prep.packages()) : ''}
     <div style="display:flex; flex-direction:column; gap:11px">${awaitingHtml}</div>
     ${queuedHtml}`;

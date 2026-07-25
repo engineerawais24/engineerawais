@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CareerPilot · Application Queue v1 tests</title>
+  <style>
+    :root{ color-scheme: light dark; }
+    body{ font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif; margin:0; padding:28px; background:#0e0f1a; color:#e7e8f0; }
+    h1{ font-size:18px; margin:0 0 4px; }
+    .sub{ color:#9aa0b5; font-size:12px; margin-bottom:18px; max-width:880px; }
+    #summary{ display:inline-block; font-weight:700; font-size:13px; padding:4px 12px; border-radius:8px; margin-bottom:16px; }
+    #summary.ok{ background:#123524; color:#4ade80; } #summary.bad{ background:#3a1620; color:#f87171; }
+    .t{ display:flex; gap:12px; align-items:flex-start; padding:11px 13px; border:1px solid #23263a; border-radius:10px; margin-bottom:8px; background:#151728; }
+    .t.fail{ border-color:#5b2130; background:#1e1420; }
+    .badge{ font:600 10px/1 ui-monospace,monospace; padding:5px 7px; border-radius:6px; letter-spacing:.06em; }
+    .t.pass .badge{ background:#123524; color:#4ade80; } .t.fail .badge{ background:#3a1620; color:#f87171; }
+    b{ font-weight:600; } .detail{ color:#9aa0b5; font-size:12px; margin-top:3px; font-family:ui-monospace,monospace; }
+    .note{ margin-top:18px; color:#7b8196; font-size:11.5px; max-width:880px; }
+  </style>
+</head>
+<body>
+  <h1>Application Queue v1 — process approved jobs one by one</h1>
+  <div class="sub">
+    Drives the real <code>ApplicationQueue</code> over real <code>ApplicationPackages</code> (approved jobs at
+    <code>ready_to_apply</code>). <code>window.open</code> is stubbed so no tabs open — opens are recorded.
+    localStorage is snapshotted and restored, so no real data is touched.
+  </div>
+  <div id="summary">running…</div>
+  <div id="results"></div>
+  <div class="note">Covers: Start opens the first job &amp; tracks current · Mark Applied / Skip auto-select next ·
+    Needs Attention flags &amp; stays · Open Next · duplicate-processing prevention · state preserved across a refresh ·
+    completion · never auto-submits.</div>
+
+  <!-- real modules under test -->
+  <script src="../../js/platform/storage-provider.js"></script>
+  <script src="../../js/applications/application-packages.js"></script>
+  <script src="../../js/queue/queue-store.js"></script>
+  <script src="../../js/queue/queue-view.js"></script>
+  <script src="queue-tests.js"></script>
+</body>
+</html>
