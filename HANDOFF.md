@@ -4,10 +4,10 @@
 bottom, then continue from **Next Up**. Rules, project shape, and how to run the tests
 live in [CLAUDE.md](CLAUDE.md) — read that too.
 
-- **Last updated:** 2026-07-25 *(always keep this line current — every HANDOFF edit stamps today's date here, so anyone can tell the latest version at a glance)*
-- **Status:** 🟢 **v1.0 SHIPPED** (2026-07-13, tagged 2026-07-22) · since: Chrome extension, real ATS import, ATS Engine v1, Universal Autofill v2 + profile auto-sync + resilient extension storage, Application Queue v1
+- **Last updated:** 2026-07-26 *(always keep this line current — every HANDOFF edit stamps today's date here, so anyone can tell the latest version at a glance)*
+- **Status:** 🟢 **v1.0 SHIPPED** (2026-07-13, tagged 2026-07-22) · since: Chrome extension, real ATS import, ATS Engine v1, Universal Autofill v2 + profile auto-sync + resilient extension storage, Application Queue v1, extension-save→Today's-Jobs sync, imported-jobs→approvals→queue, queue-triggered ATS autofill
 - **Branch:** `main` — clean, in sync with origin
-- **Head:** `d30af44` — Application Queue v1 (process approved jobs one at a time) · tag `v1.0` on `b676933`
+- **Head:** `6759244` — queue-triggered ATS autofill · tag `v1.0` on `b676933`
 - **Remote:** github.com/engineerawais24/engineerawais
 
 > ### ⚙️ Working agreement — for ANY agent editing this repo
@@ -39,6 +39,9 @@ live in [CLAUDE.md](CLAUDE.md) — read that too.
 | M7 | **Real ATS job source** — import public Greenhouse + Lever feeds into the backend | — | ✅ Built 2026-07-14 (`88b4e46`; sample companies disabled) |
 | M8 | **ATS Engine v1** — detect which ATS a job page uses (Greenhouse, Lever, Workday, SuccessFactors, SmartRecruiters, Taleo, Oracle, iCIMS); returns `{ats, company, supported, confidence}` | — | ✅ Built 2026-07-25 (detection only — no autofill/submit; `app/js/ats/ats-engine.js`; harness 22/22) |
 | M9 | **Universal Autofill v2 + profile auto-sync + resilient storage** — extension fills all common field types incl. checkboxes & résumé upload; backend profile stays populated; storage never crashes | — | ✅ Shipped 2026-07-25 (`f21d7e7`; harnesses 19/19 + 8/8 + 7/7, backend 42/42) |
+| M11 | **Extension save → Today's Jobs** — a job saved from the extension (POST /api/jobs) is pulled back into Today's Jobs via `JobsBackendSync` + `ImportedJobs.upsertFromBackend` | — | ✅ Shipped 2026-07-26 (`749191c`; deduped by backend identity; harness 8/8, backend read-back test) |
+| M12 | **Imported jobs → Approvals → Queue** — create an application for an approved imported job; it shows on Approvals; "Approve & queue" adds that exact job to the Application Queue; each queued job links only to its own package | — | ✅ Shipped 2026-07-26 (`bd64909` + `749191c`; harness 7/7) |
+| M13 | **Queue → ATS auto-autofill** — opening a queued job auto-runs Universal Autofill v2 once; login/CAPTCHA/blocked/no-form → Needs Attention | — | ✅ Built 2026-07-26 (`6759244`; harnesses 10/10 + 5/5) — **real supported-ATS smoke test still pending (user-side)** |
 | M10 | **Application Queue v1** — process approved jobs one at a time from Approvals: open in a new tab, Mark Applied / Needs Attention / Skip / Open Next, auto-advance, refresh-safe | — | ✅ Shipped 2026-07-25 (`d30af44`; reuses `ApplicationPackages`; never submits; harness 11/11) |
 
 ## To-do (v1.0 → v1.0-tagged)
@@ -138,6 +141,27 @@ prep, and an optional FastAPI backend with two-way sync.
   is prevented (idempotent apply, applied-elsewhere skipped, Start resumes an active queue) and state
   survives a refresh (AppStorage). **Never submits — only opens apply URLs.** Harness
   [app/tests/queue/](app/tests/queue/queue.html) **11/11**.
+- **Extension "Save Current Job" now appears in Today's Jobs (2026-07-26, `749191c`).** The extension
+  writes to the backend (POST /api/jobs); Today's Jobs was localStorage-only, so saved jobs never
+  showed. `JobsBackendSync` (`app/js/platform/jobs-backend-sync.js`) pulls GET /api/jobs on boot and on
+  each board visit and folds each row into `ImportedJobs` via `upsertFromBackend`. Deduped on the
+  backend job's **own identity** (id / source_job_id), never the canonical URL. Harness **8/8**.
+- **Imported jobs can create applications and appear in Approvals (2026-07-26, `bd64909`).** Creating an
+  application for an approved imported job now shows on Approvals (new **Saved-job applications** card,
+  `QueueView.applicationsCard`) and **"Approve & queue"** (`ApplicationQueue.enqueue`) adds that exact
+  job to the Application Queue. `createApplication` no longer reports success without a real package.
+  Harness **7/7**.
+- **Queued jobs now link only to their own application package (2026-07-26, `749191c`).** Oracle/SPA ATS
+  put the requisition id in the query/hash, which `canonical()` strips — so two distinct jobs collapsed
+  to one canonical URL and the URL-based dedup linked "WSP — Work Summary" to the unrelated "Microsoft —
+  Technical Consultant" package. Fixed by deduping backend imports on backend identity, never the
+  canonical URL. Regression tests: imported-approval case 7, jobs-backend-sync case 8.
+- **Queue → ATS auto-autofill implemented and tests passing (2026-07-26, `6759244`).** Opening a queued
+  job auto-runs Universal Autofill v2 once (bridge + `AutoApply` content script + `AtsEngine`), only for
+  queue-opened tabs, never submitting/salary/consent, with login/CAPTCHA/blocked/no-form → Needs
+  Attention and run-once guarding. Harnesses **10/10** + **5/5**. **Real supported-ATS smoke test is
+  still pending** — the cross-tab wiring (manifest content-scripts, bridge, real ATS DOMs) can't be
+  exercised headlessly; needs a load-unpacked run on a live Greenhouse/Lever/Workday/etc. posting.
 - **Auto-backup is ON (2026-07-22).** GitHub (`origin/main`) is now a live backup:
   after each unit of work, commit **and** push automatically, no approval prompt
   (CLAUDE.md rule 2). `.gitignore` excludes `.env`, `*.db`, `.claude/` — that is the
@@ -145,10 +169,17 @@ prep, and an optional FastAPI backend with two-way sync.
 
 ## Next Up
 
-Nothing is mid-flight — Autofill v2, ProfileAutoSync, the storage fix and Application Queue v1 are all
-shipped and pushed. Everything remaining is user-side: reload the extension so the `storage` permission
-goes live, live-DOM smoke test, enabling ATS companies, cert recovery — whenever the user is at their
-browser.
+Nothing is mid-flight — everything through `6759244` is committed and pushed. The one open verification is
+**user-side**:
+
+- **Real supported-ATS smoke test of the queue → auto-autofill (pending).** Load the extension unpacked
+  (so the new content-scripts/manifest take effect), start the Application Queue on an approved job, and
+  confirm auto-autofill fires once on a live Greenhouse / Lever / Workday / SuccessFactors /
+  SmartRecruiters / Taleo / Oracle / iCIMS posting — and that login/CAPTCHA/blocked pages surface Needs
+  Attention. The decision logic is unit-tested (10/10 + 5/5) but the cross-tab wiring can't run headlessly.
+
+Other standing user-side items: reload the extension so the `storage` permission is live, enable ATS
+companies, cert recovery — whenever the user is at their browser.
 
 ## Open Issues
 
@@ -176,6 +207,9 @@ HANDOFF update rule below.)*
 
 | Date | Sprint | Commit | Summary |
 |------|--------|--------|---------|
+| 2026-07-26 | — | `6759244` | feat: queue-triggered ATS autofill — opening a queued job auto-runs Universal Autofill v2 once (bridge + AutoApply + AtsEngine); queue-opened tabs only; never submit/salary/consent; login/CAPTCHA/blocked/no-form → Needs Attention; run-once guarded. Harnesses 10/10 + 5/5. **Real-ATS smoke test pending.** |
+| 2026-07-26 | — | `bd64909` | fix: imported jobs through approvals & queue — Saved-job applications card on Approvals + `ApplicationQueue.enqueue` (Approve & queue); `createApplication` never fake-succeeds. Harness 7/7 |
+| 2026-07-26 | — | `749191c` | fix: extension-saved jobs sync into Today's Jobs (`JobsBackendSync` + `upsertFromBackend`); dedup on backend identity not canonical URL → queued jobs link to their own package (WSP↔Microsoft). Harness 8/8 |
 | 2026-07-25 | — | `d30af44` | Application Queue v1: process approved jobs one at a time (Start Applying → open in new tab · Mark Applied / Needs Attention / Skip / Open Next · auto-advance · dup-prevention · refresh-safe · never submits). Reuses `ApplicationPackages`. Harness 11/11 |
 | 2026-07-25 | — | `f21d7e7` | Universal Autofill v2 (checkboxes + résumé upload) · ProfileAutoSync (local→backend profile upsert, fixes "backend profile empty") · SafeStorage extension fix. Harnesses 19/19 + 8/8 + 7/7, backend 42/42 |
 | 2026-07-25 | — | `7aa5985` | ATS Engine v1 (detection only): `AtsEngine.detect` identifies Greenhouse/Lever/Workday/SuccessFactors/SmartRecruiters/Taleo/Oracle/iCIMS from a job URL (or embedded HTML); returns `{ats, company, supported, confidence}`; harness 22/22 |
