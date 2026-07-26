@@ -155,7 +155,7 @@ const Imports = (() => {
     const res = ImportedJobs.createApplication(id);
     if (typeof toast === 'function') {
       toast(res.ok
-        ? `Application package created — review it on the Applications page`
+        ? `Application created — it's now under Approvals, ready to queue`
         : res.error, res.ok ? 'success' : 'error');
     }
     refresh();

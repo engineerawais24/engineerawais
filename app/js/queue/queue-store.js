@@ -101,6 +101,17 @@ const ApplicationQueue = (() => {
     return false;
   }
 
+  /* open the job AND tell the extension it was opened from the Queue, so the
+     Chrome extension can auto-run Autofill v2 on that tab (Queue → ATS Auto
+     Autofill). The signal is best-effort; if the extension isn't installed the
+     tab just opens normally. */
+  function openAndSignal(jobId, url) {
+    if (url && typeof QueueAutoApply !== 'undefined' && QueueAutoApply.signalOpen) {
+      try { QueueAutoApply.signalOpen({ jobId, url }); } catch (e) { /* extension optional */ }
+    }
+    return openTab(url);
+  }
+
   /* ---------- actions (logic only — no toast, no re-render) ---------- */
 
   function start() {
@@ -120,7 +131,7 @@ const ApplicationQueue = (() => {
     };
     persist(s);
     const url = jobUrl(pkgFor(s.currentId));
-    const opened = url ? openTab(url) : false;
+    const opened = url ? openAndSignal(s.currentId, url) : false;
     return { ok: true, started: true, state: s, currentId: s.currentId, url, opened };
   }
 
@@ -174,7 +185,53 @@ const ApplicationQueue = (() => {
     if (!s.currentId) return { ok: false, error: 'No more approved jobs in the queue', done: true };
     const url = jobUrl(pkgFor(s.currentId));
     if (!url) return { ok: false, error: 'This job has no application URL', currentId: s.currentId };
-    return { ok: openTab(url), currentId: s.currentId, url };
+    return { ok: openAndSignal(s.currentId, url), currentId: s.currentId, url };
+  }
+
+  /* is this job currently in an active queue session? */
+  function isQueued(jobId) {
+    const s = state();
+    return !!(s && s.active && (s.order || []).indexOf(jobId) !== -1);
+  }
+
+  /* add ONE approved job to the Application Queue — the "Approve & queue"
+     action on Approvals. The job must have a ready application package. Never
+     opens a tab (opening only happens as the user works the queue) and never
+     queues the same job twice. */
+  function enqueue(jobId) {
+    const P = packages();
+    const pkg = P ? P.forJob(jobId) : null;
+    if (!pkg) return { ok: false, error: 'No application to queue for this job' };
+    if (pkg.status !== P.READY) return { ok: false, error: 'This job is not ready to apply' };
+
+    let s = state();
+    if (!s || !s.active) {
+      /* no session yet → open one containing just this job (no auto-open of a
+         tab; that happens as the user works the queue) */
+      s = { active: true, order: [jobId], outcomes: {}, currentId: jobId, startedAt: Date.now(), completedAt: null };
+      persist(s);
+      return { ok: true, enqueued: jobId, started: true, currentId: jobId };
+    }
+    /* active session → append if absent; if it had finished, make this current */
+    if (s.order.indexOf(jobId) === -1) s.order.push(jobId);
+    if (!s.currentId) s.currentId = jobId;
+    persist(s);
+    return { ok: true, enqueued: jobId };
+  }
+
+  /* flag a SPECIFIC job as needing attention — used when the extension's
+     auto-apply reports a login/CAPTCHA/blocked/no-form page for a job it
+     opened. Never overrides a job already applied. */
+  function markAttentionFor(jobId, opts) {
+    const s = state();
+    if (!s || !s.active || !jobId) return { ok: false };
+    if ((s.order || []).indexOf(jobId) === -1) return { ok: false, reason: 'not in queue' };
+    const cur = outcomeIn(s, jobId);
+    if (cur === 'applied' || cur === 'done') return { ok: false, reason: 'already applied' };
+    s.outcomes[jobId] = 'attention';
+    if (opts && opts.reason) { s.attentionReasons = s.attentionReasons || {}; s.attentionReasons[jobId] = opts.reason; }
+    persist(s);
+    return { ok: true, jobId };
   }
 
   function finish() {
@@ -243,14 +300,21 @@ const ApplicationQueue = (() => {
     toastMsg('Application queue closed', 'info');
     refresh();
   }
+  function uiEnqueue(jobId) {
+    const r = enqueue(jobId);
+    if (!r.ok) { toastMsg(r.error, 'error'); return r; }
+    toastMsg('Added to your Application Queue', 'success');
+    refresh();
+    return r;
+  }
 
   return {
     KEY,
     /* state + reads */
-    state, isActive, approved, current, jobUrl, outcomeOf, progress,
+    state, isActive, approved, current, jobUrl, outcomeOf, progress, isQueued,
     /* actions (logic) */
-    start, markApplied, skip, needsAttention, openNext, finish,
+    start, markApplied, skip, needsAttention, markAttentionFor, openNext, finish, enqueue,
     /* UI wrappers (used by the Approvals card) */
-    uiStart, uiApplied, uiSkip, uiAttention, uiOpenNext, uiFinish,
+    uiStart, uiApplied, uiSkip, uiAttention, uiOpenNext, uiFinish, uiEnqueue,
   };
 })();

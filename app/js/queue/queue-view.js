@@ -86,5 +86,49 @@ const QueueView = (() => {
       </div>`;
   }
 
-  return { card };
+  /* ---------- Approvals: applications created from saved jobs ----------
+     ApplicationPackages at "ready to apply" that aren't already shown as a
+     Prep package (i.e. imported/saved-job applications) — so a job you created
+     an application for is visible under Approvals and can be queued. */
+
+  function prepJobIds() {
+    if (typeof Prep === 'undefined' || !Prep.packages) return {};
+    try {
+      const set = {};
+      Prep.packages().forEach(p => { set[p.jobId] = true; });
+      return set;
+    } catch (e) { return {}; }
+  }
+
+  function readyApplications() {
+    if (typeof ApplicationPackages === 'undefined') return [];
+    const inPrep = prepJobIds();
+    return ApplicationPackages.ready().filter(p => !inPrep[p.jobId]);
+  }
+
+  function applicationsCard() {
+    const pkgs = readyApplications();
+    if (!pkgs.length) return '';
+    const rows = pkgs.map(p => {
+      const queued = (typeof ApplicationQueue !== 'undefined') && ApplicationQueue.isQueued(p.jobId);
+      return `
+        <div class="prep-row">
+          <div class="prep-main">
+            <div class="prep-top"><b>${esc(p.job.title)}</b><span class="prep-co">· ${esc(p.job.company)}</span>${queued ? '<span class="pill pill-green">Queued</span>' : '<span class="pill pill-amber">Ready to Apply</span>'}</div>
+            <div class="prep-meta">${esc(p.job.source || '')}${p.matchScore != null ? ` · match ${p.matchScore}` : ''}</div>
+          </div>
+          ${queued
+            ? '<button class="btn btn-ghost" disabled>Queued</button>'
+            : `<button class="btn btn-green" onclick="ApplicationQueue.uiEnqueue('${p.jobId}')">Approve &amp; queue</button>`}
+        </div>`;
+    }).join('');
+    return `
+      <div class="card card-pad" id="card-ready-apps">
+        <p class="card-title">Saved-job applications</p>
+        <div class="hint" style="margin-bottom:9px">Applications you created from saved jobs. “Approve &amp; queue” adds the job to your Application Queue above — nothing is ever submitted for you.</div>
+        ${rows}
+      </div>`;
+  }
+
+  return { card, readyApplications, applicationsCard };
 })();
