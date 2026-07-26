@@ -262,6 +262,104 @@ const ImportedJobs = (() => {
     return { ok: true, job };
   }
 
+  /* ---------- backend jobs (extension "Save Current Job" → Today's Jobs) ----------
+     A job the Chrome extension saved lands in the backend Job table
+     (POST /api/jobs). This turns one such backend row (a JobOut) into a local
+     imported job so it shows up in Today's Jobs like any other saved posting.
+
+     It is DEDUPED by canonical URL against what's already imported, so a
+     re-pull never creates a second copy and a job that already exists locally
+     (e.g. one that was synced up from here) is left untouched. It is NOT the
+     user-form path, so it skips form validation — a saved posting often has no
+     description, which the form requires; here we fall back to a short note. */
+
+  function mapWorkplace(mode) {
+    const m = lc(mode);
+    if (/remote/.test(m)) return 'Remote';
+    if (/hybrid/.test(m)) return 'Hybrid';
+    return 'On Site';
+  }
+
+  function backendSalary(bj) {
+    if (!bj.salary_disclosed) return Object.assign({}, NONE);
+    const n = Number(String(bj.salary == null ? '' : bj.salary).replace(/[^0-9.]/g, ''));
+    if (!n || isNaN(n) || n <= 0) return Object.assign({}, NONE);
+    return { salary: n, salaryMax: null, currency: trim(bj.currency) || 'USD', salaryPeriod: 'year', salaryDisclosed: true };
+  }
+
+  /* Dedup a backend job by its OWN identity — the backend row id, or its
+     (source, source_job_id). This is the ONLY safe key: two DIFFERENT backend
+     jobs can canonicalize to the SAME URL (Oracle/SPA ATS put the requisition
+     id in the query or hash, which canonical() strips), so deduping on the
+     canonical URL would merge them and link one job to another's package. */
+  function findByBackend(bj) {
+    const bid = (bj && bj.id != null) ? bj.id : null;
+    const sjid = trim(bj && bj.source_job_id);
+    const src = trim(bj && bj.source);
+    if (bid == null && !sjid) return null;
+    return all().find(j =>
+      (bid != null && j.backendId != null && j.backendId === bid) ||
+      (sjid && j.backendSourceJobId && j.backendSourceJobId === sjid &&
+        (!src || !j.backendSource || j.backendSource === src))
+    ) || null;
+  }
+
+  /* EXACT full-url match (query + hash preserved) — matches a manual import of
+     the very same posting, but never merges two distinct postings that only
+     differ in their query/hash. */
+  function exactUrlKey(url) { return lc(trim(url)).replace(/\/+$/, ''); }
+  function findByExactUrl(url) {
+    const key = exactUrlKey(url);
+    if (!key) return null;
+    return all().find(j => exactUrlKey(j.url) === key) || null;
+  }
+
+  function upsertFromBackend(bj) {
+    if (!bj) return { ok: false, error: 'no job' };
+    const url = trim(bj.apply_url || bj.canonical_url);
+    const title = trim(bj.title), company = trim(bj.company);
+    if (!title || !company || !isValidUrl(url)) return { ok: false, error: 'incomplete backend job' };
+
+    /* same backend job (a re-pull), or the same posting already imported by
+       hand — return it. NEVER dedup on the canonical URL: distinct backend
+       jobs may share one, and merging them is exactly the WSP↔Microsoft bug. */
+    const existing = findByBackend(bj) || findByExactUrl(url);
+    if (existing) return { ok: true, job: existing, duplicate: true };   // never a second copy; existing preserved
+
+    const description = trim(bj.description)
+      || `Saved from ${trim(bj.source) || 'the web'} — ${title} at ${company}.`;
+    const sal = backendSalary(bj);
+    const job = {
+      id: 'imp-be-' + (bj.id != null ? bj.id : Date.now().toString(36)) + '-' + Math.random().toString(36).slice(2, 6),
+      url,
+      canonicalUrl: canonical(url),
+      title,
+      company,
+      location: trim(bj.location),
+      workplaceType: mapWorkplace(bj.work_mode),
+      source: trim(bj.source) || DEFAULT_SOURCE,
+      description,
+      salary: sal.salary,
+      salaryMax: sal.salaryMax,
+      currency: sal.currency,
+      salaryPeriod: sal.salaryPeriod,
+      salaryDisclosed: sal.salaryDisclosed,
+      postedDate: trim(bj.posted_date) || null,
+      skills: extractSkills(title + ' ' + description),
+      status: 'new',
+      statusChangedOn: null,
+      createdAt: Date.now(),
+      createdOn: today(),
+      origin: 'backend',                 // provenance: came from a backend Job row
+      /* the backend's own identity — the stable dedup key (see findByBackend) */
+      backendId: bj.id != null ? bj.id : null,
+      backendSourceJobId: trim(bj.source_job_id) || null,
+      backendSource: trim(bj.source) || null,
+    };
+    persist(all().concat([job]));
+    return { ok: true, job };
+  }
+
   /* ---------- review status ---------- */
 
   function setStatus(id, status) {
@@ -370,6 +468,9 @@ const ImportedJobs = (() => {
       job: toBoardJob(job),
       res: { score: m ? m.percentage : null },
     });
+    /* never report success without an actual package — the "created" toast
+       must only ever fire when the package really exists (bug: it did not) */
+    if (!pkg) return { ok: false, error: 'Could not build the application package' };
     return { ok: true, pkg };
   }
 
@@ -380,7 +481,7 @@ const ImportedJobs = (() => {
     all, active, rejected, byStatus, get, remove, clear,
     isValidUrl, canonical, findByUrl, validate, isValidStatus, statusLabel,
     vocabulary, extractSkills,
-    create, setStatus,
+    create, upsertFromBackend, setStatus,
     toDiscoveryJob, match, explain,
     toBoardJob, hasApplication, createApplication,
   };

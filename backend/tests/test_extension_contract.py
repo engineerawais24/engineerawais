@@ -44,6 +44,22 @@ def test_save_same_job_twice_is_409(client):
     assert len(client.get("/api/jobs").json()) == 1
 
 
+def test_saved_job_is_listed_for_todays_jobs(client):
+    """A job saved from the extension must be pullable back into Today's Jobs.
+
+    The frontend fix (JobsBackendSync) reads GET /api/jobs and folds each row
+    into ImportedJobs. This pins the read path: what was POSTed comes back with
+    the fields Today's Jobs needs (title, company, apply_url)."""
+    assert client.post("/api/jobs", json=_extension_job_payload()).status_code == 201
+
+    listed = client.get("/api/jobs").json()
+    saved = [j for j in listed if j["apply_url"].startswith("https://www.linkedin.com/jobs/view/12345")]
+    assert saved, "the saved job must appear in GET /api/jobs"
+    assert saved[0]["title"] == "Senior Solutions Engineer"
+    assert saved[0]["company"] == "Acme"
+    assert saved[0]["source"] == "LinkedIn"
+
+
 def _li_hash(url: str) -> str:
     """Mirror of popup.js hashId() — FNV-1a over the canonical URL.
     Two different LinkedIn job URLs must produce two different ids so the
