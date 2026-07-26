@@ -193,6 +193,9 @@
   <script src="js/imports/imported-jobs.js"></script>
   <script src="js/imports/import-view.js"></script>
   <script src="js/imports/imports.js"></script>
+  <!-- Pull backend-saved jobs (extension "Save Current Job") into Today's Jobs.
+       Read-side only; dedups, preserves local jobs, no UI change. -->
+  <script src="js/platform/jobs-backend-sync.js"></script>
   <!-- ATS Engine v1: detects which ATS a job page uses (detection only,
        no autofill/submit). No dependencies; inert until called. -->
   <script src="js/ats/ats-engine.js"></script>
@@ -200,6 +203,9 @@
        one at a time. Reuses existing packages; opens apply URLs, never submits. -->
   <script src="js/queue/queue-store.js"></script>
   <script src="js/queue/queue-view.js"></script>
+  <!-- Queue → ATS Auto Autofill v1: signal the extension when a queued job is
+       opened, and receive its "needs attention" back. No-op without the extension. -->
+  <script src="js/queue/queue-autoapply.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

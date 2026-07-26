@@ -219,6 +219,7 @@ function renderApprovals() {
   return `
     <p class="screen-intro">Every application package waits here for your explicit sign-off — nothing is ever sent without you. Approving moves it to today's submission queue (mock).</p>
     ${typeof QueueView !== 'undefined' ? QueueView.card() : ''}
+    ${typeof QueueView !== 'undefined' ? QueueView.applicationsCard() : ''}
     ${typeof PrepView !== 'undefined' ? PrepView.approvalsCard(Prep.packages()) : ''}
     <div style="display:flex; flex-direction:column; gap:11px">${awaitingHtml}</div>
     ${queuedHtml}`;
@@ -645,6 +646,20 @@ window.addEventListener('DOMContentLoaded', () => {
      or the profile is unchanged, and never blocks the UI. */
   if (typeof ProfileAutoSync !== 'undefined') {
     try { ProfileAutoSync.maybeSync(); } catch (e) { /* stay local */ }
+  }
+  /* Queue → ATS Auto Autofill: listen for the extension's "needs attention"
+     relay so a blocked/login/CAPTCHA job gets flagged in the queue. */
+  if (typeof QueueAutoApply !== 'undefined') {
+    try { QueueAutoApply.bind(); } catch (e) { /* extension optional */ }
+  }
+  /* Pull any jobs saved from the Chrome extension (POST /api/jobs) into
+     Today's Jobs. Best-effort + silent; on boot and on each visit to the
+     board. Deduped, additive — never touches existing local jobs. */
+  if (typeof JobsBackendSync !== 'undefined') {
+    try { JobsBackendSync.pull(); } catch (e) { /* stay local */ }
+    window.addEventListener('hashchange', () => {
+      if (currentRoute() === 'jobs') { try { JobsBackendSync.pull(); } catch (e) { /* stay local */ } }
+    });
   }
   /* Sprint 25: populate Today's Jobs from the Job Discovery Engine. Runs in
      the BACKGROUND and only when the board has never been populated, so it

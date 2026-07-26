@@ -688,14 +688,23 @@
 
   /* ================= wiring ================= */
 
-  chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-    try {
-      if (msg.type === 'detect') sendResponse(detect());
-      else if (msg.type === 'collectLinkedIn') sendResponse(collectLinkedIn());
-      else if (msg.type === 'autofill') sendResponse(autofill(msg.profile || {}, msg.resume || null));
-    } catch (e) {
-      sendResponse({ error: e.message, filled: [], skipped: 0, unknown: [] });
-    }
-    return false;      // responses above are synchronous
-  });
+  /* Expose the helpers on the shared content-script world so the auto-apply
+     content script (Queue → ATS Auto Autofill) can REUSE the exact same
+     detect/autofill — no second implementation, no behavior change. The
+     manual "Autofill Application" popup button still drives the message
+     listener below, unchanged. */
+  window.__cpHelper = { detect, autofill, collectLinkedIn };
+
+  if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
+    chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+      try {
+        if (msg.type === 'detect') sendResponse(detect());
+        else if (msg.type === 'collectLinkedIn') sendResponse(collectLinkedIn());
+        else if (msg.type === 'autofill') sendResponse(autofill(msg.profile || {}, msg.resume || null));
+      } catch (e) {
+        sendResponse({ error: e.message, filled: [], skipped: 0, unknown: [] });
+      }
+      return false;      // responses above are synchronous
+    });
+  }
 })();

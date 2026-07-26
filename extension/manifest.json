@@ -8,5 +8,28 @@
     "default_title": "CareerPilot Helper"
   },
   "permissions": ["activeTab", "scripting", "storage"],
-  "host_permissions": ["http://127.0.0.1:8000/*"]
+  "host_permissions": ["http://127.0.0.1:8000/*"],
+  "content_scripts": [
+    {
+      "matches": ["file:///*"],
+      "js": ["storage.js", "bridge.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "*://*.greenhouse.io/*",
+        "*://*.lever.co/*",
+        "*://*.myworkdayjobs.com/*",
+        "*://*.myworkdaysite.com/*",
+        "*://*.successfactors.com/*",
+        "*://*.successfactors.eu/*",
+        "*://*.smartrecruiters.com/*",
+        "*://*.taleo.net/*",
+        "*://*.icims.com/*",
+        "*://*.oraclecloud.com/*"
+      ],
+      "js": ["storage.js", "ats-engine.js", "content.js", "auto-apply.js"],
+      "run_at": "document_idle"
+    }
+  ]
 }
