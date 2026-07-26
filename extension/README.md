@@ -12,8 +12,11 @@ answer you typed, and **never submits anything** — you always press Apply your
 4. Click **Load unpacked** and select this folder:
    `C:\Users\m.awais\Desktop\Job Prject\extension`
 5. Pin **CareerPilot Helper** from the puzzle-piece menu so it's one click away.
-6. *(Optional, for the "Open CareerPilot" button)* on the extension's card click
-   **Details** → enable **Allow access to file URLs** — the app is a local file.
+6. *(Optional, only if you open CareerPilot as a `file://` page)* on the extension's
+   card click **Details** → enable **Allow access to file URLs**. If you run the app
+   from **localhost** (e.g. a local server) this is not needed — the Queue → autofill
+   bridge runs on `localhost`/`127.0.0.1` and `file://` alike, via the background
+   service worker (no file:// dependency).
 
 ## Start the backend (required for Save + Autofill)
 

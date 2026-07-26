@@ -4,10 +4,10 @@
 bottom, then continue from **Next Up**. Rules, project shape, and how to run the tests
 live in [CLAUDE.md](CLAUDE.md) — read that too.
 
-- **Last updated:** 2026-07-26 *(always keep this line current — every HANDOFF edit stamps today's date here, so anyone can tell the latest version at a glance)*
-- **Status:** 🟢 **v1.0 SHIPPED** (2026-07-13, tagged 2026-07-22) · since: Chrome extension, real ATS import, ATS Engine v1, Universal Autofill v2 + profile auto-sync + resilient extension storage, Application Queue v1, extension-save→Today's-Jobs sync, imported-jobs→approvals→queue, queue-triggered ATS autofill
+- **Last updated:** 2026-07-27 *(always keep this line current — every HANDOFF edit stamps today's date here, so anyone can tell the latest version at a glance)*
+- **Status:** 🟢 **v1.0 SHIPPED** (2026-07-13, tagged 2026-07-22) · since: Chrome extension, real ATS import, ATS Engine v1, Universal Autofill v2 + profile auto-sync + resilient extension storage, Application Queue v1, extension-save→Today's-Jobs sync, imported-jobs→approvals→queue, **queue-triggered ATS autofill (verified live on a real Greenhouse job 2026-07-27)**
 - **Branch:** `main` — clean, in sync with origin
-- **Head:** `6759244` — queue-triggered ATS autofill · tag `v1.0` on `b676933`
+- **Head:** `fix: make queue-triggered ATS autofill reliable on real job pages` (bridge/messaging + Greenhouse fix; hash in git log) · tag `v1.0` on `b676933`
 - **Remote:** github.com/engineerawais24/engineerawais
 
 > ### ⚙️ Working agreement — for ANY agent editing this repo
@@ -41,7 +41,7 @@ live in [CLAUDE.md](CLAUDE.md) — read that too.
 | M9 | **Universal Autofill v2 + profile auto-sync + resilient storage** — extension fills all common field types incl. checkboxes & résumé upload; backend profile stays populated; storage never crashes | — | ✅ Shipped 2026-07-25 (`f21d7e7`; harnesses 19/19 + 8/8 + 7/7, backend 42/42) |
 | M11 | **Extension save → Today's Jobs** — a job saved from the extension (POST /api/jobs) is pulled back into Today's Jobs via `JobsBackendSync` + `ImportedJobs.upsertFromBackend` | — | ✅ Shipped 2026-07-26 (`749191c`; deduped by backend identity; harness 8/8, backend read-back test) |
 | M12 | **Imported jobs → Approvals → Queue** — create an application for an approved imported job; it shows on Approvals; "Approve & queue" adds that exact job to the Application Queue; each queued job links only to its own package | — | ✅ Shipped 2026-07-26 (`bd64909` + `749191c`; harness 7/7) |
-| M13 | **Queue → ATS auto-autofill** — opening a queued job auto-runs Universal Autofill v2 once; login/CAPTCHA/blocked/no-form → Needs Attention | — | ✅ Built 2026-07-26 (`6759244`; harnesses 10/10 + 5/5) — **real supported-ATS smoke test still pending (user-side)** |
+| M13 | **Queue → ATS auto-autofill** — opening a queued job auto-runs Universal Autofill v2 once; login/CAPTCHA/blocked/no-form → Needs Attention | — | ✅ Built 2026-07-26 · ✅ **verified live 2026-07-27 on `https://job-boards.greenhouse.io/andurilindustries/jobs/5193775007`** (autofilled once automatically). Two smoke-test bugs fixed: (1) `matchIntent` `normHost` folds Greenhouse `boards.*`⇄`job-boards.*` (301 redirect); (2) **the real break** — the intent bridge only matched `file:///*`, so on the **localhost** app page (`http://127.0.0.1:5500`) it never loaded → intent never stored → empty form. Rebuilt as a **background service worker (`background.js`) + `window.postMessage` → `chrome.runtime` messaging** bridge on `127.0.0.1`/`localhost` (no `file://`; a CustomEvent's `detail` doesn't cross into the content-script world — that was the bug). Added a live popup diagnostic. Harnesses 17/17 + 8/8 + 5/5 + 23/23 + 6/6 |
 | M10 | **Application Queue v1** — process approved jobs one at a time from Approvals: open in a new tab, Mark Applied / Needs Attention / Skip / Open Next, auto-advance, refresh-safe | — | ✅ Shipped 2026-07-25 (`d30af44`; reuses `ApplicationPackages`; never submits; harness 11/11) |
 
 ## To-do (v1.0 → v1.0-tagged)
@@ -169,17 +169,17 @@ prep, and an optional FastAPI backend with two-way sync.
 
 ## Next Up
 
-Nothing is mid-flight — everything through `6759244` is committed and pushed. The one open verification is
-**user-side**:
+**Queue → ATS auto-autofill is DONE and verified live** (2026-07-27) on
+`https://job-boards.greenhouse.io/andurilindustries/jobs/5193775007` — opening it from the Queue
+autofilled the Greenhouse form once, automatically. Committed as
+`fix: make queue-triggered ATS autofill reliable on real job pages`.
 
-- **Real supported-ATS smoke test of the queue → auto-autofill (pending).** Load the extension unpacked
-  (so the new content-scripts/manifest take effect), start the Application Queue on an approved job, and
-  confirm auto-autofill fires once on a live Greenhouse / Lever / Workday / SuccessFactors /
-  SmartRecruiters / Taleo / Oracle / iCIMS posting — and that login/CAPTCHA/blocked pages surface Needs
-  Attention. The decision logic is unit-tested (10/10 + 5/5) but the cross-tab wiring can't run headlessly.
+Temporary diagnostics still in place (remove when no longer needed): the popup **QUEUE → ATS AUTO-RUN**
+panel (bridge loaded / last queue event / background received / intent / ATS-run stage), and
+`app/tests/queue-origin/probe.html` (a manual loaded-extension ACK check — the automated headless probe
+can't observe the real service-worker round-trip under Chrome's virtual clock).
 
-Other standing user-side items: reload the extension so the `storage` permission is live, enable ATS
-companies, cert recovery — whenever the user is at their browser.
+Standing user-side items: enable ATS companies, cert recovery — whenever the user is at their browser.
 
 ## Open Issues
 
@@ -207,6 +207,7 @@ HANDOFF update rule below.)*
 
 | Date | Sprint | Commit | Summary |
 |------|--------|--------|---------|
+| 2026-07-27 | — | *(this commit)* | fix: make queue-triggered ATS autofill reliable on real job pages — **✅ verified live on `job-boards.greenhouse.io/andurilindustries/jobs/5193775007`**. Two bugs: (1) `matchIntent` `normHost` folds Greenhouse `boards.*`⇄`job-boards.*` (301 redirect); (2) the intent bridge only matched `file:///*` so on the **localhost** app page it never loaded → empty form. Rebuilt as a **background service worker + `window.postMessage`→`chrome.runtime` bridge** on `127.0.0.1`/`localhost` (a CustomEvent's `detail` doesn't cross into the content-script world — the real bug); no `file://`. Live popup diagnostic added. New `background.js`, `tests/messaging` (8/8), `tests/queue-origin` @127.0.0.1:5500 (5/5); auto-apply 17/17, ats 23/23, queue 6/6. Safety rules unchanged (never submit/salary/overwrite; run-once; hand-opened never auto-runs). |
 | 2026-07-26 | — | `6759244` | feat: queue-triggered ATS autofill — opening a queued job auto-runs Universal Autofill v2 once (bridge + AutoApply + AtsEngine); queue-opened tabs only; never submit/salary/consent; login/CAPTCHA/blocked/no-form → Needs Attention; run-once guarded. Harnesses 10/10 + 5/5. **Real-ATS smoke test pending.** |
 | 2026-07-26 | — | `bd64909` | fix: imported jobs through approvals & queue — Saved-job applications card on Approvals + `ApplicationQueue.enqueue` (Approve & queue); `createApplication` never fake-succeeds. Harness 7/7 |
 | 2026-07-26 | — | `749191c` | fix: extension-saved jobs sync into Today's Jobs (`JobsBackendSync` + `upsertFromBackend`); dedup on backend identity not canonical URL → queued jobs link to their own package (WSP↔Microsoft). Harness 8/8 |

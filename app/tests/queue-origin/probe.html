@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <!-- title contains "CareerPilot" — stands in for the real app page -->
+  <title>CareerPilot AI · bridge probe</title>
+  <style>
+    body{ font:20px/1.6 -apple-system,Segoe UI,Roboto,sans-serif; margin:0; padding:40px; background:#0e0f1a; color:#e7e8f0; }
+    #r{ font:700 34px ui-monospace,monospace; padding:18px 22px; border-radius:12px; display:inline-block; }
+    #r.pending{ background:#2a2d3f; color:#9aa0b5; }
+    #r.ok{ background:#123524; color:#4ade80; }
+    #r.fail{ background:#3a1620; color:#f87171; }
+    .sub{ color:#9aa0b5; font-size:14px; margin-top:16px; max-width:820px; }
+  </style>
+</head>
+<body>
+  <h1>Real extension E2E probe</h1>
+  <div id="r" class="pending">PENDING…</div>
+  <div class="sub">Load this page at <code>http://127.0.0.1:5500/app/tests/queue-origin/probe.html</code> with the
+    unpacked extension loaded. It posts a <code>queue-open</code> message; if the real content-script bridge
+    receives it across worlds, forwards it to the background, and ACKs back, this shows <b>ACK-OK</b> — the
+    definitive proof the runtime connection works. Without the extension it stays PENDING (that's expected).</div>
+
+  <script>
+    const R = document.getElementById('r');
+    const JB_URL = 'https://job-boards.greenhouse.io/andurilindustries/jobs/5193775007';
+
+    window.addEventListener('message', function (ev) {
+      if (ev.source !== window) return;
+      const d = ev.data;
+      if (!d || d.__careerpilot_from_ext !== true || d.kind !== 'queue-open-ack') return;
+      R.textContent = d.ok ? ('ACK-OK · token=' + d.token) : 'ACK-FAIL';
+      R.className = d.ok ? 'ok' : 'fail';
+    });
+
+    /* post the queue-open a few times, giving the content script time to inject
+       at document_idle (real extension only) */
+    function fire(n) {
+      window.postMessage({
+        __careerpilot: true, kind: 'queue-open', url: JB_URL, token: 'probe-tok',
+        jobId: 'anduril', profile: { fullName: 'Probe User', email: 'probe@example.com' }, resume: null,
+      }, window.location.origin);
+      if (n > 0) setTimeout(() => fire(n - 1), 500);
+    }
+    window.addEventListener('load', () => setTimeout(() => fire(6), 600));
+  </script>
+</body>
+</html>

@@ -37,6 +37,14 @@
     }
     #ask ul{ margin:0; padding-left:16px; max-height:150px; overflow:auto; }
     #ask li{ font-size:11.5px; color:#C4C5D4; margin-bottom:3px; }
+    /* temporary Queue → ATS auto-run diagnostic (for the live smoke test) */
+    #diag{ margin:6px 0 10px; padding:8px 10px; background:#171922; border:1px solid #2C2F3E; border-radius:8px; }
+    #diag .diag-h{ font:600 9px ui-monospace, monospace; letter-spacing:.12em; color:#6C6E84; margin-bottom:6px; }
+    #diag .diag-row{ display:flex; gap:8px; font-size:11px; line-height:1.5; }
+    #diag .diag-row .k{ flex:0 0 84px; color:#8E90A5; }
+    #diag .diag-row .v{ flex:1; word-break:break-word; }
+    #diag .v.ok{ color:#4ade80; } #diag .v.run{ color:#7aa2ff; }
+    #diag .v.warn{ color:#fbbf24; } #diag .v.err{ color:#f87171; } #diag .v.muted{ color:#6C6E84; }
     .foot{ margin-top:10px; font-size:9.5px; color:#53556C; line-height:1.5; }
   </style>
 </head>
@@ -52,6 +60,8 @@
 
   <!-- hidden picker for the default résumé; the button above triggers it -->
   <input type="file" id="resumefile" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden>
+
+  <div id="diag"></div>
 
   <div id="job"></div>
   <div id="status"></div>

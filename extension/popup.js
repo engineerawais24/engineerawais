@@ -8,10 +8,9 @@
 
 const API = 'http://127.0.0.1:8000';
 
-/* The app itself is a local file. chrome.tabs.create can open file://
-   only when "Allow access to file URLs" is enabled for this extension
-   (see README). */
-const APP_URL = 'file:///C:/Users/m.awais/Desktop/Job%20Prject/app/index.html';
+/* The CareerPilot app is served from localhost (no file:// dependency). If you
+   run it on a different port, change this. */
+const APP_URL = 'http://127.0.0.1:5500/app/index.html';
 
 const $ = id => document.getElementById(id);
 
@@ -336,5 +335,85 @@ $('open').addEventListener('click', () => {
   chrome.tabs.create({ url: APP_URL });
 });
 
-/* show which résumé is set the moment the popup opens */
+/* ---------- Queue → ATS auto-run diagnostic (temporary, for the smoke test) ----------
+   Reads the intent + status the background worker and the ATS content script
+   record in chrome.storage.local, and shows, at a glance:
+     • whether the Queue signal reached the extension (intent created + stored)
+     • whether the Greenhouse content script ran + detected the ATS
+     • whether Autofill v2 started / completed, or the page needs attention. */
+
+const DIAG_STATUS  = 'cp_autofill_status';    // { stage, ats, filled, reason, ts }  — ATS tab
+const DIAG_PENDING = 'cp_queue_pending';      // the un-consumed one-shot intent
+const DIAG_SIGNAL  = 'cp_queue_signal_log';   // background logged the intent arriving
+const DIAG_BRIDGE  = 'cp_bridge_status';      // { loaded, origin, href, ts }  — bridge content script
+const DIAG_EVENT   = 'cp_last_queue_event';   // { url, token, ts }  — last queue event the bridge saw
+
+const STAGE_MSG = {
+  'no-intent':          { text: 'opened by hand — no queue intent (use Autofill Application)', cls: 'warn' },
+  'ats-detected':       { text: 'detected — waiting for the form…', cls: 'run' },
+  'autofill-started':   { text: 'autofill started…', cls: 'run' },
+  'autofill-completed': { text: 'autofill completed', cls: 'ok' },
+  'needs-attention':    { text: 'needs attention', cls: 'err' },
+};
+
+const escHtml = s => String(s == null ? '' : s)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+function ago(ts) {
+  if (!ts) return '';
+  const s = Math.max(0, Math.round((Date.now() - ts) / 1000));
+  return s < 60 ? `${s}s ago` : `${Math.round(s / 60)}m ago`;
+}
+
+const shortUrl = u => String(u || '').replace(/^https?:\/\//, '').replace(/[?#].*$/, '').slice(0, 46);
+
+async function showDiag() {
+  const el = $('diag');
+  if (!el) return;
+  const [status, pending, signal, bridge, event] = await Promise.all([
+    SafeStorage.get(DIAG_STATUS), SafeStorage.get(DIAG_PENDING), SafeStorage.get(DIAG_SIGNAL),
+    SafeStorage.get(DIAG_BRIDGE), SafeStorage.get(DIAG_EVENT),
+  ]);
+
+  const rows = [];
+
+  /* 1 — did the CareerPilot bridge content script load? */
+  rows.push(bridge && bridge.loaded
+    ? ['Bridge', `loaded ✓ ${bridge.origin || ''} · ${ago(bridge.ts)}`, 'ok']
+    : ['Bridge', 'not loaded — open CareerPilot on http://127.0.0.1 or localhost', 'err']);
+
+  /* 2 — the last queue event the bridge saw (timestamp + target URL) */
+  rows.push(event
+    ? ['Last queue event', `${shortUrl(event.url)} · ${ago(event.ts)}`, 'ok']
+    : ['Last queue event', 'none — click “Open Next” in the Queue', 'warn']);
+
+  /* 3 — did the background worker receive + store the intent? */
+  rows.push(signal
+    ? ['Background', `received ✓ · ${ago(signal.ts)}`, 'ok']
+    : ['Background', 'no', 'warn']);
+
+  /* intent lifecycle + the ATS-tab auto-run stage */
+  if (pending) rows.push(['Intent', 'stored — waiting for the ATS tab', 'run']);
+  else if (signal) rows.push(['Intent', 'consumed by the ATS tab ✓', 'ok']);
+  else rows.push(['Intent', 'none stored', 'muted']);
+
+  if (status) {
+    const m = STAGE_MSG[status.stage] || { text: status.stage, cls: 'muted' };
+    let detail = status.ats ? `${status.ats} · ${m.text}` : m.text;
+    if (status.stage === 'autofill-completed')
+      detail += ` — ${status.filled || 0} filled${status.unknown ? `, ${status.unknown} to review` : ''}`;
+    if (status.stage === 'needs-attention' && status.reason) detail += ` — ${status.reason}`;
+    rows.push(['Last ATS run', `${detail} · ${ago(status.ts)}`, m.cls]);
+  } else {
+    rows.push(['Last ATS run', 'none recorded', 'muted']);
+  }
+
+  el.innerHTML = '<div class="diag-h">QUEUE → ATS AUTO-RUN</div>' +
+    rows.map(([k, v, cls]) =>
+      `<div class="diag-row"><span class="k">${escHtml(k)}</span><span class="v ${cls}">${escHtml(v)}</span></div>`).join('');
+}
+
+/* show which résumé is set + the auto-run diagnostic the moment the popup opens,
+   and keep the diagnostic live while the popup stays open */
 showResumeInfo();
+showDiag();
+setInterval(showDiag, 1500);

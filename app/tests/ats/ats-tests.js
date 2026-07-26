@@ -46,6 +46,13 @@
     ['2 · Greenhouse — job-boards host', () =>
       expectAts('https://job-boards.greenhouse.io/airbnb/jobs/6789012',
         'Greenhouse', { company: 'airbnb' }) && 'job-boards.greenhouse.io → airbnb'],
+    ['2b · Greenhouse — real smoke-test job-boards URL (Anduril)', () => {
+      /* the exact posting the Queue auto-apply smoke test failed on */
+      const r = expectAts('https://job-boards.greenhouse.io/andurilindustries/jobs/5193775007',
+        'Greenhouse', { company: 'andurilindustries' });
+      assert(r.supported && r.confidence >= 0.95, 'a real job-boards posting should read supported + near-certain');
+      return `job-boards.greenhouse.io → ${r.company} · conf ${r.confidence}`;
+    }],
     ['3 · Greenhouse — embed with ?for=', () =>
       expectAts('https://boards.greenhouse.io/embed/job_board?for=airtable',
         'Greenhouse', { company: 'airtable' }) && 'embed board → airtable'],

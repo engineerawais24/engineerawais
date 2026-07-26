@@ -28,6 +28,16 @@ const AutoApply = (() => {
   const DONE_KEY    = 'cp_autofill_done';     // { token: ts, … } (capped)
   const ATTN_KEY    = 'cp_needs_attention';   // { token, url, reason, ts }
   const RESULT_KEY  = 'cp_autofill_result';   // { token, url, filled, unknown, ts }
+  const STATUS_KEY  = 'cp_autofill_status';   // { stage, ats, url, filled, reason, ts } — the popup's live diagnostic
+
+  /* the diagnostic stages the popup renders (temporary, for the smoke test) */
+  const STAGE = {
+    NO_INTENT: 'no-intent',            // ran on this page, but it wasn't opened from the Queue
+    ATS_DETECTED: 'ats-detected',      // matched intent + detected the ATS
+    STARTED: 'autofill-started',       // form ready, profile in hand, filling now
+    COMPLETED: 'autofill-completed',   // filled N fields (done)
+    ATTENTION: 'needs-attention',      // login / CAPTCHA / blocked / no-form / no-profile / …
+  };
 
   const INTENT_MAX_AGE = 3 * 60 * 1000;       // an intent older than 3 min is stale
   const FORM_TIMEOUT   = 12 * 1000;           // wait up to 12s for the form
@@ -43,14 +53,27 @@ const AutoApply = (() => {
   const canon = u => String(u || '').split(/[?#]/)[0].replace(/\/+$/, '').toLowerCase();
   function host(u) { try { return new URL(u).hostname.toLowerCase(); } catch (e) { return ''; } }
 
+  /* Fold a hostname to a canonical form so a provider's own redirect between two
+     of its board hosts doesn't strand the intent. Greenhouse renamed its hosted
+     boards from boards.greenhouse.io to job-boards.greenhouse.io and 301-redirects
+     between them, so a job opened via one host lands on the other — the queue
+     stores boards.greenhouse.io (what the Job Board API returns) while the tab
+     ends up on job-boards.greenhouse.io. Both fold to boards.greenhouse.io. */
+  function normHost(h) {
+    h = String(h || '').toLowerCase();
+    return /(^|\.)greenhouse\.io$/.test(h) ? h.replace(/^job-/, '') : h;
+  }
+
   /* is this page the one the Queue opened? (exact URL, or same host after a
-     locale/redirect), recent, and carrying a token */
+     locale/provider redirect — incl. Greenhouse's boards ⇄ job-boards rename),
+     recent, and carrying a token */
   function matchIntent(pending, loc, now, maxAge) {
     if (!pending || !pending.url || !pending.token) return false;
     if (now - (pending.ts || 0) > (maxAge || INTENT_MAX_AGE)) return false;
     const here = (loc && loc.href) || '';
     if (canon(here) === canon(pending.url)) return true;
-    return !!host(here) && host(here) === host(pending.url);
+    const hh = host(here);
+    return !!hh && normHost(hh) === normHost(host(pending.url));
   }
 
   /* ---------- page inspection (pure, testable) ---------- */
@@ -121,14 +144,27 @@ const AutoApply = (() => {
     const loc = env.loc || (typeof location !== 'undefined' ? location : { href: '', hostname: '' });
     const doc = env.doc || (typeof document !== 'undefined' ? document : null);
     const storage = env.storage || defaultStorage();
-    const ats = env.ats || (typeof AtsEngine !== 'undefined' ? AtsEngine : null);
+    const atsOf = env.ats || (typeof AtsEngine !== 'undefined' ? AtsEngine : null);
     const autofill = env.autofill || (typeof window !== 'undefined' && window.__cpHelper && window.__cpHelper.autofill) || null;
     const now = env.now || Date.now();
     const wait = env.waitForForm || waitForForm;
 
-    /* 1 — only act on a matching, unconsumed, recent Queue intent */
+    const htmlOf = () => (doc && doc.documentElement ? doc.documentElement.outerHTML : '');
+    /* write the popup's live diagnostic status (best-effort; never throws) */
+    const report = (stage, extra) =>
+      storage.set(STATUS_KEY, Object.assign(
+        { stage, url: (loc && loc.href) || '', ats: null, ts: now }, extra || {}));
+
+    /* 1 — only act on a matching, unconsumed, recent Queue intent.
+       A hand-opened page has no intent → we record a "no-intent" diagnostic
+       (so the popup can explain why) and do NOT autofill. */
     const pending = await storage.get(PENDING_KEY);
-    if (!matchIntent(pending, loc, now, env.maxAge)) return { ran: false, reason: 'not-queue-opened' };
+    if (!matchIntent(pending, loc, now, env.maxAge)) {
+      let ats = null;
+      try { if (atsOf) ats = atsOf.detect({ url: loc.href, html: htmlOf() }).ats; } catch (e) { /* best-effort */ }
+      await report(STAGE.NO_INTENT, { ats });
+      return { ran: false, reason: 'not-queue-opened' };
+    }
 
     /* 2 — run-once guard */
     const done = (await storage.get(DONE_KEY)) || {};
@@ -140,7 +176,7 @@ const AutoApply = (() => {
     done[pending.token] = now;
     await storage.set(DONE_KEY, trimDone(done));
 
-    const ctx = { storage, pending, now };
+    const ctx = { storage, pending, now, loc };
 
     /* 4 — fast fail on an obvious login / CAPTCHA / blocked page */
     const early = detectBlocker(doc, loc);
@@ -149,8 +185,9 @@ const AutoApply = (() => {
     /* 5 — detect the ATS (recorded; the form is the real gate) */
     let detection = { ats: null, supported: false, confidence: 0 };
     try {
-      if (ats) detection = ats.detect({ url: loc.href, html: doc && doc.documentElement ? doc.documentElement.outerHTML : '' });
+      if (atsOf) detection = atsOf.detect({ url: loc.href, html: htmlOf() });
     } catch (e) { /* detection is best-effort */ }
+    await report(STAGE.ATS_DETECTED, { token: pending.token, jobId: pending.jobId, ats: detection.ats });
 
     /* 6 — wait for the application form to be ready */
     const ready = await wait(doc, { timeout: env.formTimeout, interval: env.formInterval });
@@ -167,6 +204,7 @@ const AutoApply = (() => {
 
     /* 8 — run Universal Autofill v2 ONCE (all its safety rules apply) */
     if (typeof autofill !== 'function') return attention(ctx, 'no-engine', detection);
+    await report(STAGE.STARTED, { token: pending.token, jobId: pending.jobId, ats: detection.ats });
     let result;
     try { result = autofill(profile, data.resume || null); }
     catch (e) { return attention(ctx, 'autofill-error', detection); }
@@ -175,21 +213,32 @@ const AutoApply = (() => {
       token: pending.token, jobId: pending.jobId, url: loc.href,
       ats: detection.ats, filled: result.filled || [], unknown: result.unknown || [], ts: now,
     });
+    await report(STAGE.COMPLETED, {
+      token: pending.token, jobId: pending.jobId, ats: detection.ats,
+      filled: (result.filled || []).length, unknown: (result.unknown || []).length,
+    });
     return { ran: true, ats: detection.ats, supported: detection.supported, result };
   }
 
-  /* do nothing on the page; hand a "needs attention" back to the Queue */
+  /* do nothing on the page; hand a "needs attention" back to the Queue AND
+     surface it as the popup's diagnostic status */
   async function attention(ctx, reason, detection) {
+    const ats = (detection && detection.ats) || null;
     await ctx.storage.set(ATTN_KEY, {
       token: ctx.pending.token, jobId: ctx.pending.jobId, url: ctx.pending.url,
-      reason, ats: (detection && detection.ats) || null, ts: ctx.now,
+      reason, ats, ts: ctx.now,
+    });
+    await ctx.storage.set(STATUS_KEY, {
+      stage: STAGE.ATTENTION, reason, ats,
+      token: ctx.pending.token, jobId: ctx.pending.jobId,
+      url: (ctx.loc && ctx.loc.href) || ctx.pending.url, ts: ctx.now,
     });
     return { ran: false, reason, attention: true };
   }
 
   return {
-    run, matchIntent, hasApplicationForm, detectBlocker, waitForForm,
-    PENDING_KEY, DATA_KEY, DONE_KEY, ATTN_KEY, RESULT_KEY,
+    run, matchIntent, normHost, hasApplicationForm, detectBlocker, waitForForm,
+    PENDING_KEY, DATA_KEY, DONE_KEY, ATTN_KEY, RESULT_KEY, STATUS_KEY, STAGE,
   };
 })();
 

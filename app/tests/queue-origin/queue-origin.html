@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- title contains "CareerPilot" so this stands in for the real app page -->
+  <title>CareerPilot AI · Queue-origin bridge test</title>
+  <style>
+    :root{ color-scheme: light dark; }
+    body{ font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif; margin:0; padding:28px; background:#0e0f1a; color:#e7e8f0; }
+    h1{ font-size:18px; margin:0 0 4px; }
+    .sub{ color:#9aa0b5; font-size:12px; margin-bottom:18px; max-width:900px; }
+    #summary{ display:inline-block; font-weight:700; font-size:13px; padding:4px 12px; border-radius:8px; margin-bottom:16px; }
+    #summary.ok{ background:#123524; color:#4ade80; } #summary.bad{ background:#3a1620; color:#f87171; }
+    .t{ display:flex; gap:12px; align-items:flex-start; padding:11px 13px; border:1px solid #23263a; border-radius:10px; margin-bottom:8px; background:#151728; }
+    .t.fail{ border-color:#5b2130; background:#1e1420; }
+    .badge{ font:600 10px/1 ui-monospace,monospace; padding:5px 7px; border-radius:6px; letter-spacing:.06em; }
+    .t.pass .badge{ background:#123524; color:#4ade80; } .t.fail .badge{ background:#3a1620; color:#f87171; }
+    b{ font-weight:600; } .detail{ color:#9aa0b5; font-size:12px; margin-top:3px; font-family:ui-monospace,monospace; }
+  </style>
+</head>
+<body>
+  <h1>Queue → ATS bridge at the exact origin</h1>
+  <div class="sub">Served over HTTP at <code>http://127.0.0.1:5500</code>. Verifies the manifest's bridge
+    content-script matches <code>http://127.0.0.1:5500/app/index.html#/approvals</code>, that the real
+    <code>bridge.js</code> loads + records itself, and that a <code>window.postMessage(queue-open)</code>
+    forwards through the real <code>background.js</code> into <code>chrome.storage.local</code> — at this exact origin.</div>
+  <div id="summary">running…</div>
+  <div id="results"></div>
+
+  <!-- capturing chrome stub, before the real modules load -->
+  <script>
+    window.__store = {};
+    window.__sent = [];
+    window.chrome = {
+      runtime: {
+        sendMessage: (msg, cb) => { window.__sent.push(msg); if (typeof cb === 'function') cb({ ok: true, stored: true }); },
+        lastError: null,
+      },
+      storage: {
+        local: { set: (o, cb) => { Object.assign(window.__store, o); if (cb) cb(); }, get: (k, cb) => cb({}) },
+        onChanged: { addListener: () => {} },
+      },
+    };
+  </script>
+
+  <!-- real modules, loaded same-origin over http -->
+  <script src="../../../extension/background.js"></script>
+  <script src="../../../extension/bridge.js"></script>
+  <script src="queue-origin-tests.js"></script>
+</body>
+</html>

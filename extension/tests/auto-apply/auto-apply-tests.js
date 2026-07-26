@@ -24,6 +24,11 @@
   }
 
   const GH_URL = 'https://boards.greenhouse.io/acme/jobs/12345';
+  /* the real smoke-test job: Greenhouse's current hosted-board host is
+     job-boards.greenhouse.io; the Job Board API still hands out the old
+     boards.greenhouse.io URL, and Greenhouse 301-redirects between them. */
+  const JB_URL       = 'https://job-boards.greenhouse.io/andurilindustries/jobs/5193775007';
+  const JB_OLD_BOARD = 'https://boards.greenhouse.io/andurilindustries/jobs/5193775007';
   function loc(url) { let h = ''; try { h = new URL(url).hostname; } catch (e) {} return { href: url, hostname: h }; }
   function pending(over) { return Object.assign({ url: GH_URL, token: 't-' + Math.random().toString(36).slice(2, 8), jobId: 'j1', ts: Date.now() }, over || {}); }
   function profile() {
@@ -157,6 +162,96 @@
       assert(!AutoApply.matchIntent(null, loc(GH_URL), now, 60000), 'no intent should not match');
       assert(!AutoApply.matchIntent({ url: 'https://jobs.lever.co/x/1', token: 't', ts: now }, loc(GH_URL), now, 60000), 'different host should not match');
       return 'form/blocker/intent detectors correct';
+    }],
+
+    /* ---- regression: the real Greenhouse job-boards.greenhouse.io smoke test ---- */
+
+    ['11 · Queue-opened job-boards.greenhouse.io (exact Anduril URL) autofills once', async () => {
+      setForm(APP_FORM);
+      const p = pending({ url: JB_URL, jobId: 'anduril' });
+      const st = memStore({ [AutoApply.PENDING_KEY]: p, [AutoApply.DATA_KEY]: { profile: profile(), resume: RESUME } });
+      const r = await AutoApply.run({ loc: loc(JB_URL), doc: document, storage: st, now: Date.now(), waitForForm: yes });
+      assert(r.ran, 'should run on job-boards.greenhouse.io: ' + JSON.stringify(r));
+      assert(r.ats === 'Greenhouse', 'ATS should be Greenhouse, got ' + r.ats);
+      assert($('fn').value === 'Alex' && $('em').value === 'alex.morgan@example.com', 'name+email filled');
+      assert($('sal').value === '', 'salary must NEVER be filled');
+      assert((await st.get(AutoApply.PENDING_KEY)) === null, 'intent consumed once');
+      return 'job-boards.greenhouse.io → autofilled once · salary blank';
+    }],
+
+    ['12 · boards.greenhouse.io intent → job-boards.greenhouse.io tab (301) still autofills', async () => {
+      /* the exact bug: the queue stored the API url (boards.*), Greenhouse
+         redirected the opened tab to job-boards.* → the form must still fill. */
+      setForm(APP_FORM);
+      const p = pending({ url: JB_OLD_BOARD, jobId: 'anduril' });      // what the queue opened
+      const st = memStore({ [AutoApply.PENDING_KEY]: p, [AutoApply.DATA_KEY]: { profile: profile(), resume: RESUME } });
+      const r = await AutoApply.run({ loc: loc(JB_URL), doc: document, storage: st, now: Date.now(), waitForForm: yes });  // where it landed
+      assert(r.ran && r.reason === undefined, 'redirect must not strand the intent: ' + JSON.stringify(r));
+      assert($('fn').value === 'Alex', 'first name filled after the boards→job-boards redirect');
+      assert($('sal').value === '', 'salary still never filled');
+      return 'boards→job-boards redirect no longer strands the queue intent';
+    }],
+
+    ['13 · matchIntent: boards ⇄ job-boards equivalence, other hosts still rejected', () => {
+      const now = Date.now();
+      const mk = url => ({ url, token: 't', ts: now });
+      assert(AutoApply.matchIntent(mk(JB_OLD_BOARD), loc(JB_URL), now, 60000), 'boards intent → job-boards tab matches');
+      assert(AutoApply.matchIntent(mk(JB_URL), loc(JB_OLD_BOARD), now, 60000), 'job-boards intent → boards tab matches');
+      assert(AutoApply.matchIntent(mk(JB_URL), loc(JB_URL), now, 60000), 'exact job-boards url matches');
+      assert(!AutoApply.matchIntent(mk('https://job-boards.lever.co/x/1'), loc(JB_URL), now, 60000), 'a different ATS must not match');
+      assert(!AutoApply.matchIntent(mk(JB_URL), loc('https://jobs.workday.com/x'), now, 60000), 'greenhouse intent must not match a non-greenhouse tab');
+      return 'greenhouse boards/job-boards fold to one host; non-greenhouse hosts unaffected';
+    }],
+
+    ['14 · Manual "Autofill Application" still fills a Greenhouse form (salary blank)', () => {
+      /* the manual popup path calls window.__cpHelper.autofill directly, with no
+         queue intent — it must keep working and obey the same salary rule. */
+      setForm(APP_FORM);
+      const res = window.__cpHelper.autofill(profile(), RESUME);
+      assert($('fn').value === 'Alex' && $('em').value === 'alex.morgan@example.com', 'manual fill populates name+email');
+      assert($('sal').value === '', 'manual fill never touches salary');
+      assert(res && res.filled && res.filled.indexOf('First name') !== -1, 'result reports filled fields');
+      return 'manual autofill unchanged · name+email filled · salary blank';
+    }],
+
+    /* ---- regression: the popup's live diagnostic status ---- */
+
+    ['15 · Diagnostic status reaches "autofill-completed" on the queue-opened job-boards page', async () => {
+      setForm(APP_FORM);
+      const p = pending({ url: JB_URL, jobId: 'anduril' });
+      const st = memStore({ [AutoApply.PENDING_KEY]: p, [AutoApply.DATA_KEY]: { profile: profile(), resume: RESUME } });
+      const r = await AutoApply.run({ loc: loc(JB_URL), doc: document, storage: st, now: Date.now(), waitForForm: yes });
+      assert(r.ran, 'should run');
+      const status = await st.get(AutoApply.STATUS_KEY);
+      assert(status && status.stage === AutoApply.STAGE.COMPLETED, 'status stage should be autofill-completed: ' + JSON.stringify(status));
+      assert(status.ats === 'Greenhouse', 'status should record the ATS');
+      assert(status.filled >= 2, 'status should report filled count (name+email at least), got ' + status.filled);
+      return 'status: Greenhouse · autofill-completed · ' + status.filled + ' filled';
+    }],
+
+    ['16 · Hand-opened Greenhouse page → status "no-intent", nothing filled', async () => {
+      setForm(APP_FORM);
+      const st = memStore({ [AutoApply.DATA_KEY]: { profile: profile(), resume: RESUME } });   // NO pending intent
+      const r = await AutoApply.run({ loc: loc(JB_URL), doc: document, storage: st, now: Date.now(), waitForForm: yes });
+      assert(!r.ran && r.reason === 'not-queue-opened', 'hand-opened must not auto-run');
+      assert($('fn').value === '', 'nothing may be filled on a hand-opened page');
+      const status = await st.get(AutoApply.STATUS_KEY);
+      assert(status && status.stage === AutoApply.STAGE.NO_INTENT, 'status stage should be no-intent: ' + JSON.stringify(status));
+      assert(status.ats === 'Greenhouse', 'no-intent diagnostic still detects the ATS for the popup');
+      return 'status: no-intent (Greenhouse detected) · nothing filled';
+    }],
+
+    ['17 · Login wall → status "needs-attention" (reason login)', async () => {
+      setForm('<div class="field"><label for="pw2">Password</label><input id="pw2" type="password"></div>' +
+              '<p>Please sign in to your account to continue.</p>');
+      const p = pending({ url: JB_URL, jobId: 'anduril' });
+      const st = memStore({ [AutoApply.PENDING_KEY]: p, [AutoApply.DATA_KEY]: { profile: profile() } });
+      const r = await AutoApply.run({ loc: loc(JB_URL), doc: document, storage: st, autofill: () => { throw 'no'; }, waitForForm: yes });
+      assert(!r.ran && r.reason === 'login', 'login should surface attention');
+      const status = await st.get(AutoApply.STATUS_KEY);
+      assert(status && status.stage === AutoApply.STAGE.ATTENTION && status.reason === 'login',
+        'status stage should be needs-attention/login: ' + JSON.stringify(status));
+      return 'status: needs-attention · login';
     }],
   ];
 

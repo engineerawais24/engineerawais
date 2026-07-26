@@ -69,6 +69,26 @@
       return 'queue-open carries url + token + flat profile + résumé';
     }],
 
+    ['2b · signalOpen ALSO posts a signed window.postMessage the bridge reads (the reliable path)', () => {
+      const p = ProfileStore.defaults();
+      p.personal.firstName = 'Alex'; p.personal.lastName = 'Morgan'; p.contact.email = 'alex@example.com';
+      ProfileStore.save(p);
+
+      const orig = window.postMessage;
+      let posted = null;
+      window.postMessage = (msg) => { if (msg && msg.__careerpilot) posted = msg; };   // spy on the call (sync)
+      let token;
+      const URL_EXACT = 'https://job-boards.greenhouse.io/andurilindustries/jobs/5193775007';
+      try { token = QueueAutoApply.signalOpen({ jobId: 'j1', url: URL_EXACT }); }
+      finally { window.postMessage = orig; }
+
+      assert(posted, 'signalOpen must window.postMessage a message for the content-script bridge');
+      assert(posted.__careerpilot === true && posted.kind === 'queue-open', 'the message must be signed queue-open');
+      assert(posted.url === URL_EXACT && posted.token === token, 'url + token forwarded to the bridge');
+      assert(posted.profile && posted.profile.fullName === 'Alex Morgan', 'flat profile in the postMessage payload');
+      return 'signalOpen → window.postMessage(queue-open) crosses into the bridge world';
+    }],
+
     ['3 · signalOpen with no URL is a no-op', () => {
       let fired = false;
       const h = () => { fired = true; };
