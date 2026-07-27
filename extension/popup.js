@@ -32,8 +32,11 @@ function setStatus(text, cls) {
    "storage" permission isn't live yet) — it falls back to an in-memory
    session store. It never touches website localStorage. */
 
+const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 function getResume() { return SafeStorage.get(RESUME_KEY); }
-function saveResume(rec) { return SafeStorage.set(RESUME_KEY, rec); }
+/* completely REPLACE the stored default résumé — never a partial/merged write,
+   so a previously stored DOCX can never linger when a new PDF is chosen */
+function saveResume(rec) { return SafeStorage.replace(RESUME_KEY, rec); }
 function fileToDataUrl(file) {
   return new Promise((resolve, reject) => {
     const r = new FileReader();
@@ -286,13 +289,26 @@ $('resumefile').addEventListener('change', async () => {
   }
   try {
     const dataUrl = await fileToDataUrl(file);
-    const r = await saveResume({ name: file.name, mime: file.type || (ext === 'pdf' ? 'application/pdf' : ''), size: file.size, dataUrl, savedAt: Date.now() });
+    const rec = {
+      name: file.name,
+      mime: file.type || (ext === 'pdf' ? 'application/pdf' : DOCX_MIME),
+      size: file.size,
+      dataUrl,
+      savedAt: Date.now(),
+    };
+    /* full replacement: drops any previous résumé first, then writes the new one */
+    const r = await saveResume(rec);
+    /* refresh the popup immediately to the newly selected file (source of truth) */
     await showResumeInfo();
-    if (r && r.persisted === false) {
-      /* SafeStorage kept it in memory only — storage isn't live yet */
-      setStatus(`Default résumé set for this session — ${file.name}\nReload the extension (chrome://extensions → Reload) to keep it.`, 'ok');
+
+    if (r && r.persisted) {
+      setStatus(`Default résumé set — ${rec.name}`, 'ok');
+    } else if (r && r.verified) {
+      /* stored for this session but the write didn't persist (storage full or the
+         "storage" permission isn't live). The old file is gone, not stale. */
+      setStatus(`Default résumé set for this session — ${rec.name}\nIt could not be saved permanently — reload the extension (chrome://extensions → Reload) and set it again.`, 'err');
     } else {
-      setStatus(`Default résumé set — ${file.name}`, 'ok');
+      setStatus(`Could not save ${rec.name}. Try a smaller file, or reload the extension and retry.`, 'err');
     }
   } catch (e) {
     setStatus(e.message, 'err');
@@ -347,6 +363,7 @@ const DIAG_PENDING = 'cp_queue_pending';      // the un-consumed one-shot intent
 const DIAG_SIGNAL  = 'cp_queue_signal_log';   // background logged the intent arriving
 const DIAG_BRIDGE  = 'cp_bridge_status';      // { loaded, origin, href, ts }  — bridge content script
 const DIAG_EVENT   = 'cp_last_queue_event';   // { url, token, ts }  — last queue event the bridge saw
+const DIAG_RESUME  = 'cp_resume_diag';        // { resumeFound, resumeInputFound, fileAssigned, filenameConfirmed, name, ts }
 
 const STAGE_MSG = {
   'no-intent':          { text: 'opened by hand — no queue intent (use Autofill Application)', cls: 'warn' },
@@ -369,10 +386,11 @@ const shortUrl = u => String(u || '').replace(/^https?:\/\//, '').replace(/[?#].
 async function showDiag() {
   const el = $('diag');
   if (!el) return;
-  const [status, pending, signal, bridge, event] = await Promise.all([
+  const [status, pending, signal, bridge, event, rez] = await Promise.all([
     SafeStorage.get(DIAG_STATUS), SafeStorage.get(DIAG_PENDING), SafeStorage.get(DIAG_SIGNAL),
-    SafeStorage.get(DIAG_BRIDGE), SafeStorage.get(DIAG_EVENT),
+    SafeStorage.get(DIAG_BRIDGE), SafeStorage.get(DIAG_EVENT), SafeStorage.get(DIAG_RESUME),
   ]);
+  const yn = (v, okText, noText) => v ? [okText || 'yes ✓', 'ok'] : [noText || 'no', 'warn'];
 
   const rows = [];
 
@@ -407,9 +425,30 @@ async function showDiag() {
     rows.push(['Last ATS run', 'none recorded', 'muted']);
   }
 
-  el.innerHTML = '<div class="diag-h">QUEUE → ATS AUTO-RUN</div>' +
-    rows.map(([k, v, cls]) =>
-      `<div class="diag-row"><span class="k">${escHtml(k)}</span><span class="v ${cls}">${escHtml(v)}</span></div>`).join('');
+  /* résumé upload diagnostics — honest per-step state. When the overall upload
+     did NOT succeed (rez.ok === false) the intermediate checks are shown amber,
+     never green, so a widget rejection can't read as success. */
+  const resumeRows = [];
+  if (rez) {
+    const failed = rez.ok === false;
+    const okCls = failed ? 'warn' : 'ok';                       // no green when the upload failed
+    const step = (v, okText) => v ? [okText, okCls] : ['no', 'warn'];
+    const r1 = rez.resumeFound ? [`yes ✓${rez.name ? ' · ' + rez.name : ''}`, okCls] : ['no default set', 'warn'];
+    resumeRows.push(['Résumé found', r1[0], r1[1]]);
+    resumeRows.push(['Résumé input', ...step(rez.resumeInputFound, 'found ✓')]);
+    resumeRows.push(['File assigned', ...step(rez.fileAssigned, 'assigned ✓')]);
+    resumeRows.push(['Filename', ...step(rez.filenameConfirmed, 'visible ✓')]);
+    resumeRows.push(['Upload', rez.ok
+      ? ['ok ✓', 'ok'][0]
+      : ('FAILED' + (rez.uploadError ? ' — ' + rez.uploadError : ' — résumé not uploaded')),
+      rez.ok ? 'ok' : 'err']);
+  }
+
+  const render = list => list.map(([k, v, cls]) =>
+    `<div class="diag-row"><span class="k">${escHtml(k)}</span><span class="v ${cls}">${escHtml(v)}</span></div>`).join('');
+
+  el.innerHTML = '<div class="diag-h">QUEUE → ATS AUTO-RUN</div>' + render(rows) +
+    (resumeRows.length ? '<div class="diag-h" style="margin-top:8px">RÉSUMÉ UPLOAD</div>' + render(resumeRows) : '');
 }
 
 /* show which résumé is set + the auto-run diagnostic the moment the popup opens,

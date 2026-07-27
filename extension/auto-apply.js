@@ -29,6 +29,8 @@ const AutoApply = (() => {
   const ATTN_KEY    = 'cp_needs_attention';   // { token, url, reason, ts }
   const RESULT_KEY  = 'cp_autofill_result';   // { token, url, filled, unknown, ts }
   const STATUS_KEY  = 'cp_autofill_status';   // { stage, ats, url, filled, reason, ts } — the popup's live diagnostic
+  const RESUME_KEY  = 'cp_default_resume';    // { name, mime, dataUrl } — the popup's saved default résumé
+  const RESUME_DIAG_KEY = 'cp_resume_diag';   // { resumeFound, resumeInputFound, fileAssigned, filenameConfirmed, name, ts }
 
   /* the diagnostic stages the popup renders (temporary, for the smoke test) */
   const STAGE = {
@@ -133,6 +135,28 @@ const AutoApply = (() => {
     });
   }
 
+  /* ---------- wait for the DOM to settle after a re-render ----------
+     Resolves once no mutations have landed for `quiet` ms (the form has stopped
+     re-rendering), or after `timeout` ms as a hard stop. Used between attaching
+     the résumé (which can trigger a Greenhouse/React re-render) and filling the
+     text fields, so the fields we set are the ones that survive. */
+  function waitStable(doc, opts) {
+    const o = opts || {};
+    const quiet = o.quiet || 400;
+    const timeout = o.timeout || 3000;
+    return new Promise(resolve => {
+      if (!doc || !doc.body || typeof MutationObserver === 'undefined') { resolve(false); return; }
+      let quietTimer, hardTimer, done = false, obs;
+      const finish = v => { if (done) return; done = true; try { obs && obs.disconnect(); } catch (e) {} clearTimeout(quietTimer); clearTimeout(hardTimer); resolve(v); };
+      try {
+        obs = new MutationObserver(() => { clearTimeout(quietTimer); quietTimer = setTimeout(() => finish(true), quiet); });
+        obs.observe(doc.body, { childList: true, subtree: true, attributes: true });
+      } catch (e) { resolve(false); return; }
+      quietTimer = setTimeout(() => finish(true), quiet);      // already quiet → resolve after one window
+      hardTimer = setTimeout(() => finish(false), timeout);
+    });
+  }
+
   function trimDone(done, keep) {
     const entries = Object.entries(done || {}).sort((a, b) => b[1] - a[1]).slice(0, keep || 50);
     const out = {}; entries.forEach(([k, v]) => { out[k] = v; }); return out;
@@ -146,6 +170,7 @@ const AutoApply = (() => {
     const storage = env.storage || defaultStorage();
     const atsOf = env.ats || (typeof AtsEngine !== 'undefined' ? AtsEngine : null);
     const autofill = env.autofill || (typeof window !== 'undefined' && window.__cpHelper && window.__cpHelper.autofill) || null;
+    const attachResume = env.attachResume || (typeof window !== 'undefined' && window.__cpHelper && window.__cpHelper.attachResume) || null;
     const now = env.now || Date.now();
     const wait = env.waitForForm || waitForForm;
 
@@ -202,12 +227,71 @@ const AutoApply = (() => {
     const profile = data && data.profile;
     if (!profile || (!profile.fullName && !profile.email)) return attention(ctx, 'no-profile', detection);
 
-    /* 8 — run Universal Autofill v2 ONCE (all its safety rules apply) */
+    /* 8 — résumé source of truth: ONLY the popup's default résumé in
+       chrome.storage.local (cp_default_resume). The queue intent must NOT carry a
+       résumé binary, and any stale copy inside `data` is ignored on purpose — so
+       a résumé the user replaced can never be re-attached from an old intent. */
+    const resume = await storage.get(RESUME_KEY);
+    const haveResume = !!(resume && resume.dataUrl);
+
     if (typeof autofill !== 'function') return attention(ctx, 'no-engine', detection);
     await report(STAGE.STARTED, { token: pending.token, jobId: pending.jobId, ats: detection.ats });
+
+    /* 9 — ATTACH THE RÉSUMÉ FIRST. Revealing Greenhouse's lazy native file input
+       (clicking "Attach") can make React RE-RENDER the whole form, which would
+       wipe any text we had already filled. So we attach BEFORE typing anything —
+       the re-render then has no filled fields to clear. */
+    let rdiag = { resumeInputFound: false, fileAssigned: false, filenameConfirmed: false, uploadError: null, ok: false };
+    if (typeof attachResume === 'function') {
+      try { rdiag = await attachResume(haveResume ? resume : null, env.resumeOpts); } catch (e) { /* best-effort */ }
+    }
+
+    /* 10 — wait for the form to STABILIZE after the attach-triggered re-render,
+       so the fields we fill next are the ones that survive */
+    const stable = env.waitStable || waitStable;
+    await stable(doc, env.stableOpts);
+
+    /* 11 — run Autofill v2 for the text fields. It only fills EMPTY fields and
+       never overwrites, so it re-populates whatever the re-render cleared without
+       touching anything the user (or a prior pass) already set. Its résumé step
+       also re-checks the now-present input and re-attaches only if a re-render
+       cleared the file — so text and résumé end up filled together. */
     let result;
-    try { result = autofill(profile, data.resume || null); }
+    try { result = autofill(profile, haveResume ? resume : null); }
     catch (e) { return attention(ctx, 'autofill-error', detection); }
+
+    /* 12 — final résumé state: re-attach once if filling text triggered a late
+       re-render that cleared the file (never re-clicks "Attach" — the input now
+       exists) and take the authoritative diagnostics from here */
+    if (typeof attachResume === 'function') {
+      try { rdiag = await attachResume(haveResume ? resume : null, env.resumeOpts); } catch (e) { /* keep prior rdiag */ }
+    } else if ((result.filled || []).indexOf('Resume') !== -1) {
+      rdiag = { resumeInputFound: true, fileAssigned: true, filenameConfirmed: true, uploadError: null, ok: true };
+    }
+    /* only report the résumé as filled when the upload TRULY succeeded */
+    const uploadOk = !!rdiag.ok;
+    if (uploadOk && (result.filled || []).indexOf('Resume') === -1) result.filled.push('Resume');
+
+    /* popup diagnostics — the honest state of every step (no false green) */
+    await storage.set(RESUME_DIAG_KEY, {
+      resumeFound: haveResume,
+      resumeInputFound: rdiag.resumeInputFound,
+      fileAssigned: rdiag.fileAssigned,
+      filenameConfirmed: rdiag.filenameConfirmed,
+      uploadError: rdiag.uploadError || null,
+      ok: uploadOk,
+      name: (resume && resume.name) || null,
+      url: (loc && loc.href) || '', ts: now,
+    });
+
+    /* the page asks for a résumé but no default résumé exists → the user must
+       attach one (text fields are already filled to save them the typing) */
+    if (!haveResume && rdiag.resumeInputFound) return attention(ctx, 'no-resume', detection);
+
+    /* a résumé exists and there is a résumé field, but Greenhouse rejected the
+       programmatic upload (no matching file / no filename / widget error) → flag
+       Needs Attention, keep the text filled, and never show a false green. */
+    if (haveResume && rdiag.resumeInputFound && !uploadOk) return attention(ctx, 'resume-upload-failed', detection);
 
     await storage.set(RESULT_KEY, {
       token: pending.token, jobId: pending.jobId, url: loc.href,
@@ -237,8 +321,8 @@ const AutoApply = (() => {
   }
 
   return {
-    run, matchIntent, normHost, hasApplicationForm, detectBlocker, waitForForm,
-    PENDING_KEY, DATA_KEY, DONE_KEY, ATTN_KEY, RESULT_KEY, STATUS_KEY, STAGE,
+    run, matchIntent, normHost, hasApplicationForm, detectBlocker, waitForForm, waitStable,
+    PENDING_KEY, DATA_KEY, DONE_KEY, ATTN_KEY, RESULT_KEY, STATUS_KEY, RESUME_KEY, RESUME_DIAG_KEY, STAGE,
   };
 })();
 

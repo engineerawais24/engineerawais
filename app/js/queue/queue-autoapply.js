@@ -67,17 +67,15 @@ const QueueAutoApply = (() => {
     };
   }
 
-  /* the { profile, resume } payload the extension autofills from */
+  /* the payload the extension autofills TEXT from. It carries the profile only —
+     NOT a résumé binary: the résumé is the extension's own default
+     (chrome.storage.local `cp_default_resume`, set via the popup), which is the
+     single source of truth. Baking a résumé copy into the queue intent made a
+     replaced résumé go stale (an old DOCX kept being attached). */
   function payload() {
-    let profile = null, resume = null;
+    let profile = null;
     try { if (typeof ProfileStore !== 'undefined') profile = buildAutofillProfile(ProfileStore.load()); } catch (e) { /* optional */ }
-    try {
-      if (typeof MasterResume !== 'undefined') {
-        const m = MasterResume.get();
-        if (m && m.data) resume = { name: m.name, mime: m.mime, dataUrl: m.data };
-      }
-    } catch (e) { /* résumé optional */ }
-    return { profile, resume };
+    return { profile };
   }
 
   function dispatch(name, detail) {
@@ -106,10 +104,10 @@ const QueueAutoApply = (() => {
     if (!url) return null;
     const token = 'cpq-' + (jobId || 'job') + '-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7);
     const pay = payload();
-    /* the reliable path the bridge listens on */
-    postToExtension({ __careerpilot: true, kind: 'queue-open', url, token, jobId, profile: pay.profile, resume: pay.resume });
+    /* the reliable path the bridge listens on — job info + profile, NO résumé */
+    postToExtension({ __careerpilot: true, kind: 'queue-open', url, token, jobId, profile: pay.profile });
     /* same-world CustomEvent kept for any in-page listener / back-compat */
-    dispatch('careerpilot:queue-open', { url, token, jobId, profile: pay.profile, resume: pay.resume });
+    dispatch('careerpilot:queue-open', { url, token, jobId, profile: pay.profile });
     return token;
   }
 

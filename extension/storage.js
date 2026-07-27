@@ -102,5 +102,22 @@
     });
   }
 
-  global.SafeStorage = { get, set, remove, available };
+  /* completely REPLACE a key's value. `set` alone leaves the old value in
+     chrome.storage.local if the write silently fails (quota exceeded, permission
+     not live), and `get` is storage-first, so the stale value would keep coming
+     back. Dropping the old entry (memory + storage) FIRST guarantees a clean
+     slate: on success the new value persists; on a failed write the old value is
+     already gone (so it can never resurface) and only the fresh value remains in
+     session memory. Returns { ok, persisted, verified } — `verified` means a
+     read-back matches the new value, `persisted` means it will survive a reload. */
+  async function replace(key, value) {
+    await remove(key);
+    const r = await set(key, value);
+    const saved = await get(key);
+    let verified = false;
+    try { verified = JSON.stringify(saved) === JSON.stringify(value); } catch (e) { verified = saved === value; }
+    return { ok: !!r.ok, persisted: !!r.persisted && verified, verified };
+  }
+
+  global.SafeStorage = { get, set, remove, replace, available };
 })(typeof self !== 'undefined' ? self : this);

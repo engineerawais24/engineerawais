@@ -50,7 +50,7 @@
       return 'flat autofill profile mapped from nested app profile';
     }],
 
-    ['2 · signalOpen dispatches the queue-open event with the payload', () => {
+    ['2 · signalOpen dispatches the queue-open event with the payload (job + profile, NO résumé)', () => {
       const p = ProfileStore.defaults();
       p.personal.firstName = 'Alex'; p.personal.lastName = 'Morgan'; p.contact.email = 'alex@example.com';
       ProfileStore.save(p);
@@ -65,8 +65,10 @@
       assert(token && /^cpq-j1-/.test(token), 'token format: ' + token);
       assert(detail && detail.url === 'https://boards.greenhouse.io/acme/jobs/1' && detail.jobId === 'j1' && detail.token === token, 'event detail basics');
       assert(detail.profile && detail.profile.fullName === 'Alex Morgan' && detail.profile.email === 'alex@example.com', 'flat profile in the payload');
-      assert(detail.resume && detail.resume.name === 'Alex_CV.pdf' && detail.resume.mime === 'application/pdf' && /^data:/.test(detail.resume.dataUrl), 'master résumé in the payload');
-      return 'queue-open carries url + token + flat profile + résumé';
+      /* the queue intent must NOT carry a résumé binary — the extension's own
+         cp_default_resume is the source of truth (a baked-in copy went stale) */
+      assert(detail.resume === undefined, 'the queue intent must NOT carry a résumé copy, got ' + JSON.stringify(detail.resume));
+      return 'queue-open carries url + token + flat profile · NO résumé';
     }],
 
     ['2b · signalOpen ALSO posts a signed window.postMessage the bridge reads (the reliable path)', () => {

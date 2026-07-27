@@ -41,6 +41,10 @@
     };
   }
   const RESUME = { name: 'cv.pdf', mime: 'application/pdf', dataUrl: 'data:application/pdf;base64,' + btoa('%PDF-1.4 x') };
+  /* the real replacement case: an old DOCX baked into a stale queue intent vs the
+     current PDF the user set as the default (cp_default_resume) */
+  const STALE_DOCX = { name: 'Mohammad_Awais_Senior_Technical_Consultant.docx', mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', dataUrl: 'data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,' + btoa('OLD-DOCX') };
+  const CURRENT_PDF = { name: 'Mohammad_Awais_JNCIS_2026.pdf', mime: 'application/pdf', dataUrl: 'data:application/pdf;base64,' + btoa('%PDF-1.4 JNCIS') };
   const APP_FORM =
     '<div class="field"><label for="fn">First name</label><input id="fn" name="first_name"></div>' +
     '<div class="field"><label for="em">Email</label><input id="em" name="email" type="email"></div>' +
@@ -52,7 +56,7 @@
 
     ['1 · No queue intent → does nothing (manual button unaffected)', async () => {
       setForm(APP_FORM);
-      const st = memStore({ [AutoApply.DATA_KEY]: { profile: profile(), resume: RESUME } });
+      const st = memStore({ [AutoApply.DATA_KEY]: { profile: profile() }, [AutoApply.RESUME_KEY]: RESUME });
       const r = await AutoApply.run({ loc: loc(GH_URL), doc: document, storage: st, waitForForm: yes });
       assert(!r.ran && r.reason === 'not-queue-opened', 'should not run: ' + JSON.stringify(r));
       assert($('fn').value === '', 'a page opened by hand must not be auto-filled');
@@ -74,7 +78,7 @@
     ['3 · Happy path → detects ATS, autofills once, salary NOT filled', async () => {
       setForm(APP_FORM);
       const p = pending();
-      const st = memStore({ [AutoApply.PENDING_KEY]: p, [AutoApply.DATA_KEY]: { profile: profile(), resume: RESUME } });
+      const st = memStore({ [AutoApply.PENDING_KEY]: p, [AutoApply.DATA_KEY]: { profile: profile() }, [AutoApply.RESUME_KEY]: RESUME });
       const r = await AutoApply.run({ loc: loc(GH_URL), doc: document, storage: st, now: Date.now(), waitForForm: yes });
       assert(r.ran, 'should run: ' + JSON.stringify(r));
       assert(r.ats === 'Greenhouse', 'ATS should be detected via AtsEngine, got ' + r.ats);
@@ -169,7 +173,7 @@
     ['11 · Queue-opened job-boards.greenhouse.io (exact Anduril URL) autofills once', async () => {
       setForm(APP_FORM);
       const p = pending({ url: JB_URL, jobId: 'anduril' });
-      const st = memStore({ [AutoApply.PENDING_KEY]: p, [AutoApply.DATA_KEY]: { profile: profile(), resume: RESUME } });
+      const st = memStore({ [AutoApply.PENDING_KEY]: p, [AutoApply.DATA_KEY]: { profile: profile() }, [AutoApply.RESUME_KEY]: RESUME });
       const r = await AutoApply.run({ loc: loc(JB_URL), doc: document, storage: st, now: Date.now(), waitForForm: yes });
       assert(r.ran, 'should run on job-boards.greenhouse.io: ' + JSON.stringify(r));
       assert(r.ats === 'Greenhouse', 'ATS should be Greenhouse, got ' + r.ats);
@@ -184,7 +188,7 @@
          redirected the opened tab to job-boards.* → the form must still fill. */
       setForm(APP_FORM);
       const p = pending({ url: JB_OLD_BOARD, jobId: 'anduril' });      // what the queue opened
-      const st = memStore({ [AutoApply.PENDING_KEY]: p, [AutoApply.DATA_KEY]: { profile: profile(), resume: RESUME } });
+      const st = memStore({ [AutoApply.PENDING_KEY]: p, [AutoApply.DATA_KEY]: { profile: profile() }, [AutoApply.RESUME_KEY]: RESUME });
       const r = await AutoApply.run({ loc: loc(JB_URL), doc: document, storage: st, now: Date.now(), waitForForm: yes });  // where it landed
       assert(r.ran && r.reason === undefined, 'redirect must not strand the intent: ' + JSON.stringify(r));
       assert($('fn').value === 'Alex', 'first name filled after the boards→job-boards redirect');
@@ -219,7 +223,7 @@
     ['15 · Diagnostic status reaches "autofill-completed" on the queue-opened job-boards page', async () => {
       setForm(APP_FORM);
       const p = pending({ url: JB_URL, jobId: 'anduril' });
-      const st = memStore({ [AutoApply.PENDING_KEY]: p, [AutoApply.DATA_KEY]: { profile: profile(), resume: RESUME } });
+      const st = memStore({ [AutoApply.PENDING_KEY]: p, [AutoApply.DATA_KEY]: { profile: profile() }, [AutoApply.RESUME_KEY]: RESUME });
       const r = await AutoApply.run({ loc: loc(JB_URL), doc: document, storage: st, now: Date.now(), waitForForm: yes });
       assert(r.ran, 'should run');
       const status = await st.get(AutoApply.STATUS_KEY);
@@ -231,7 +235,7 @@
 
     ['16 · Hand-opened Greenhouse page → status "no-intent", nothing filled', async () => {
       setForm(APP_FORM);
-      const st = memStore({ [AutoApply.DATA_KEY]: { profile: profile(), resume: RESUME } });   // NO pending intent
+      const st = memStore({ [AutoApply.DATA_KEY]: { profile: profile() }, [AutoApply.RESUME_KEY]: RESUME });   // NO pending intent
       const r = await AutoApply.run({ loc: loc(JB_URL), doc: document, storage: st, now: Date.now(), waitForForm: yes });
       assert(!r.ran && r.reason === 'not-queue-opened', 'hand-opened must not auto-run');
       assert($('fn').value === '', 'nothing may be filled on a hand-opened page');
@@ -252,6 +256,212 @@
       assert(status && status.stage === AutoApply.STAGE.ATTENTION && status.reason === 'login',
         'status stage should be needs-attention/login: ' + JSON.stringify(status));
       return 'status: needs-attention · login';
+    }],
+
+    /* ---- regression: résumé upload on the real Greenhouse job (hidden native
+       file input behind the "Attach" control) ---- */
+
+    ['18 · Greenhouse hidden résumé input (exact Anduril URL) is attached behind "Attach"', async () => {
+      const GH = '<div class="field"><label for="fn">First Name *</label><input id="fn" name="first_name"></div>' +
+        '<div class="field"><label for="em">Email *</label><input id="em" name="email" type="email"></div>' +
+        '<div class="field"><label for="sal">Desired Salary</label><input id="sal" name="salary"></div>' +
+        '<div class="field"><label for="gh_resume">Resume/CV *</label>' +
+          '<div class="upload"><button type="button">Attach</button>' +
+          '<input id="gh_resume" name="job_application[resume]" type="file" accept=".pdf,.doc,.docx" style="display:none">' +
+          '<span id="gh_fname"></span></div></div>' +
+        '<div class="field"><label for="gh_cover">Cover Letter</label>' +
+          '<input id="gh_cover" name="job_application[cover_letter]" type="file" style="display:none"></div>' +
+        '<div class="field"><label for="gh_photo">Profile Photo</label>' +
+          '<input id="gh_photo" name="photo" type="file" accept="image/*" style="display:none"></div>';
+      setForm(GH);
+      /* mimic Greenhouse rendering the chosen filename on the change event */
+      $('gh_resume').addEventListener('change', function () { $('gh_fname').textContent = (this.files && this.files[0]) ? this.files[0].name : ''; });
+
+      const p = pending({ url: JB_URL, jobId: 'anduril' });
+      const st = memStore({ [AutoApply.PENDING_KEY]: p, [AutoApply.DATA_KEY]: { profile: profile() }, [AutoApply.RESUME_KEY]: RESUME });
+      const r = await AutoApply.run({ loc: loc(JB_URL), doc: document, storage: st, now: Date.now(), waitForForm: yes });
+
+      assert(r.ran, 'should run: ' + JSON.stringify(r));
+      assert($('gh_resume').files && $('gh_resume').files.length === 1, 'the hidden résumé input must receive the file');
+      assert($('gh_resume').files[0].name === RESUME.name, 'attached file should be the résumé, got ' + ($('gh_resume').files[0] || {}).name);
+      assert($('gh_fname').textContent === RESUME.name, 'the filename must appear on the page (change event fired)');
+      assert($('gh_cover').files.length === 0, 'cover-letter input must NOT be touched');
+      assert($('gh_photo').files.length === 0, 'photo input must NOT be touched');
+      assert($('sal').value === '', 'salary must never be filled');
+      assert(r.result.filled.indexOf('Resume') !== -1, 'result should report the résumé attached');
+      return 'hidden Greenhouse résumé attached · cover/photo untouched · filename shown · salary blank';
+    }],
+
+    ['19 · Résumé loads from chrome.storage.local (cp_default_resume) when the payload has none', async () => {
+      setForm('<div class="field"><label for="fn">First Name *</label><input id="fn" name="first_name"></div>' +
+        '<div class="field"><label for="gh_resume">Resume/CV *</label>' +
+        '<input id="gh_resume" name="job_application[resume]" type="file" accept=".pdf" style="display:none"><span id="gh_fname"></span></div>');
+      $('gh_resume').addEventListener('change', function () { $('gh_fname').textContent = (this.files && this.files[0]) ? this.files[0].name : ''; });
+      const p = pending({ url: JB_URL, jobId: 'anduril' });
+      const st = memStore({
+        [AutoApply.PENDING_KEY]: p,
+        [AutoApply.DATA_KEY]: { profile: profile() },     // NO résumé in the Queue payload
+        [AutoApply.RESUME_KEY]: RESUME,                   // default résumé saved via the popup
+      });
+      const r = await AutoApply.run({ loc: loc(JB_URL), doc: document, storage: st, now: Date.now(), waitForForm: yes });
+      assert(r.ran, 'should run: ' + JSON.stringify(r));
+      assert($('gh_resume').files.length === 1 && $('gh_resume').files[0].name === RESUME.name, 'default résumé from chrome.storage.local must be attached');
+      return 'cp_default_resume fallback attached';
+    }],
+
+    ['20 · No default résumé anywhere → Needs Attention (no-resume), text still filled', async () => {
+      setForm('<div class="field"><label for="fn">First Name *</label><input id="fn" name="first_name"></div>' +
+        '<div class="field"><label for="em">Email *</label><input id="em" name="email" type="email"></div>' +
+        '<div class="field"><label for="gh_resume">Resume/CV *</label>' +
+        '<input id="gh_resume" name="job_application[resume]" type="file" style="display:none"></div>');
+      const p = pending({ url: JB_URL, jobId: 'anduril' });
+      const st = memStore({ [AutoApply.PENDING_KEY]: p, [AutoApply.DATA_KEY]: { profile: profile() } });   // no résumé anywhere
+      const r = await AutoApply.run({ loc: loc(JB_URL), doc: document, storage: st, now: Date.now(), waitForForm: yes });
+      assert(!r.ran && r.reason === 'no-resume' && r.attention, 'no résumé should surface Needs Attention: ' + JSON.stringify(r));
+      assert($('fn').value === 'Alex', 'text fields are still filled before flagging');
+      assert($('gh_resume').files.length === 0, 'no file attached when none exists');
+      const status = await st.get(AutoApply.STATUS_KEY);
+      assert(status && status.stage === AutoApply.STAGE.ATTENTION && status.reason === 'no-resume', 'status needs-attention/no-resume: ' + JSON.stringify(status));
+      return 'no résumé → Needs Attention (no-resume) · text still filled';
+    }],
+
+    ['21 · Greenhouse lazy résumé input (rendered only after "Attach") is revealed, attached + diagnostics', async () => {
+      setForm(
+        '<div class="field"><label for="fn">First Name *</label><input id="fn" name="first_name"></div>' +
+        '<div class="field" id="rf"><label>Resume/CV *</label>' +
+          '<div class="upload"><button type="button" id="attachBtn">Attach</button><span id="gh_fname"></span></div></div>' +
+        '<div class="field" id="cf"><label>Cover Letter</label>' +
+          '<div class="upload"><button type="button" id="coverBtn">Attach</button></div></div>');
+      /* Greenhouse renders the native <input type=file> only when Attach is clicked */
+      $('attachBtn').addEventListener('click', function () {
+        if (document.getElementById('gh_resume')) return;
+        const inp = document.createElement('input');
+        inp.type = 'file'; inp.id = 'gh_resume'; inp.name = 'job_application[resume]'; inp.accept = '.pdf,.doc,.docx';
+        inp.style.display = 'none';
+        inp.addEventListener('change', function () { $('gh_fname').textContent = (this.files && this.files[0]) ? this.files[0].name : ''; });
+        document.getElementById('rf').querySelector('.upload').appendChild(inp);
+      });
+      let coverClicked = false;
+      $('coverBtn').addEventListener('click', () => { coverClicked = true; });
+
+      const p = pending({ url: JB_URL, jobId: 'anduril' });
+      const st = memStore({ [AutoApply.PENDING_KEY]: p, [AutoApply.DATA_KEY]: { profile: profile() }, [AutoApply.RESUME_KEY]: RESUME });
+      const r = await AutoApply.run({ loc: loc(JB_URL), doc: document, storage: st, now: Date.now(), waitForForm: yes, resumeOpts: { pollInterval: 5, pollTries: 30 } });
+
+      assert(r.ran, 'should run: ' + JSON.stringify(r));
+      const cv = document.getElementById('gh_resume');
+      assert(cv, 'the résumé input must be revealed by clicking Attach');
+      assert(cv.files && cv.files.length === 1 && cv.files[0].name === RESUME.name, 'the revealed input must receive the résumé File');
+      assert($('gh_fname').textContent === RESUME.name, 'the filename must become visible on the page');
+      assert(coverClicked === false, 'the cover-letter Attach must NEVER be clicked');
+      const diag = await st.get(AutoApply.RESUME_DIAG_KEY);
+      assert(diag && diag.resumeFound && diag.resumeInputFound && diag.fileAssigned && diag.filenameConfirmed,
+        'résumé diagnostics must record found/input/assigned/filename: ' + JSON.stringify(diag));
+      return 'lazy résumé revealed via Attach · attached · filename shown · cover untouched · diagnostics ✓';
+    }],
+
+    ['22 · Attach re-renders + clears the form → text AND résumé end filled (no wipe, no overwrite)', async () => {
+      setForm(
+        '<div class="field"><label for="fn">First Name *</label><input id="fn" name="first_name"></div>' +
+        '<div class="field"><label for="ln">Last Name *</label><input id="ln" name="last_name"></div>' +
+        '<div class="field"><label for="em">Email *</label><input id="em" name="email" type="email"></div>' +
+        '<div class="field" id="rf"><label>Resume/CV *</label>' +
+          '<div class="upload"><button type="button" id="attachBtn">Attach</button><span id="gh_fname"></span></div></div>' +
+        '<div class="field" id="cf"><label>Cover Letter</label>' +
+          '<div class="upload"><button type="button" id="coverBtn">Attach</button></div></div>');
+
+      /* the user had already typed their email by hand — it must be preserved */
+      $('em').value = 'manual@user.com';
+
+      /* clicking Attach makes Greenhouse re-render: it WIPES the text inputs
+         (except the untouched email) and renders the native résumé input */
+      $('attachBtn').addEventListener('click', function () {
+        if (document.getElementById('gh_resume')) return;
+        $('fn').value = ''; $('ln').value = '';            // the destructive re-render
+        const inp = document.createElement('input');
+        inp.type = 'file'; inp.id = 'gh_resume'; inp.name = 'job_application[resume]'; inp.accept = '.pdf,.doc,.docx';
+        inp.style.display = 'none';
+        inp.addEventListener('change', function () { $('gh_fname').textContent = (this.files && this.files[0]) ? this.files[0].name : ''; });
+        document.getElementById('rf').querySelector('.upload').appendChild(inp);
+      });
+      let coverClicked = false;
+      $('coverBtn').addEventListener('click', () => { coverClicked = true; });
+
+      const p = pending({ url: JB_URL, jobId: 'anduril' });
+      const st = memStore({ [AutoApply.PENDING_KEY]: p, [AutoApply.DATA_KEY]: { profile: profile() }, [AutoApply.RESUME_KEY]: RESUME });
+      const r = await AutoApply.run({
+        loc: loc(JB_URL), doc: document, storage: st, now: Date.now(), waitForForm: yes,
+        resumeOpts: { pollInterval: 5, pollTries: 30 }, stableOpts: { quiet: 10, timeout: 300 },
+      });
+
+      assert(r.ran, 'should run: ' + JSON.stringify(r));
+      /* text survives the attach-triggered re-render (filled AFTER it) */
+      assert($('fn').value === 'Alex' && $('ln').value === 'Morgan', 'first/last name must be (re)filled after the re-render, got fn=' + JSON.stringify($('fn').value) + ' ln=' + JSON.stringify($('ln').value));
+      /* the hand-typed email is never overwritten */
+      assert($('em').value === 'manual@user.com', 'a manually entered field must NEVER be overwritten, got ' + JSON.stringify($('em').value));
+      /* résumé is attached simultaneously, and it is the stored PDF (not switched to DOCX) */
+      const cv = document.getElementById('gh_resume');
+      assert(cv && cv.files.length === 1, 'résumé must be attached alongside the text');
+      assert(cv.files[0].name === RESUME.name && /pdf/i.test(cv.files[0].type), 'the stored PDF must be preserved (no silent DOCX switch): ' + cv.files[0].name + ' / ' + cv.files[0].type);
+      assert($('gh_fname').textContent === RESUME.name, 'filename visible on the page');
+      assert(coverClicked === false, 'cover-letter Attach never clicked');
+      return 'text + résumé filled together after re-render · manual email preserved · PDF kept';
+    }],
+
+    /* ---- source of truth: cp_default_resume, never a stale queue-intent copy ---- */
+
+    ['23 · Stale DOCX in the queue intent is IGNORED — the current cp_default_resume PDF is used', async () => {
+      setForm(
+        '<div class="field"><label for="fn">First Name *</label><input id="fn" name="first_name"></div>' +
+        '<div class="field" id="rf"><label>Resume/CV *</label>' +
+          '<div class="upload"><input id="gh_resume" name="job_application[resume]" type="file" accept=".pdf,.docx" style="display:none"><span id="gh_fname"></span></div></div>');
+      $('gh_resume').addEventListener('change', function () { $('gh_fname').textContent = (this.files && this.files[0]) ? this.files[0].name : ''; });
+
+      const p = pending({ url: JB_URL, jobId: 'anduril' });
+      const st = memStore({
+        [AutoApply.PENDING_KEY]: p,
+        [AutoApply.DATA_KEY]: { profile: profile(), resume: STALE_DOCX },   // stale résumé baked into the old intent
+        [AutoApply.RESUME_KEY]: CURRENT_PDF,                               // the default the user just set in the popup
+      });
+      const r = await AutoApply.run({ loc: loc(JB_URL), doc: document, storage: st, now: Date.now(), waitForForm: yes });
+
+      assert(r.ran, 'should run: ' + JSON.stringify(r));
+      const cv = document.getElementById('gh_resume');
+      assert(cv.files.length === 1, 'a résumé must be attached');
+      assert(cv.files[0].name === CURRENT_PDF.name, 'the CURRENT PDF must be used, not the stale DOCX — got ' + cv.files[0].name);
+      assert(!/\.docx$/i.test(cv.files[0].name) && /pdf/i.test(cv.files[0].type), 'the stale DOCX must never be attached');
+      assert($('gh_fname').textContent === CURRENT_PDF.name, 'the current PDF filename is shown');
+      const diag = await st.get(AutoApply.RESUME_DIAG_KEY);
+      assert(diag && diag.name === CURRENT_PDF.name && diag.ok === true, 'diagnostics reflect the current PDF: ' + JSON.stringify(diag));
+      return 'stale DOCX ignored · current cp_default_resume PDF attached';
+    }],
+
+    ['24 · Greenhouse widget error (uploadFile) → Needs Attention, text kept, no false green', async () => {
+      setForm(
+        '<div class="field"><label for="fn">First Name *</label><input id="fn" name="first_name"></div>' +
+        '<div class="field"><label for="em">Email *</label><input id="em" name="email" type="email"></div>' +
+        '<div class="field" id="rf"><label>Resume/CV *</label>' +
+          '<div class="upload"><input id="gh_resume" name="job_application[resume]" type="file" accept=".pdf" style="display:none">' +
+          '<span id="gh_fname"></span><div id="gh_err" role="alert"></div></div></div>');
+      /* Greenhouse shows the filename BUT its uploader throws — the error renders */
+      $('gh_resume').addEventListener('change', function () {
+        $('gh_fname').textContent = (this.files && this.files[0]) ? this.files[0].name : '';
+        $('gh_err').textContent = "Cannot read properties of undefined (reading 'uploadFile')";
+      });
+
+      const p = pending({ url: JB_URL, jobId: 'anduril' });
+      const st = memStore({ [AutoApply.PENDING_KEY]: p, [AutoApply.DATA_KEY]: { profile: profile() }, [AutoApply.RESUME_KEY]: CURRENT_PDF });
+      const r = await AutoApply.run({ loc: loc(JB_URL), doc: document, storage: st, now: Date.now(), waitForForm: yes });
+
+      assert(!r.ran && r.reason === 'resume-upload-failed' && r.attention, 'a widget upload error must surface Needs Attention: ' + JSON.stringify(r));
+      assert($('fn').value === 'Alex' && $('em').value === 'alex.morgan@example.com', 'text fields must remain filled');
+      assert((r.result ? (r.result.filled || []) : []).indexOf('Resume') === -1, 'the résumé must NOT be reported as filled');
+      const diag = await st.get(AutoApply.RESUME_DIAG_KEY);
+      assert(diag && diag.ok === false, 'diagnostics must NOT show success (no false green): ' + JSON.stringify(diag));
+      assert(diag.uploadError && /cannot read|uploadfile/i.test(diag.uploadError), 'the upload error must be recorded: ' + JSON.stringify(diag.uploadError));
+      const status = await st.get(AutoApply.STATUS_KEY);
+      assert(status && status.stage === AutoApply.STAGE.ATTENTION && status.reason === 'resume-upload-failed', 'status = needs-attention/resume-upload-failed');
+      return 'uploadFile error → Needs Attention · text kept · diag.ok=false · error recorded';
     }],
   ];
 

@@ -5,9 +5,9 @@ bottom, then continue from **Next Up**. Rules, project shape, and how to run the
 live in [CLAUDE.md](CLAUDE.md) — read that too.
 
 - **Last updated:** 2026-07-27 *(always keep this line current — every HANDOFF edit stamps today's date here, so anyone can tell the latest version at a glance)*
-- **Status:** 🟢 **v1.0 SHIPPED** (2026-07-13, tagged 2026-07-22) · since: Chrome extension, real ATS import, ATS Engine v1, Universal Autofill v2 + profile auto-sync + resilient extension storage, Application Queue v1, extension-save→Today's-Jobs sync, imported-jobs→approvals→queue, **queue-triggered ATS autofill (verified live on a real Greenhouse job 2026-07-27)**
+- **Status:** 🟢 **v1.0 SHIPPED** (2026-07-13, tagged 2026-07-22) · since: Chrome extension, real ATS import, ATS Engine v1, Universal Autofill v2 + profile auto-sync + resilient extension storage, Application Queue v1, extension-save→Today's-Jobs sync, imported-jobs→approvals→queue, **queue-triggered ATS autofill + hardened résumé handling (both verified live on a real Greenhouse job 2026-07-27)**
 - **Branch:** `main` — clean, in sync with origin
-- **Head:** `fix: make queue-triggered ATS autofill reliable on real job pages` (bridge/messaging + Greenhouse fix; hash in git log) · tag `v1.0` on `b676933`
+- **Head:** `fix: stabilize ATS résumé handling and report upload failures accurately` (hash in git log) · tag `v1.0` on `b676933`
 - **Remote:** github.com/engineerawais24/engineerawais
 
 > ### ⚙️ Working agreement — for ANY agent editing this repo
@@ -41,7 +41,7 @@ live in [CLAUDE.md](CLAUDE.md) — read that too.
 | M9 | **Universal Autofill v2 + profile auto-sync + resilient storage** — extension fills all common field types incl. checkboxes & résumé upload; backend profile stays populated; storage never crashes | — | ✅ Shipped 2026-07-25 (`f21d7e7`; harnesses 19/19 + 8/8 + 7/7, backend 42/42) |
 | M11 | **Extension save → Today's Jobs** — a job saved from the extension (POST /api/jobs) is pulled back into Today's Jobs via `JobsBackendSync` + `ImportedJobs.upsertFromBackend` | — | ✅ Shipped 2026-07-26 (`749191c`; deduped by backend identity; harness 8/8, backend read-back test) |
 | M12 | **Imported jobs → Approvals → Queue** — create an application for an approved imported job; it shows on Approvals; "Approve & queue" adds that exact job to the Application Queue; each queued job links only to its own package | — | ✅ Shipped 2026-07-26 (`bd64909` + `749191c`; harness 7/7) |
-| M13 | **Queue → ATS auto-autofill** — opening a queued job auto-runs Universal Autofill v2 once; login/CAPTCHA/blocked/no-form → Needs Attention | — | ✅ Built 2026-07-26 · ✅ **verified live 2026-07-27 on `https://job-boards.greenhouse.io/andurilindustries/jobs/5193775007`** (autofilled once automatically). Two smoke-test bugs fixed: (1) `matchIntent` `normHost` folds Greenhouse `boards.*`⇄`job-boards.*` (301 redirect); (2) **the real break** — the intent bridge only matched `file:///*`, so on the **localhost** app page (`http://127.0.0.1:5500`) it never loaded → intent never stored → empty form. Rebuilt as a **background service worker (`background.js`) + `window.postMessage` → `chrome.runtime` messaging** bridge on `127.0.0.1`/`localhost` (no `file://`; a CustomEvent's `detail` doesn't cross into the content-script world — that was the bug). Added a live popup diagnostic. Harnesses 17/17 + 8/8 + 5/5 + 23/23 + 6/6 |
+| M13 | **Queue → ATS auto-autofill** — opening a queued job auto-runs Universal Autofill v2 once; login/CAPTCHA/blocked/no-form → Needs Attention | — | ✅ Built 2026-07-26 · ✅ **verified live 2026-07-27 on `https://job-boards.greenhouse.io/andurilindustries/jobs/5193775007`** (autofilled once automatically). Two smoke-test bugs fixed: (1) `matchIntent` `normHost` folds Greenhouse `boards.*`⇄`job-boards.*` (301 redirect); (2) **the real break** — the intent bridge only matched `file:///*`, so on the **localhost** app page (`http://127.0.0.1:5500`) it never loaded → intent never stored → empty form. Rebuilt as a **background service worker (`background.js`) + `window.postMessage` → `chrome.runtime` messaging** bridge on `127.0.0.1`/`localhost` (no `file://`; a CustomEvent's `detail` doesn't cross into the content-script world — that was the bug). Added a live popup diagnostic. Harnesses 17/17 + 8/8 + 5/5 + 23/23 + 6/6. · ✅ **Résumé handling hardened + verified live 2026-07-27**: `cp_default_resume` is the sole résumé source (queue intent carries none), deep/lazy Greenhouse input handling, attach→stabilize→autofill ordering, strict upload verification, honest **Needs Attention** when Greenhouse rejects the programmatic upload (no false green, nothing submitted). Harnesses auto-apply 24/24 + storage 9/9. |
 | M10 | **Application Queue v1** — process approved jobs one at a time from Approvals: open in a new tab, Mark Applied / Needs Attention / Skip / Open Next, auto-advance, refresh-safe | — | ✅ Shipped 2026-07-25 (`d30af44`; reuses `ApplicationPackages`; never submits; harness 11/11) |
 
 ## To-do (v1.0 → v1.0-tagged)
@@ -169,6 +169,59 @@ prep, and an optional FastAPI backend with two-way sync.
 
 ## Next Up
 
+**✅ Shipped + verified live on the real Greenhouse job (2026-07-27):** Greenhouse **résumé handling
+hardened over five rounds**. Live result on `https://job-boards.greenhouse.io/andurilindustries/jobs/5193775007`:
+text autofill works **and stays filled**, the **current PDF** (`cp_default_resume`) is used, Greenhouse
+**rejects the programmatic résumé upload**, and CareerPilot **honestly marks Needs Attention** — no false
+success, nothing submitted. (Committed as `fix: stabilize ATS résumé handling and report upload failures
+accurately`.) Known limitation: Greenhouse's uploader does not accept a programmatically-assigned
+`input.files`, so the résumé must be attached by hand — the popup's **RÉSUMÉ UPLOAD** panel says so
+plainly. The queue autofill filled name/email/phone but never attached the default PDF.
+- **Round 1** — the résumé-slot finder gated file inputs on `formVisible`, excluding Greenhouse's hidden
+  native `<input type=file>`; + fall back to the popup's `cp_default_resume` in `chrome.storage.local`
+  when the Queue payload has no résumé.
+- **Round 2 (the real page)** — the native input is **rendered lazily, only after "Attach" is clicked**
+  (and can sit in a shadow root / same-origin iframe). [content.js](extension/content.js) now has a
+  deep file-input search (main doc + shadow DOM + same-origin iframes) and an async
+  `attachResume(resume)` that, if no résumé input exists, safely clicks the **résumé-only** "Attach"
+  control (never a submit button, never cover-letter/photo) to reveal it, assigns the PDF via
+  DataTransfer + input/change, and confirms the filename becomes visible.
+  the popup shows **RÉSUMÉ UPLOAD**: résumé found / résumé input / file assigned / filename. No default
+  résumé + a résumé field → **Needs Attention (`no-resume`)**.
+- **Round 3 (re-render regression)** — clicking "Attach" makes React **re-render the form and wipe the
+  text we'd already filled**. Fix in [auto-apply.js](extension/auto-apply.js): reordered to **attach the
+  résumé FIRST → `waitStable()` (MutationObserver quiet-period) → then Autofill v2 for the text** (fills
+  only empty fields, never overwrites), then a final re-attach if a late re-render cleared the file. Text
+  + résumé now end filled together; hand-typed fields are preserved; the stored PDF is kept (no DOCX
+  switch).
+- **Round 4 (Set Default Résumé didn't replace a stored DOCX)** — `SafeStorage.set` leaves the old value
+  in `chrome.storage.local` if the write silently fails (quota / permission not live), and `get` is
+  storage-first, so the stale DOCX kept coming back. Added [storage.js](extension/storage.js)
+  `SafeStorage.replace(key,value)` = **remove-then-set + read-back verify** so a new file wholly replaces
+  the old (never a merge, stale entry can't resurface). The popup saves via `replace`, refreshes
+  immediately to the new file, and reports honestly (persisted / session-only / failed).
+- **Round 5 (stale résumé used + false green + uploadFile error)** — auto-apply *preferred the résumé
+  baked into the queue intent* (an old DOCX) over the current `cp_default_resume` PDF, and reported
+  success even when Greenhouse's widget threw `Cannot read properties of undefined (reading 'uploadFile')`.
+  Fixes: (1) **`cp_default_resume` is the ONLY résumé source** — auto-apply ignores any `data.resume`,
+  and the app ([queue-autoapply.js](app/js/queue/queue-autoapply.js)) no longer puts a résumé binary in
+  the queue intent (job + profile only). (2) `attachResume` verification is now **strict**: success needs
+  `files[0]` present **and its name == the current résumé** **and** the filename visible **and** no
+  upload-widget error (new `resumeUploadError` detector). (3) On failure → **Needs Attention
+  (`resume-upload-failed`)**, text stays filled, and the popup shows an honest **RÉSUMÉ UPLOAD** panel
+  (amber sub-checks + red "Upload: FAILED — <error>", never a false green).
+
+Tests on the exact Anduril URL: auto-apply **24/24** (incl. **stale DOCX in queue ignored → current PDF
+used**, **uploadFile widget error → Needs Attention / no false green**); queue app-side **6/6** (intent
+carries no résumé); manual autofill **19/19**; résumé storage **9/9**; messaging **8/8**. Files:
+`extension/{content.js, auto-apply.js, popup.js, storage.js}`, `app/js/queue/queue-autoapply.js` + tests
+`extension/tests/{auto-apply, storage}`, `app/tests/queue-autoapply`. Never submits. **Committed + pushed.**
+
+Possible follow-up (only if you want auto-upload): drive Greenhouse's OWN uploader instead of assigning
+`input.files` — dispatch the file through the drop zone's drag/drop events, or hook the widget's upload
+handler — since programmatic `input.files` is rejected. Until then, honest Needs Attention is the
+behaviour.
+
 **Queue → ATS auto-autofill is DONE and verified live** (2026-07-27) on
 `https://job-boards.greenhouse.io/andurilindustries/jobs/5193775007` — opening it from the Queue
 autofilled the Greenhouse form once, automatically. Committed as
@@ -207,7 +260,8 @@ HANDOFF update rule below.)*
 
 | Date | Sprint | Commit | Summary |
 |------|--------|--------|---------|
-| 2026-07-27 | — | *(this commit)* | fix: make queue-triggered ATS autofill reliable on real job pages — **✅ verified live on `job-boards.greenhouse.io/andurilindustries/jobs/5193775007`**. Two bugs: (1) `matchIntent` `normHost` folds Greenhouse `boards.*`⇄`job-boards.*` (301 redirect); (2) the intent bridge only matched `file:///*` so on the **localhost** app page it never loaded → empty form. Rebuilt as a **background service worker + `window.postMessage`→`chrome.runtime` bridge** on `127.0.0.1`/`localhost` (a CustomEvent's `detail` doesn't cross into the content-script world — the real bug); no `file://`. Live popup diagnostic added. New `background.js`, `tests/messaging` (8/8), `tests/queue-origin` @127.0.0.1:5500 (5/5); auto-apply 17/17, ats 23/23, queue 6/6. Safety rules unchanged (never submit/salary/overwrite; run-once; hand-opened never auto-runs). |
+| 2026-07-27 | — | *(this commit)* | fix: stabilize ATS résumé handling and report upload failures accurately — **✅ verified live** on `job-boards.greenhouse.io/andurilindustries/jobs/5193775007` (text fills + stays filled; current PDF used; Greenhouse rejects the programmatic upload; honest Needs Attention; no false success; nothing submitted). Five rounds: (1) hidden/`formVisible` gate → deep file-input search (doc+shadow+iframes); (2) **lazy input behind "Attach"** → safe résumé-only Attach click to reveal it; (3) **Attach re-renders + wipes text** → reordered attach→`waitStable()`→autofill (fills only empty, never overwrites); (4) **Set Default Résumé didn't replace a DOCX** → `SafeStorage.replace()` (remove-then-set + verify); (5) **stale DOCX used + false green** → `cp_default_resume` is the ONLY source (intent carries no résumé), strict verify (files[0] name-match + filename visible + no `uploadFile` widget error), failure → Needs Attention (`resume-upload-failed`) with honest popup RÉSUMÉ UPLOAD panel. Tests: auto-apply 24/24, queue 6/6, autofill 19/19, storage 9/9, messaging 8/8. Never submits. |
+| 2026-07-27 | — | `38dd39a` | fix: make queue-triggered ATS autofill reliable on real job pages — **✅ verified live on `job-boards.greenhouse.io/andurilindustries/jobs/5193775007`**. Two bugs: (1) `matchIntent` `normHost` folds Greenhouse `boards.*`⇄`job-boards.*` (301 redirect); (2) the intent bridge only matched `file:///*` so on the **localhost** app page it never loaded → empty form. Rebuilt as a **background service worker + `window.postMessage`→`chrome.runtime` bridge** on `127.0.0.1`/`localhost` (a CustomEvent's `detail` doesn't cross into the content-script world — the real bug); no `file://`. Live popup diagnostic added. New `background.js`, `tests/messaging` (8/8), `tests/queue-origin` @127.0.0.1:5500 (5/5); auto-apply 17/17, ats 23/23, queue 6/6. Safety rules unchanged (never submit/salary/overwrite; run-once; hand-opened never auto-runs). |
 | 2026-07-26 | — | `6759244` | feat: queue-triggered ATS autofill — opening a queued job auto-runs Universal Autofill v2 once (bridge + AutoApply + AtsEngine); queue-opened tabs only; never submit/salary/consent; login/CAPTCHA/blocked/no-form → Needs Attention; run-once guarded. Harnesses 10/10 + 5/5. **Real-ATS smoke test pending.** |
 | 2026-07-26 | — | `bd64909` | fix: imported jobs through approvals & queue — Saved-job applications card on Approvals + `ApplicationQueue.enqueue` (Approve & queue); `createApplication` never fake-succeeds. Harness 7/7 |
 | 2026-07-26 | — | `749191c` | fix: extension-saved jobs sync into Today's Jobs (`JobsBackendSync` + `upsertFromBackend`); dedup on backend identity not canonical URL → queued jobs link to their own package (WSP↔Microsoft). Harness 8/8 |

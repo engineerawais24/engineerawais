@@ -395,6 +395,151 @@
     }
   }
 
+  /* ---------- deep résumé-input discovery (Greenhouse & friends) ----------
+     Greenhouse's new job-boards form hides the native <input type=file> and may
+     render it lazily (only after "Attach" is clicked), and some ATS widgets nest
+     it in a shadow root or a same-origin iframe. So we search EVERYWHERE, not
+     just the top document, and never gate a file input on visibility. */
+
+  function collectFileInputs(root, out, seen) {
+    if (!root || seen.has(root)) return out;
+    seen.add(root);
+    let all;
+    try { all = root.querySelectorAll('*'); } catch (e) { return out; }
+    for (const el of all) {
+      if (el.tagName === 'INPUT' && (el.type || '').toLowerCase() === 'file') out.push(el);
+      if (el.shadowRoot) collectFileInputs(el.shadowRoot, out, seen);
+      if (el.tagName === 'IFRAME' || el.tagName === 'FRAME') {
+        let d = null;
+        try { d = el.contentDocument; } catch (e) { d = null; }   // cross-origin → null, skip
+        if (d) collectFileInputs(d, out, seen);
+      }
+    }
+    return out;
+  }
+  function deepFileInputs() {
+    try { return collectFileInputs(document, [], new Set()); }
+    catch (e) { return Array.from(document.querySelectorAll('input[type=file]')); }
+  }
+
+  /* the résumé/CV file input among a set — never a cover-letter or photo input */
+  function resumeSlotFrom(fileEls) {
+    const cands = (fileEls || []).filter(el => !el.disabled)
+      .filter(el => !PHOTO_RE.test(haystack(el) + ' ' + (el.accept || '')));
+    let slot = cands.find(el => {
+      const hay = haystack(el) + ' ' + (el.accept || '');
+      return RESUME_RE.test(hay) && !COVER_RE.test(hay);
+    });
+    /* failing an explicit résumé label, a lone non-cover document upload is it */
+    if (!slot) {
+      const docs = cands.filter(el => !COVER_RE.test(haystack(el)));
+      if (docs.length === 1) slot = docs[0];
+    }
+    return slot || null;
+  }
+
+  /* the "Attach" control for the RÉSUMÉ field only (never cover-letter/photo),
+     so we can reveal a lazily-rendered input WITHOUT ever risking a submit */
+  function resumeAttachControl() {
+    const labels = Array.from(document.querySelectorAll('label, legend, h1, h2, h3, h4, h5, p, span, div'))
+      .filter(el => {
+        const t = txt(el);
+        return t && t.length <= 40 && RESUME_RE.test(t) && !COVER_RE.test(t) && !PHOTO_RE.test(t);
+      });
+    const looksAttach = b => {
+      const s = (txt(b) + ' ' + ((b.getAttribute && b.getAttribute('aria-label')) || '')).toLowerCase();
+      return /attach|upload|choose file|browse|add file|select file|add a file/.test(s);
+    };
+    const safe = b => {
+      if (b.tagName === 'BUTTON') return (b.getAttribute('type') || '').toLowerCase() === 'button';  // never a submit
+      if (b.tagName === 'A' || b.tagName === 'LABEL') return true;
+      return (b.getAttribute && b.getAttribute('role')) === 'button';
+    };
+    for (const lab of labels) {
+      let holder = lab.closest('[data-field], .field, .application-question, .form-group, fieldset, li') || lab.parentElement;
+      for (let i = 0; i < 3 && holder; i++) {
+        const btn = Array.from(holder.querySelectorAll('button, [role="button"], a, label')).find(b => looksAttach(b) && safe(b));
+        if (btn) return btn;
+        holder = holder.parentElement;
+      }
+    }
+    return null;
+  }
+
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+
+  /* a Greenhouse/ATS upload-widget error (e.g. "Cannot read properties of
+     undefined (reading 'uploadFile')") — a programmatic assignment can satisfy
+     input.files yet still make the widget throw, so we must detect it and NOT
+     report success. Very specific patterns to avoid false positives. */
+  const UPLOAD_ERROR_RE = /cannot read propert(?:y|ies)[\s\S]{0,80}undefined|upload[\s_-]?file|upload (?:failed|error)|failed to (?:upload|attach)|couldn'?t (?:upload|attach)|error (?:uploading|processing your (?:file|upload))|something went wrong|please try again/i;
+  function resumeUploadError(scope) {
+    const bits = [];
+    const add = el => { if (!el) return; try { bits.push(el.innerText || el.textContent || ''); } catch (e) {} };
+    add(scope);
+    try { document.querySelectorAll('[role="alert"], [aria-live="assertive"], [aria-live="polite"]').forEach(add); } catch (e) {}
+    try { (scope || document).querySelectorAll('.error, [class*="error" i], [class*="danger" i]').forEach(add); } catch (e) {}
+    try { const f = document.documentElement.getAttribute('data-cp-upload-error'); if (f) bits.push(f); } catch (e) {}
+    const m = bits.join(' \n ').match(UPLOAD_ERROR_RE);
+    return m ? String(m[0]).replace(/\s+/g, ' ').trim().slice(0, 140) : null;
+  }
+
+  /* ---------- attachResume ---------- async, robust, résumé-ONLY ----------
+     1. find the résumé file input anywhere (deep). 2. if none, click the résumé
+     "Attach" control (safe: programmatic clicks can't open the OS picker without
+     a user gesture, and we only ever click a non-submit résumé control) and poll
+     for the input to render. 3. assign the passed résumé via DataTransfer +
+     dispatch input/change (never overwrites a file already present). 4. VERIFY:
+     input.files[0] exists AND its name matches the résumé we passed AND the
+     filename becomes visible AND no upload-widget error appears. Cover-letter and
+     photo inputs are never touched; nothing is ever submitted. */
+  async function attachResume(resume, opts) {
+    opts = opts || {};
+    const tries = opts.pollTries || 12;
+    const gap = opts.pollInterval || 250;
+    const wantName = String((resume && resume.name) || '');
+    const findSlot = () => resumeSlotFrom(deepFileInputs());
+
+    let slot = findSlot();
+    if (!slot) {
+      const ctrl = resumeAttachControl();
+      if (ctrl) {
+        try { ctrl.click(); } catch (e) { /* ignore */ }
+        slot = findSlot();
+        for (let i = 0; i < tries && !slot; i++) { await wait(gap); slot = findSlot(); }
+      }
+    }
+    if (!slot) return { resumeInputFound: false, fileAssigned: false, filenameConfirmed: false, uploadError: null, name: wantName, ok: false };
+
+    const hasAny = () => !!(slot.files && slot.files.length && slot.files[0]);
+    const hasCurrent = () => hasAny() && (!wantName || slot.files[0].name === wantName);
+
+    /* assign only when empty — never clobber a file the user already chose */
+    if (!hasAny() && resume && resume.dataUrl) {
+      const file = dataUrlToFile(resume.dataUrl, resume.name, resume.mime);
+      if (file) setFile(slot, file);
+    }
+
+    const scope = slot.closest('[data-field], .field, .application-question, .form-group, fieldset, form') || document.body;
+
+    /* the CURRENT résumé's File must be the one in the input (name must match) */
+    const fileAssigned = hasCurrent();
+
+    /* the current résumé's filename must become visible (Greenhouse renders it) */
+    let filenameConfirmed = false;
+    const needle = wantName.toLowerCase();
+    for (let i = 0; i < 8 && fileAssigned && !filenameConfirmed; i++) {
+      if (needle && ((scope.innerText || '') + ' ' + (scope.textContent || '')).toLowerCase().includes(needle)) filenameConfirmed = true;
+      else await wait(120);
+    }
+
+    /* the widget must not have thrown/shown an upload error */
+    const uploadError = resumeUploadError(scope);
+
+    const ok = fileAssigned && filenameConfirmed && !uploadError;
+    return { resumeInputFound: true, fileAssigned, filenameConfirmed, uploadError, name: wantName, ok };
+  }
+
   /* ---------- short essay answers (local templates, no AI) ----------
      Built ONLY from things that are true: the user's own headline and
      summary, plus the company/title read off this very page. If the
@@ -654,21 +799,14 @@
     }
 
     /* ---------- résumé upload ----------
-       The default résumé (handed in by the popup) fills the one résumé/CV file
-       input when it is empty. Cover-letter and photo inputs are never touched.
-       Never overwrites a file the user already chose; nothing is submitted. */
-    const uploads = Array.from(document.querySelectorAll('input[type=file]'))
-      .filter(formVisible)
-      .filter(el => !PHOTO_RE.test(haystack(el) + ' ' + (el.accept || '')));
-
-    let resumeSlot = uploads.find(el => {
-      const hay = haystack(el) + ' ' + (el.accept || '');
-      return RESUME_RE.test(hay) && !COVER_RE.test(hay);
-    });
-    /* a lone document upload that isn't a cover letter is the résumé slot */
-    if (!resumeSlot && uploads.length === 1 && !COVER_RE.test(haystack(uploads[0]))) {
-      resumeSlot = uploads[0];
-    }
+       Attaches the default résumé to the résumé/CV file input. File inputs are
+       the ONE exception to the visibility gate: Greenhouse (and Workday) hide the
+       native <input type=file> behind an "Attach" control (display:none / off
+       screen), yet .files can still be assigned programmatically — so we consider
+       every enabled file input, hidden or not, and classify it by its label /
+       name / accept. Cover-letter and photo inputs are never touched; a file the
+       user already chose is never overwritten; nothing is submitted. */
+    const resumeSlot = resumeSlotFrom(deepFileInputs());
 
     if (resumeSlot) {
       if (resumeSlot.files && resumeSlot.files.length) {
@@ -693,14 +831,20 @@
      detect/autofill — no second implementation, no behavior change. The
      manual "Autofill Application" popup button still drives the message
      listener below, unchanged. */
-  window.__cpHelper = { detect, autofill, collectLinkedIn };
+  window.__cpHelper = { detect, autofill, collectLinkedIn, attachResume };
 
   if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
     chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       try {
         if (msg.type === 'detect') sendResponse(detect());
         else if (msg.type === 'collectLinkedIn') sendResponse(collectLinkedIn());
-        else if (msg.type === 'autofill') sendResponse(autofill(msg.profile || {}, msg.resume || null));
+        else if (msg.type === 'autofill') {
+          const res = autofill(msg.profile || {}, msg.resume || null);
+          /* best-effort robust résumé attach for hidden/lazy Greenhouse inputs —
+             fire-and-forget so the manual response stays synchronous */
+          try { attachResume(msg.resume || null); } catch (e) { /* ignore */ }
+          sendResponse(res);
+        }
       } catch (e) {
         sendResponse({ error: e.message, filled: [], skipped: 0, unknown: [] });
       }
