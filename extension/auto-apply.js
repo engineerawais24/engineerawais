@@ -237,13 +237,18 @@ const AutoApply = (() => {
     if (typeof autofill !== 'function') return attention(ctx, 'no-engine', detection);
     await report(STAGE.STARTED, { token: pending.token, jobId: pending.jobId, ats: detection.ats });
 
+    /* the dropzone drop strategy is enabled ONLY on Greenhouse's board hosts
+       (job-boards.greenhouse.io / boards.greenhouse.io) */
+    const onGreenhouseBoard = /^(?:job-)?boards\.greenhouse\.io$/i.test(host(loc.href || (loc && loc.hostname) || ''));
+    const resumeOpts = Object.assign({ dropzone: onGreenhouseBoard }, env.resumeOpts);
+
     /* 9 — ATTACH THE RÉSUMÉ FIRST. Revealing Greenhouse's lazy native file input
        (clicking "Attach") can make React RE-RENDER the whole form, which would
        wipe any text we had already filled. So we attach BEFORE typing anything —
        the re-render then has no filled fields to clear. */
-    let rdiag = { resumeInputFound: false, fileAssigned: false, filenameConfirmed: false, uploadError: null, ok: false };
+    let rdiag = { resumeInputFound: false, fileAssigned: false, filenameConfirmed: false, uploadError: null, method: null, ok: false };
     if (typeof attachResume === 'function') {
-      try { rdiag = await attachResume(haveResume ? resume : null, env.resumeOpts); } catch (e) { /* best-effort */ }
+      try { rdiag = await attachResume(haveResume ? resume : null, resumeOpts); } catch (e) { /* best-effort */ }
     }
 
     /* 10 — wait for the form to STABILIZE after the attach-triggered re-render,
@@ -263,10 +268,17 @@ const AutoApply = (() => {
     /* 12 — final résumé state: re-attach once if filling text triggered a late
        re-render that cleared the file (never re-clicks "Attach" — the input now
        exists) and take the authoritative diagnostics from here */
+    /* the method that ACTUALLY uploaded on the first pass (input vs dropzone) —
+       the re-verify below finds the file already present and would mislabel it */
+    const firstMethod = (rdiag.ok && rdiag.method) ? rdiag.method : null;
     if (typeof attachResume === 'function') {
-      try { rdiag = await attachResume(haveResume ? resume : null, env.resumeOpts); } catch (e) { /* keep prior rdiag */ }
+      try {
+        const again = await attachResume(haveResume ? resume : null, resumeOpts);
+        if (again.ok && again.already && firstMethod) again.method = firstMethod;   // keep the real method
+        rdiag = again;
+      } catch (e) { /* keep prior rdiag */ }
     } else if ((result.filled || []).indexOf('Resume') !== -1) {
-      rdiag = { resumeInputFound: true, fileAssigned: true, filenameConfirmed: true, uploadError: null, ok: true };
+      rdiag = { resumeInputFound: true, fileAssigned: true, filenameConfirmed: true, uploadError: null, method: 'input', ok: true };
     }
     /* only report the résumé as filled when the upload TRULY succeeded */
     const uploadOk = !!rdiag.ok;
@@ -279,6 +291,7 @@ const AutoApply = (() => {
       fileAssigned: rdiag.fileAssigned,
       filenameConfirmed: rdiag.filenameConfirmed,
       uploadError: rdiag.uploadError || null,
+      method: rdiag.method || null,
       ok: uploadOk,
       name: (resume && resume.name) || null,
       url: (loc && loc.href) || '', ts: now,

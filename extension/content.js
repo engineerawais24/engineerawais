@@ -484,21 +484,69 @@
     return m ? String(m[0]).replace(/\s+/g, ' ').trim().slice(0, 140) : null;
   }
 
-  /* ---------- attachResume ---------- async, robust, résumé-ONLY ----------
-     1. find the résumé file input anywhere (deep). 2. if none, click the résumé
-     "Attach" control (safe: programmatic clicks can't open the OS picker without
-     a user gesture, and we only ever click a non-submit résumé control) and poll
-     for the input to render. 3. assign the passed résumé via DataTransfer +
-     dispatch input/change (never overwrites a file already present). 4. VERIFY:
-     input.files[0] exists AND its name matches the résumé we passed AND the
-     filename becomes visible AND no upload-widget error appears. Cover-letter and
-     photo inputs are never touched; nothing is ever submitted. */
+  /* the résumé field's DROPZONE — the element Greenhouse wires its own drag/drop
+     upload handler to (Uppy/custom). We only ever look inside the RÉSUMÉ field. */
+  function resumeDropzone(slot) {
+    const field = slot.closest('[data-field], .field, .application-question, .form-group, fieldset') || slot.parentElement || slot;
+    let dz = null;
+    try {
+      dz = field.querySelector('[data-source="dropzone"], .dropzone, [class*="dropzone" i], [class*="file-upload" i], [class*="filedrop" i], [class*="drop-zone" i], [class*="uppy" i], [class*="upload" i]');
+    } catch (e) { /* bad selector engine */ }
+    return dz || slot.parentElement || field;
+  }
+
+  /* deliver a File the way a real drag-and-drop does: a genuine `drop` event
+     carrying a DataTransfer. This is how Greenhouse's dropzone accepts a file
+     when a programmatic input.files assignment is rejected. */
+  function dispatchDrop(target, file) {
+    if (!target) return false;
+    try {
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      const init = { bubbles: true, cancelable: true, composed: true, dataTransfer: dt };
+      for (const type of ['dragenter', 'dragover', 'drop']) {
+        let ev;
+        try { ev = new DragEvent(type, init); }
+        catch (e) {
+          ev = new Event(type, { bubbles: true, cancelable: true });
+          try { Object.defineProperty(ev, 'dataTransfer', { value: dt }); } catch (e2) {}
+        }
+        target.dispatchEvent(ev);
+      }
+      return true;
+    } catch (e) { return false; }
+  }
+
+  /* wait for the REAL success state: the résumé filename becomes visible AND no
+     upload-widget error is showing. Returns { filenameConfirmed, uploadError }. */
+  async function verifyResumeUpload(scope, wantName, tries, gap) {
+    const needle = String(wantName || '').toLowerCase();
+    let filenameConfirmed = false;
+    for (let i = 0; i < (tries || 8); i++) {
+      if (needle && ((scope.innerText || '') + ' ' + (scope.textContent || '')).toLowerCase().includes(needle)) { filenameConfirmed = true; break; }
+      await wait(gap || 150);
+    }
+    return { filenameConfirmed, uploadError: resumeUploadError(scope) };
+  }
+
+  /* ---------- attachResume ---------- Greenhouse Resume Uploader v1 ----------
+     Résumé-ONLY. Finds the Resume/CV input (deep search; clicks the résumé-only
+     "Attach" control to reveal a lazily-rendered one). Then, ONCE each (no retry
+     loops):
+       A. try the NATIVE <input type=file> (DataTransfer + input/change), and
+       B. if that is rejected (widget throws / no filename), and opts.dropzone is
+          set (Greenhouse hosts only), dispatch the PDF through Greenhouse's own
+          DROPZONE via a real `drop` event carrying a DataTransfer.
+     Success is reported ONLY once the real filename is visible with no widget
+     error. Never clobbers a file the user already chose; never touches cover
+     letter / photo / portfolio; never submits. */
   async function attachResume(resume, opts) {
     opts = opts || {};
     const tries = opts.pollTries || 12;
     const gap = opts.pollInterval || 250;
     const wantName = String((resume && resume.name) || '');
     const findSlot = () => resumeSlotFrom(deepFileInputs());
+    const fail = extra => Object.assign({ resumeInputFound: false, fileAssigned: false, filenameConfirmed: false, uploadError: null, method: null, name: wantName, ok: false }, extra || {});
 
     let slot = findSlot();
     if (!slot) {
@@ -509,35 +557,41 @@
         for (let i = 0; i < tries && !slot; i++) { await wait(gap); slot = findSlot(); }
       }
     }
-    if (!slot) return { resumeInputFound: false, fileAssigned: false, filenameConfirmed: false, uploadError: null, name: wantName, ok: false };
-
-    const hasAny = () => !!(slot.files && slot.files.length && slot.files[0]);
-    const hasCurrent = () => hasAny() && (!wantName || slot.files[0].name === wantName);
-
-    /* assign only when empty — never clobber a file the user already chose */
-    if (!hasAny() && resume && resume.dataUrl) {
-      const file = dataUrlToFile(resume.dataUrl, resume.name, resume.mime);
-      if (file) setFile(slot, file);
-    }
+    if (!slot) return fail();
 
     const scope = slot.closest('[data-field], .field, .application-question, .form-group, fieldset, form') || document.body;
+    const hasAny = () => !!(slot.files && slot.files.length && slot.files[0]);
+    const hasCurrent = () => hasAny() && (!wantName || slot.files[0].name === wantName);
+    const file = (resume && resume.dataUrl) ? dataUrlToFile(resume.dataUrl, resume.name, resume.mime) : null;
 
-    /* the CURRENT résumé's File must be the one in the input (name must match) */
-    const fileAssigned = hasCurrent();
+    /* the CURRENT résumé is already attached → verify only */
+    if (hasCurrent()) {
+      const v = await verifyResumeUpload(scope, wantName, 6, 120);
+      return fail({ resumeInputFound: true, fileAssigned: true, filenameConfirmed: v.filenameConfirmed, uploadError: v.uploadError, method: 'input', ok: v.filenameConfirmed && !v.uploadError, already: true });
+    }
+    /* a DIFFERENT file is present → the user chose it; never clobber it */
+    if (hasAny()) return fail({ resumeInputFound: true, manualFile: true });
+    if (!file) return fail({ resumeInputFound: true });
 
-    /* the current résumé's filename must become visible (Greenhouse renders it) */
-    let filenameConfirmed = false;
-    const needle = wantName.toLowerCase();
-    for (let i = 0; i < 8 && fileAssigned && !filenameConfirmed; i++) {
-      if (needle && ((scope.innerText || '') + ' ' + (scope.textContent || '')).toLowerCase().includes(needle)) filenameConfirmed = true;
-      else await wait(120);
+    /* --- strategy A: the native file input (once) --- */
+    setFile(slot, file);
+    let v = await verifyResumeUpload(scope, wantName, 8, 150);
+    if (hasCurrent() && v.filenameConfirmed && !v.uploadError) {
+      return fail({ resumeInputFound: true, fileAssigned: true, filenameConfirmed: true, method: 'input', ok: true });
     }
 
-    /* the widget must not have thrown/shown an upload error */
-    const uploadError = resumeUploadError(scope);
+    /* --- strategy B: Greenhouse's own dropzone (once) --- */
+    if (opts.dropzone) {
+      dispatchDrop(resumeDropzone(slot), file);
+      const v2 = await verifyResumeUpload(scope, wantName, opts.dropTries || 20, opts.dropInterval || 150);
+      if (v2.filenameConfirmed && !v2.uploadError) {
+        return fail({ resumeInputFound: true, fileAssigned: hasCurrent(), filenameConfirmed: true, method: 'dropzone', ok: true });
+      }
+      v = v2;   // report the dropzone attempt's outcome
+    }
 
-    const ok = fileAssigned && filenameConfirmed && !uploadError;
-    return { resumeInputFound: true, fileAssigned, filenameConfirmed, uploadError, name: wantName, ok };
+    /* both strategies failed → honest failure (never a false green) */
+    return fail({ resumeInputFound: true, fileAssigned: hasCurrent(), filenameConfirmed: v.filenameConfirmed, uploadError: v.uploadError, method: null, ok: false });
   }
 
   /* ---------- short essay answers (local templates, no AI) ----------

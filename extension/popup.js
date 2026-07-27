@@ -438,9 +438,10 @@ async function showDiag() {
     resumeRows.push(['Résumé input', ...step(rez.resumeInputFound, 'found ✓')]);
     resumeRows.push(['File assigned', ...step(rez.fileAssigned, 'assigned ✓')]);
     resumeRows.push(['Filename', ...step(rez.filenameConfirmed, 'visible ✓')]);
+    const via = rez.method ? ` (via ${rez.method === 'dropzone' ? 'dropzone' : 'file input'})` : '';
     resumeRows.push(['Upload', rez.ok
-      ? ['ok ✓', 'ok'][0]
-      : ('FAILED' + (rez.uploadError ? ' — ' + rez.uploadError : ' — résumé not uploaded')),
+      ? 'ok ✓' + via
+      : ('FAILED' + (rez.uploadError ? ' — ' + rez.uploadError : ' — résumé not uploaded, attach manually')),
       rez.ok ? 'ok' : 'err']);
   }
 

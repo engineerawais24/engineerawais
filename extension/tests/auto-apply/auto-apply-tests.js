@@ -463,6 +463,46 @@
       assert(status && status.stage === AutoApply.STAGE.ATTENTION && status.reason === 'resume-upload-failed', 'status = needs-attention/resume-upload-failed');
       return 'uploadFile error → Needs Attention · text kept · diag.ok=false · error recorded';
     }],
+
+    /* ---- Greenhouse Resume Uploader v1: native rejected → dropzone drop ---- */
+
+    ['25 · Native input rejected → Greenhouse DROPZONE drop succeeds (method=dropzone)', async () => {
+      setForm(
+        '<div class="field"><label for="fn">First Name *</label><input id="fn" name="first_name"></div>' +
+        '<div class="field" id="rf"><label>Resume/CV *</label>' +
+          '<div class="dropzone" id="dz">' +
+            '<input id="gh_resume" name="job_application[resume]" type="file" accept=".pdf" style="display:none">' +
+            '<span id="gh_fname"></span><div id="gh_err" role="alert"></div></div></div>' +
+        '<div class="field" id="cf"><label>Cover Letter</label>' +
+          '<div class="dropzone"><input id="gh_cover" name="job_application[cover_letter]" type="file" style="display:none"></div></div>');
+
+      /* the NATIVE input.files assignment is rejected — the widget throws */
+      $('gh_resume').addEventListener('change', function () {
+        $('gh_err').textContent = "Cannot read properties of undefined (reading 'uploadFile')";
+      });
+      /* but Greenhouse's DROPZONE accepts a real drop: reads dataTransfer, shows
+         the filename, clears the error (its true success state) */
+      $('dz').addEventListener('drop', function (ev) {
+        const f = ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files[0];
+        if (f) { $('gh_fname').textContent = f.name; $('gh_err').textContent = ''; }
+      });
+      let coverDrop = false;
+      document.querySelector('#cf .dropzone').addEventListener('drop', () => { coverDrop = true; });
+
+      const p = pending({ url: JB_URL, jobId: 'anduril' });
+      const st = memStore({ [AutoApply.PENDING_KEY]: p, [AutoApply.DATA_KEY]: { profile: profile() }, [AutoApply.RESUME_KEY]: CURRENT_PDF });
+      const r = await AutoApply.run({ loc: loc(JB_URL), doc: document, storage: st, now: Date.now(), waitForForm: yes, resumeOpts: { dropInterval: 5, dropTries: 20 } });
+
+      assert(r.ran, 'should run: ' + JSON.stringify(r));
+      assert($('gh_fname').textContent === CURRENT_PDF.name, 'the dropzone must show the current PDF filename, got ' + JSON.stringify($('gh_fname').textContent));
+      assert($('gh_err').textContent === '', 'the upload error must be cleared once the dropzone accepts the file');
+      assert($('fn').value === 'Alex', 'text fields must be filled');
+      assert(coverDrop === false, 'the cover-letter dropzone must NEVER receive a drop');
+      const diag = await st.get(AutoApply.RESUME_DIAG_KEY);
+      assert(diag && diag.ok === true && diag.method === 'dropzone', 'diagnostics: uploaded via dropzone: ' + JSON.stringify(diag));
+      assert(r.result.filled.indexOf('Resume') !== -1, 'résumé must be reported as filled');
+      return 'native rejected → dropzone drop accepted · filename shown · cover untouched · method=dropzone';
+    }],
   ];
 
   const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
