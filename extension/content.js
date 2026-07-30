@@ -280,11 +280,26 @@
       const n = document.getElementById(id);
       if (n) bits.push(txt(n));
     });
-    /* Workday/Greenhouse wrap fields in a labelled container */
-    const holder = el.closest('[data-automation-id], .field, .application-question, .form-group, li, div');
-    if (holder && holder !== el.parentElement?.closest('form')) {
-      const lab = holder.querySelector('label, legend, .label, [class*="label"]');
-      if (lab) bits.push(txt(lab));
+    /* Workday/React wrap each field in a container that carries the real label
+       and a descriptive data-automation-id (e.g. formField-legalNameSection_
+       firstName). The input's OWN data-automation-id is often generic, so scan a
+       few ancestors and collect their data-automation-id + the field's label. */
+    let anc = el.parentElement;
+    for (let i = 0; i < 4 && anc; i++) {
+      if (anc.tagName === 'FORM') break;
+      const daid = anc.getAttribute && anc.getAttribute('data-automation-id');
+      if (daid) bits.push(daid);
+      const fieldish = i === 0 || /formfield|field|question/i.test(daid || '') || /field|question|form-group/i.test(anc.className || '');
+      if (fieldish && anc.querySelectorAll) {
+        /* only borrow a wrapper's label when it holds exactly ONE field — a shared
+           section with several inputs must not lend its first label to all of them */
+        const nFields = anc.querySelectorAll('input:not([type=hidden]):not([type=button]):not([type=submit]), select, textarea').length;
+        if (nFields <= 1) {
+          const lab = anc.querySelector('label, legend, [data-automation-id*="label" i], [class*="label" i]');
+          if (lab && lab !== el && !lab.contains(el)) bits.push(txt(lab));
+        }
+      }
+      anc = anc.parentElement;
     }
     return bits.filter(Boolean).join(' ').toLowerCase();
   }
@@ -307,8 +322,11 @@
     return String(el.value || '').trim() === '';
   }
 
-  /* set a value the way a user would, so React/Workday notice */
+  /* set a value the way a user would, so React/Workday notice. Workday commits a
+     field on blur, and its controlled inputs need the NATIVE value setter (so
+     React's value tracker sees the change) plus input/change/blur. */
   function setValue(el, value) {
+    try { el.focus(); } catch (e) { /* not focusable */ }
     const proto = el.tagName === 'TEXTAREA'
       ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
     const setter = Object.getOwnPropertyDescriptor(proto, 'value');
@@ -316,6 +334,7 @@
     else el.value = value;
     el.dispatchEvent(new Event('input', { bubbles: true }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
+    try { el.dispatchEvent(new Event('blur', { bubbles: true })); } catch (e) { /* ok */ }
   }
 
   function pickOption(sel, wanted) {
@@ -647,18 +666,95 @@
      A rule may carry `el` — an extra predicate on the element itself. */
   const isTextarea = el => el.tagName === 'TEXTAREA';
 
+  /* Arabic-script name fields (Workday PwC etc. have BOTH "Latin Given Name(s)"
+     and "Arabic Given Name(s)"). An Arabic field must NEVER receive a Latin
+     profile name — it is filled ONLY from an explicitly-stored Arabic name, else
+     left empty. Detect by the word "arabic" in the label OR Arabic-script chars. */
+  const ARABIC_SCRIPT = /[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]/;
+  function isArabicNameField(el) {
+    const h = haystack(el);
+    return /\barabic\b/.test(h) || ARABIC_SCRIPT.test(h);
+  }
+  const notArabic = el => !isArabicNameField(el);
+
+  /* ---- phone: keep the number field, the country-code field, the extension and
+     the device-type distinct (Workday splits them) ----
+     When there is a SEPARATE phone country-code field (e.g. "+966"), the Phone
+     Number field must receive the NATIONAL number only. Extension is filled only
+     when explicitly saved; the country-code / extension / device-type fields must
+     never receive the phone number. */
+  const PHONE_NOT = /country|territory|dial[\s_-]?code|\bcode\b|ext(?:ension|\b|\.)|device|(?:phone|contact)[\s_-]?type|type of/i;
+
+  /* Does this field's text signature name a phone COUNTRY/TERRITORY CODE field
+     (e.g. Workday's "Country / Territory Phone Code")? — phone+code, or a
+     country/territory/dial "…code", but never the number or extension. */
+  function isPhoneCodeText(h) {
+    if (/\bnumber\b|extension/.test(h)) return false;
+    return (/\bphone\b/.test(h) && /\bcode\b/.test(h))
+      || /\b(?:country|territory)\b[\s\S]{0,40}\bcode\b/.test(h)
+      || /\bdial(?:ing)?[\s_-]?code\b/.test(h)
+      || /countryphonecode|phonecountrycode|phonedialcode|countrycode|territoryphonecode/i.test(h);
+  }
+
+  /* Workday's "Country / Territory Phone Code" is a CUSTOM combobox (button/div),
+     not a native input/select — find it by label / wrapper / data-automation-id.
+     Returns the element that DISPLAYS the selected code (e.g. "Saudi Arabia (+966)"). */
+  function phoneCodeControl() {
+    const cands = document.querySelectorAll(
+      'input, select, button, [role="combobox"], [role="button"], [aria-haspopup], '
+      + '[data-automation-id*="code" i], [data-automation-id*="phone" i]');
+    let wrapperHit = null;
+    for (const el of cands) {
+      if (!isPhoneCodeText(haystack(el))) continue;
+      if (/^(?:INPUT|SELECT|BUTTON)$/.test(el.tagName) || el.getAttribute('role') === 'combobox' || el.hasAttribute('aria-haspopup')) return el;
+      if (!wrapperHit) wrapperHit = el;   // a wrapper div — use only if no leaf control matches
+    }
+    return wrapperHit;
+  }
+
+  /* read the selected dial code (e.g. "966") from the code control + its wrapper */
+  function readDialCode(codeEl) {
+    if (!codeEl) return '';
+    const wrap = codeEl.closest('[data-automation-id*="phone" i], [data-automation-id*="code" i]') || codeEl;
+    const t = [codeEl.value, codeEl.textContent, wrap && wrap.textContent, codeEl.getAttribute && codeEl.getAttribute('aria-label')]
+      .filter(Boolean).join(' ');
+    const m = t.match(/\+\s*(\d{1,4})/) || t.match(/\((\d{1,4})\)/);
+    return m ? m[1] : '';
+  }
+
+  function nationalPhone(fullPhone, codeEl) {
+    const raw = String(fullPhone || '').trim();
+    const digits = raw.replace(/\D/g, '');
+    if (!digits) return raw;
+    const code = readDialCode(codeEl);
+    if (code && digits.length > code.length && digits.startsWith(code)) return digits.slice(code.length);
+    return raw;   // already national, or code unreadable → leave the full number (no worse than before)
+  }
+  function phoneNumberFor(p) {
+    const codeEl = phoneCodeControl();
+    return codeEl ? nationalPhone(p.phone, codeEl) : (p.phone || '');
+  }
+
   const RULES = (p, essays) => [
     /* SALARY — never filled, whatever the profile holds. Sits first so a
        compensation textarea can never fall through to an essay template. */
     { key: 'Salary / compensation', v: '',
       re: /salary|compensation|remuneration|\bctc\b|bonus|\bpackage\b|\bpay\b|\bwage/ },
 
-    { key: 'First name', v: p.firstName, re: /first[\s_-]?name|given[\s_-]?name|\bfname\b|forename/ },
-    { key: 'Last name', v: p.lastName, re: /last[\s_-]?name|sur[\s_-]?name|family[\s_-]?name|\blname\b/ },
+    /* Arabic name fields FIRST — matched only on Arabic fields, filled only from
+       an explicit Arabic name (absent by default → the field stays empty). */
+    { key: 'Arabic given name', v: p.arabicFirstName, el: isArabicNameField, re: /first[\s_-]?name|given[\s_-]?name|forename/ },
+    { key: 'Arabic family name', v: p.arabicLastName, el: isArabicNameField, re: /last[\s_-]?name|sur[\s_-]?name|family[\s_-]?name/ },
+
+    { key: 'First name', v: p.firstName, el: notArabic, re: /first[\s_-]?name|given[\s_-]?name|\bfname\b|forename/ },
+    { key: 'Last name', v: p.lastName, el: notArabic, re: /last[\s_-]?name|sur[\s_-]?name|family[\s_-]?name|\blname\b/ },
     { key: 'Email', v: p.email, re: /e-?mail/, type: t => t === 'email' },
-    { key: 'Phone', v: p.phone, re: /phone|mobile|cell|contact[\s_-]?number|tel(?!l)/, type: t => t === 'tel' },
+    /* extension FIRST + phone number field only (never the code/extension/device
+       fields); with a separate country-code field the number is the national part */
+    { key: 'Phone extension', v: p.phoneExtension, re: /phone[\s_-]{0,10}ext|\bextension\b|\bext\.?\b/ },
+    { key: 'Phone', v: phoneNumberFor(p), el: el => !PHONE_NOT.test(haystack(el)), re: /phone|mobile|cell|contact[\s_-]?number|tel(?!l)/, type: t => t === 'tel' },
     { key: 'LinkedIn', v: p.linkedin, re: /linked[\s_-]?in/ },
-    { key: 'Full name', v: p.fullName, re: /full[\s_-]?name|your[\s_-]?name|applicant[\s_-]?name|legal[\s_-]?name|^name$|"name"|\bname\b(?!.*(user|company|file))/ },
+    { key: 'Full name', v: p.fullName, el: notArabic, re: /full[\s_-]?name|your[\s_-]?name|applicant[\s_-]?name|legal[\s_-]?name|^name$|"name"|\bname\b(?!.*(user|company|file))/ },
     { key: 'City', v: p.city, re: /\bcity\b|\btown\b/ },
     { key: 'Nationality', v: p.nationality, re: /nationality|citizenship(?!.*status)/ },
     { key: 'Country', v: p.country, re: /country(?!.*code)/ },
@@ -878,6 +974,59 @@
     return { filled, skipped, unknown };
   }
 
+  /* ================= Workday custom comboboxes ================= exact-match only
+     Workday renders country / state as a button + popup listbox (not a native
+     <select>). We fill ONLY when the saved profile has an EXACT option match —
+     never a fuzzy guess, never overwriting a value already chosen, and never a
+     control that isn't a résumé-safe combobox (so we can't click Continue/Next/
+     Submit or a consent toggle). */
+
+  function comboboxWant(profile, hay) {
+    if (/country(?!.*code)/.test(hay)) return { key: 'Country', val: profile.country };
+    if (/\bstate\b|province|region/.test(hay) && !/country/.test(hay)) return { key: 'State', val: profile.state };
+    /* phone device type → "Mobile", but only when an EXACT Mobile option exists
+       (pickWorkdayOption already matches exactly, so a non-match is left unset) */
+    if (/phone[\s_-]{0,12}(device[\s_-]{0,12})?type|device[\s_-]?type|type of (?:phone|device)/.test(hay) && !/\bnumber\b|code|extension/.test(hay)) return { key: 'Phone type', val: 'Mobile' };
+    return null;
+  }
+
+  async function pickWorkdayOption(trigger, wantValue) {
+    const want = String(wantValue || '').trim().toLowerCase();
+    if (!want) return false;
+    try { trigger.click(); } catch (e) { return false; }
+    let opts = [];
+    for (let i = 0; i < 20 && !opts.length; i++) {
+      await wait(80);
+      opts = Array.from(document.querySelectorAll('[role="option"], [data-automation-id*="promptOption" i], [data-automation-id="menuItem"]'))
+        .filter(o => o.getClientRects && o.getClientRects().length);
+    }
+    const hit = opts.find(o => txt(o).trim().toLowerCase() === want);   // EXACT match only
+    if (hit) { try { hit.click(); } catch (e) {} return true; }
+    /* no exact match → close the listbox, change nothing */
+    try { trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); } catch (e) {}
+    return false;
+  }
+
+  async function fillWorkdayComboboxes(profile) {
+    profile = profile || {};
+    const filled = [];
+    const triggers = Array.from(document.querySelectorAll('[aria-haspopup="listbox"], [role="combobox"], button[data-automation-id*="selectinput" i]'));
+    const seen = new Set();
+    for (const trig of triggers) {
+      if (!trig || seen.has(trig) || trig.disabled || !formVisible(trig)) continue;
+      const hay = haystack(trig);
+      const want = comboboxWant(profile, hay);
+      if (!want || !want.val) continue;
+      /* never overwrite: skip if it already shows a real (non-placeholder) value */
+      const cur = txt(trig).trim().toLowerCase();
+      const isPlaceholder = !cur || /^(select( one)?|choose|please|search|--|—|\.\.\.)/.test(cur);
+      if (!isPlaceholder) continue;
+      seen.add(trig);
+      if (await pickWorkdayOption(trig, want.val)) filled.push(want.key);
+    }
+    return filled;
+  }
+
   /* ================= wiring ================= */
 
   /* Expose the helpers on the shared content-script world so the auto-apply
@@ -885,7 +1034,7 @@
      detect/autofill — no second implementation, no behavior change. The
      manual "Autofill Application" popup button still drives the message
      listener below, unchanged. */
-  window.__cpHelper = { detect, autofill, collectLinkedIn, attachResume };
+  window.__cpHelper = { detect, autofill, collectLinkedIn, attachResume, fillWorkdayComboboxes };
 
   if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
     chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
@@ -894,9 +1043,10 @@
         else if (msg.type === 'collectLinkedIn') sendResponse(collectLinkedIn());
         else if (msg.type === 'autofill') {
           const res = autofill(msg.profile || {}, msg.resume || null);
-          /* best-effort robust résumé attach for hidden/lazy Greenhouse inputs —
-             fire-and-forget so the manual response stays synchronous */
+          /* best-effort, fire-and-forget so the manual response stays synchronous:
+             robust résumé attach + Workday custom-combobox fill (exact match) */
           try { attachResume(msg.resume || null); } catch (e) { /* ignore */ }
+          try { fillWorkdayComboboxes(msg.profile || {}); } catch (e) { /* ignore */ }
           sendResponse(res);
         }
       } catch (e) {

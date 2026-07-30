@@ -41,9 +41,12 @@ const AutoApply = (() => {
     ATTENTION: 'needs-attention',      // login / CAPTCHA / blocked / no-form / no-profile / …
   };
 
-  const INTENT_MAX_AGE = 3 * 60 * 1000;       // an intent older than 3 min is stale
+  const INTENT_MAX_AGE = 3 * 60 * 1000;       // a non-Workday intent older than 3 min is stale
+  const WD_INTENT_MAX_AGE = 35 * 60 * 1000;   // Workday login/account/OTP verification can take a while — keep the intent valid ≥30 min
   const FORM_TIMEOUT   = 12 * 1000;           // wait up to 12s for the form
+  const WD_FORM_TIMEOUT = 30 * 60 * 1000;     // Workday: survive a long login/verification on the same page (SPA) — wait for the real form
   const FORM_INTERVAL  = 400;
+  const WD_FORM_INTERVAL = 1500;              // poll less often over the long Workday wait
 
   /* ---------- storage (defaults to the SafeStorage wrapper) ---------- */
   function defaultStorage() {
@@ -101,6 +104,26 @@ const AutoApply = (() => {
     return (body.slice(0, 6000) + ' ' + title).toLowerCase();
   }
 
+  /* Workday's "Start Your Application" chooser (Sign In / Apply Manually /
+     Autofill with Resume) vs the REAL application step (My Information / Contact).
+     The chooser has almost no fillable fields; the real step has several inputs
+     whose data-automation-ids are profile-shaped. We must NOT treat the chooser
+     as the form — the queue intent stays alive until the real step is visible. */
+  function workdayFormReady(doc) {
+    if (!doc || !doc.querySelectorAll) return false;
+    const markers = doc.querySelectorAll(
+      '[data-automation-id*="legalName" i], [data-automation-id*="firstName" i], [data-automation-id*="lastName" i], '
+      + '[data-automation-id*="givenName" i], [data-automation-id*="familyName" i], [data-automation-id*="name--" i], '
+      + '[data-automation-id*="contactInformation" i], [data-automation-id*="addressSection" i], '
+      + '[data-automation-id*="phone" i], [data-automation-id*="email" i], [data-automation-id*="myInformation" i]');
+    let inputs = 0;
+    doc.querySelectorAll('input:not([type=hidden]):not([type=button]):not([type=submit]), select, textarea').forEach(el => {
+      const r = el.getBoundingClientRect && el.getBoundingClientRect();
+      if (r && r.width >= 2 && r.height >= 2) inputs++;
+    });
+    return markers.length >= 2 && inputs >= 3;
+  }
+
   /* login wall / CAPTCHA / hard-blocked page → a reason string, else null */
   function detectBlocker(doc, loc) {
     if (!doc || !doc.querySelector) return 'blocked';
@@ -112,9 +135,14 @@ const AutoApply = (() => {
 
     if (/access denied|access to this page has been denied|you (have been|are) blocked|are you a (human|robot)|just a moment\.\.\.|attention required|request blocked|forbidden|error 403|cloudflare/i.test(t)) return 'blocked';
 
+    /* one-time-code (OTP) / email-or-phone verification gate (Workday & others) —
+       a code-entry screen, not the application form */
+    if (!hasApplicationForm(doc) && /one[\s-]?time (?:code|passcode|pin)|verification code|enter the (?:\d[\s-]?digit )?code|we (?:sent|emailed|texted) you a code|check your (?:email|phone|inbox) for (?:a|the|your) code|verify your (?:email|identity)/.test(t)) return 'otp';
+
+    /* Workday and most ATS gate the application behind Sign In / Create Account */
     const hasPassword = !!doc.querySelector('input[type=password]');
-    const signin = /sign in|log in|\blogin\b|sign into your account|create an account|forgot (your )?password/.test(t)
-      || /\/(login|signin|sign-in|auth|account\/login|sso)\b/.test(url);
+    const signin = /sign in|log in|\blogin\b|sign into your account|create (?:an )?account|forgot (your )?password/.test(t)
+      || /\/(login|signin|sign-in|auth|account\/login|sso|register)\b/.test(url);
     if (hasPassword && signin && !hasApplicationForm(doc)) return 'login';
 
     return null;
@@ -123,13 +151,14 @@ const AutoApply = (() => {
   /* ---------- default async form wait (production) ---------- */
   function waitForForm(doc, opts) {
     const o = opts || {};
+    const ready = o.ready || hasApplicationForm;
     const timeout = o.timeout || FORM_TIMEOUT;
     const interval = o.interval || FORM_INTERVAL;
     return new Promise(resolve => {
-      if (hasApplicationForm(doc)) { resolve(true); return; }     // often ready already
+      if (ready(doc)) { resolve(true); return; }     // often ready already
       const started = Date.now();
       const timer = setInterval(() => {
-        if (hasApplicationForm(doc)) { clearInterval(timer); resolve(true); }
+        if (ready(doc)) { clearInterval(timer); resolve(true); }
         else if (Date.now() - started >= timeout) { clearInterval(timer); resolve(false); }
       }, interval);
     });
@@ -180,43 +209,83 @@ const AutoApply = (() => {
       storage.set(STATUS_KEY, Object.assign(
         { stage, url: (loc && loc.href) || '', ats: null, ts: now }, extra || {}));
 
-    /* 1 — only act on a matching, unconsumed, recent Queue intent.
-       A hand-opened page has no intent → we record a "no-intent" diagnostic
-       (so the popup can explain why) and do NOT autofill. */
+    const onWorkday = /(^|\.)(myworkdayjobs|myworkdaysite)\.com$/.test(host((loc && loc.href) || (loc && loc.hostname) || ''));
+    const maxAge = env.maxAge || (onWorkday ? WD_INTENT_MAX_AGE : INTENT_MAX_AGE);
+
+    /* 1 — only act on a matching, unconsumed, recent Queue intent. On Workday the
+       intent stays valid ≥30 min so it survives a long login/verification.
+       A hand-opened page has no intent → we record a "no-intent" diagnostic. */
     const pending = await storage.get(PENDING_KEY);
-    if (!matchIntent(pending, loc, now, env.maxAge)) {
+    if (!matchIntent(pending, loc, now, maxAge)) {
       let ats = null;
       try { if (atsOf) ats = atsOf.detect({ url: loc.href, html: htmlOf() }).ats; } catch (e) { /* best-effort */ }
       await report(STAGE.NO_INTENT, { ats });
       return { ran: false, reason: 'not-queue-opened' };
     }
 
-    /* 2 — run-once guard */
-    const done = (await storage.get(DONE_KEY)) || {};
-    if (done[pending.token]) return { ran: false, reason: 'already-done' };
-
-    /* 3 — consume the intent + record the token up front, so a refresh or a
-       second frame can never re-fire this same auto-apply */
-    await storage.set(PENDING_KEY, null);
-    done[pending.token] = now;
-    await storage.set(DONE_KEY, trimDone(done));
+    /* 2 — run-once guard: has this exact intent already completed? */
+    const done0 = (await storage.get(DONE_KEY)) || {};
+    if (done0[pending.token]) return { ran: false, reason: 'already-done' };
 
     const ctx = { storage, pending, now, loc };
 
-    /* 4 — fast fail on an obvious login / CAPTCHA / blocked page */
-    const early = detectBlocker(doc, loc);
-    if (early) return attention(ctx, early);
+    /* Consume the intent ATOMICALLY (check-and-set), and ONLY at a terminal
+       outcome — NOT before the wait below. This keeps the queue intent ALIVE
+       while Workday transitions from the "Start Your Application" modal to the
+       real form step; we mark it done only once we know what happened. Returns
+       false if a concurrent run (a refresh) already claimed it. */
+    async function claim() {
+      const d = (await storage.get(DONE_KEY)) || {};
+      if (d[pending.token]) return false;
+      await storage.set(PENDING_KEY, null);
+      d[pending.token] = now;
+      await storage.set(DONE_KEY, trimDone(d));
+      return true;
+    }
 
-    /* 5 — detect the ATS (recorded; the form is the real gate) */
+    /* 3 — a HARD block (CAPTCHA / bot wall) is terminal → Needs Attention. On
+       Workday, Sign In / account creation / OTP / the "Start Your Application"
+       chooser are NOT terminal and must NOT consume the intent — the user may
+       still be signing in or verifying; we fall through and wait for the real
+       form to load (the queue intent stays alive for up to 30 min). */
+    const early = detectBlocker(doc, loc);
+    if (early === 'captcha' || early === 'blocked' || (early && !onWorkday)) {
+      if (!(await claim())) return { ran: false, reason: 'already-done' };
+      return attention(ctx, early);
+    }
+
+    /* 4 — detect the ATS (recorded; the form is the real gate) */
     let detection = { ats: null, supported: false, confidence: 0 };
     try {
       if (atsOf) detection = atsOf.detect({ url: loc.href, html: htmlOf() });
     } catch (e) { /* detection is best-effort */ }
     await report(STAGE.ATS_DETECTED, { token: pending.token, jobId: pending.jobId, ats: detection.ats });
 
-    /* 6 — wait for the application form to be ready */
-    const ready = await wait(doc, { timeout: env.formTimeout, interval: env.formInterval });
-    if (!ready) return attention(ctx, detectBlocker(doc, loc) || 'no-form', detection);
+    /* 5 — wait for the REAL application form. On Workday, wait THROUGH the "Start
+       Your Application" modal for the actual form step (profile-shaped
+       data-automation-id fields), with a long cap so the user's Apply-Manually
+       transition is survived. The intent is NOT consumed during this wait. */
+    const ready = await wait(doc, {
+      ready: onWorkday ? workdayFormReady : hasApplicationForm,
+      timeout: env.formTimeout || (onWorkday ? WD_FORM_TIMEOUT : FORM_TIMEOUT),
+      interval: env.formInterval || (onWorkday ? WD_FORM_INTERVAL : FORM_INTERVAL),
+    });
+
+    /* Workday keeps re-rendering the step after it first appears — let it settle */
+    if (onWorkday && ready) await (env.waitStable || waitStable)(doc, env.stableOpts);
+
+    if (!ready) {
+      /* Workday: the real form never appeared within this page's lifetime (still
+         on login / verification / chooser / account). DO NOT consume — keep the
+         intent ALIVE so the next navigation, or the SPA reaching the form within
+         the 30-min window, autofills it once. */
+      if (onWorkday) return { ran: false, reason: 'workday-waiting', kept: true };
+      if (!(await claim())) return { ran: false, reason: 'already-done' };
+      return attention(ctx, detectBlocker(doc, loc) || 'no-form', detection);
+    }
+
+    /* the real form is visible → NOW consume the intent (check-and-set) */
+    if (!(await claim())) return { ran: false, reason: 'already-done' };
 
     /* a CAPTCHA/login can appear over a form after load — re-check */
     const late = detectBlocker(doc, loc);
@@ -264,6 +333,20 @@ const AutoApply = (() => {
     let result;
     try { result = autofill(profile, haveResume ? resume : null); }
     catch (e) { return attention(ctx, 'autofill-error', detection); }
+    result.filled = result.filled || []; result.unknown = result.unknown || [];
+
+    /* 11b — Workday custom comboboxes (country / state): exact saved-profile match
+       only, never a guess, never overwriting a set value */
+    if (onWorkday) {
+      const combo = env.fillWorkdayComboboxes
+        || (typeof window !== 'undefined' && window.__cpHelper && window.__cpHelper.fillWorkdayComboboxes);
+      if (typeof combo === 'function') {
+        try {
+          const cf = await combo(profile);
+          (cf || []).forEach(k => { if (result.filled.indexOf(k) === -1) result.filled.push(k); });
+        } catch (e) { /* best-effort */ }
+      }
+    }
 
     /* 12 — final résumé state: re-attach once if filling text triggered a late
        re-render that cleared the file (never re-clicks "Attach" — the input now
@@ -313,6 +396,8 @@ const AutoApply = (() => {
     await report(STAGE.COMPLETED, {
       token: pending.token, jobId: pending.jobId, ats: detection.ats,
       filled: (result.filled || []).length, unknown: (result.unknown || []).length,
+      /* diagnostics: WHICH fields were filled (Workday & everywhere) */
+      fields: (result.filled || []).slice(0, 30),
     });
     return { ran: true, ats: detection.ats, supported: detection.supported, result };
   }
@@ -334,7 +419,7 @@ const AutoApply = (() => {
   }
 
   return {
-    run, matchIntent, normHost, hasApplicationForm, detectBlocker, waitForForm, waitStable,
+    run, matchIntent, normHost, hasApplicationForm, workdayFormReady, detectBlocker, waitForForm, waitStable,
     PENDING_KEY, DATA_KEY, DONE_KEY, ATTN_KEY, RESULT_KEY, STATUS_KEY, RESUME_KEY, RESUME_DIAG_KEY, STAGE,
   };
 })();

@@ -503,6 +503,299 @@
       assert(r.result.filled.indexOf('Resume') !== -1, 'résumé must be reported as filled');
       return 'native rejected → dropzone drop accepted · filename shown · cover untouched · method=dropzone';
     }],
+
+    /* ---- Workday Adapter v1 ---- */
+
+    ['26 · Workday: fills the visible current step (data-automation-id fields), salary blank, hidden step untouched', async () => {
+      const WD_URL = 'https://nvidia.wd5.myworkdayjobs.com/en-US/NVIDIAExternalCareerSite/job/Remote/Engineer_JR1/apply';
+      setForm(
+        '<div data-automation-id="legalNameSection">' +
+          '<label for="wfn">First Name</label><input id="wfn" data-automation-id="legalNameSection_firstName">' +
+          '<label for="wln">Last Name</label><input id="wln" data-automation-id="legalNameSection_lastName"></div>' +
+        '<div><label for="wem">Email Address</label><input id="wem" type="email" data-automation-id="email"></div>' +
+        '<div><label for="wph">Phone Number</label><input id="wph" type="tel" data-automation-id="phone-number"></div>' +
+        '<div><label for="wcity">City</label><input id="wcity" data-automation-id="addressSection_city"></div>' +
+        '<div><label for="wcountry">Country</label><select id="wcountry" data-automation-id="country"><option value=""></option><option>Canada</option><option>United Arab Emirates</option></select></div>' +
+        '<div><label for="wexp">Years of Experience</label><input id="wexp" type="number" data-automation-id="yearsExperience"></div>' +
+        '<div><label for="wli">LinkedIn Profile</label><input id="wli" data-automation-id="linkedinQuestion"></div>' +
+        '<div><label for="wsal">Desired Salary</label><input id="wsal" type="number" data-automation-id="salary"></div>' +
+        /* a later step present in the DOM but hidden — Workday shows one step at a time */
+        '<div style="display:none"><label for="wnext">First Name</label><input id="wnext" data-automation-id="review_firstName"></div>');
+
+      const p = pending({ url: WD_URL, jobId: 'wd1' });
+      const st = memStore({ [AutoApply.PENDING_KEY]: p, [AutoApply.DATA_KEY]: { profile: profile() } });
+      const r = await AutoApply.run({ loc: loc(WD_URL), doc: document, storage: st, now: Date.now(), waitForForm: yes, stableOpts: { quiet: 10, timeout: 200 } });
+
+      assert(r.ran, 'should run on Workday: ' + JSON.stringify(r));
+      assert(r.ats === 'Workday', 'ATS should be Workday, got ' + r.ats);
+      assert($('wfn').value === 'Alex' && $('wln').value === 'Morgan', 'first/last name filled');
+      assert($('wem').value === 'alex.morgan@example.com', 'email filled');
+      assert($('wph').value === '+971500000000', 'phone filled');
+      assert($('wcity').value === 'Dubai', 'city filled');
+      assert($('wcountry').value === 'United Arab Emirates', 'country select filled');
+      assert($('wexp').value === '7', 'years of experience filled');
+      assert($('wli').value === profile().linkedin, 'linkedin filled');
+      assert($('wsal').value === '', 'salary must NEVER be filled');
+      assert($('wnext').value === '', 'a hidden (non-current) step must NOT be filled');
+      return 'Workday current step filled (name/email/phone/city/country/experience/linkedin) · salary blank · hidden step untouched';
+    }],
+
+    ['27 · Workday duplicate-run prevention: SPA re-render / re-fire never autofills twice', async () => {
+      const WD_URL = 'https://acme.wd1.myworkdayjobs.com/en-US/careers/job/City/Analyst_JR9/apply';
+      setForm('<div><label for="wfn2">First Name</label><input id="wfn2" data-automation-id="firstName"></div>' +
+              '<div><label for="wem2">Email</label><input id="wem2" type="email" data-automation-id="email"></div>');
+      let calls = 0;
+      const spy = () => { calls++; return { filled: ['First name', 'Email'], skipped: 0, unknown: [] }; };
+      const p = pending({ url: WD_URL, jobId: 'wd2' });
+      const st = memStore({ [AutoApply.PENDING_KEY]: p, [AutoApply.DATA_KEY]: { profile: profile() } });
+      const opt = { loc: loc(WD_URL), doc: document, storage: st, autofill: spy, waitForForm: yes, stableOpts: { quiet: 5, timeout: 100 } };
+
+      let r = await AutoApply.run(opt);
+      assert(r.ran && calls === 1, 'first run autofills once: ' + JSON.stringify(r) + ' calls=' + calls);
+      r = await AutoApply.run(opt);                                            // SPA re-render fires run() again
+      assert(!r.ran && r.reason === 'not-queue-opened' && calls === 1, 'a re-fire must not autofill again (intent consumed): ' + JSON.stringify(r));
+      await st.set(AutoApply.PENDING_KEY, p);                                  // intent somehow reappears
+      r = await AutoApply.run(opt);
+      assert(!r.ran && r.reason === 'already-done' && calls === 1, 'the done-token blocks a re-fired intent: ' + JSON.stringify(r));
+      return 'Workday: exactly one autofill across SPA re-renders / re-fires';
+    }],
+
+    ['28 · Workday modal → application SPA transition (PwC wd3): intent survives, fills the real form once', async () => {
+      const PWC_URL = 'https://pwc.wd3.myworkdayjobs.com/en-US/Global_Experienced_Careers/job/Athens/Data-Security-Engineer_747045WD';
+      /* start on the "Start Your Application" chooser — NOT the form */
+      setForm('<h2>Start Your Application</h2>' +
+              '<button type="button" data-automation-id="autofillWithResume">Autofill with Resume</button>' +
+              '<button type="button" data-automation-id="applyManually">Apply Manually</button>');
+      assert(!AutoApply.workdayFormReady(document), 'precondition: the chooser is NOT a ready form');
+
+      const p = pending({ url: PWC_URL, jobId: 'pwc1' });
+      const st = memStore({ [AutoApply.PENDING_KEY]: p, [AutoApply.DATA_KEY]: { profile: profile() } });
+
+      /* the user clicks Apply Manually → the real "My Information" step renders
+         shortly. Fields use GENERIC input data-automation-ids + a wrapper <label>
+         WITHOUT `for` — exactly the shape that made only the phone (type=tel) fill. */
+      setTimeout(() => {
+        setForm('<div data-automation-id="formField-firstName"><label>First Name</label><div><input id="wfn" data-automation-id="textInputBox"></div></div>' +
+                '<div data-automation-id="formField-lastName"><label>Last Name</label><div><input id="wln" data-automation-id="textInputBox"></div></div>' +
+                '<div data-automation-id="formField-email"><label>Email Address</label><div><input id="wem" data-automation-id="textInputBox"></div></div>' +
+                '<div data-automation-id="formField-phone"><label>Phone Number</label><div><input id="wph" type="tel" data-automation-id="textInputBox"></div></div>' +
+                '<div data-automation-id="formField-city"><label>City</label><div><input id="wcity" data-automation-id="textInputBox"></div></div>' +
+                '<div data-automation-id="formField-linkedin"><label>LinkedIn Profile</label><div><input id="wli" data-automation-id="textInputBox"></div></div>' +
+                '<div data-automation-id="formField-salary"><label>Desired Salary</label><div><input id="wsal" type="number" data-automation-id="textInputBox"></div></div>');
+      }, 40);
+
+      /* use the REAL waitForForm (not injected) to exercise the modal→form wait */
+      const r = await AutoApply.run({ loc: loc(PWC_URL), doc: document, storage: st, now: Date.now(), formInterval: 10, formTimeout: 5000, stableOpts: { quiet: 10, timeout: 200 } });
+
+      assert(r.ran && r.ats === 'Workday', 'should run on the real Workday form after the modal: ' + JSON.stringify(r));
+      assert($('wfn').value === 'Alex' && $('wln').value === 'Morgan', 'first/last name filled via wrapper label (generic input id)');
+      assert($('wem').value === 'alex.morgan@example.com', 'email filled');
+      assert($('wph').value === '+971500000000', 'phone filled');
+      assert($('wcity').value === 'Dubai', 'city filled');
+      assert($('wli').value === profile().linkedin, 'linkedin filled');
+      assert($('wsal').value === '', 'salary must NEVER be filled');
+      const doneRec = await st.get(AutoApply.DONE_KEY);
+      assert(doneRec && doneRec[p.token], 'the intent is consumed only AFTER the real form appears');
+      return 'modal → Apply Manually → real form filled once (wrapper labels) · salary blank · intent survived the transition';
+    }],
+
+    ['29 · Workday country combobox: EXACT profile match is selected', async () => {
+      const WD_URL = 'https://acme.wd1.myworkdayjobs.com/en-US/careers/job/City/A_JR/apply';
+      setForm('<div data-automation-id="formField-country"><label>Country</label>' +
+                '<button id="cbtn" aria-haspopup="listbox" data-automation-id="countryDropdown">Select One</button>' +
+                '<div id="clist"></div></div>');
+      const OPTIONS = ['Canada', 'United Arab Emirates', 'United Kingdom'];
+      $('cbtn').addEventListener('click', function () {
+        const list = $('clist');
+        if (list.childNodes.length) return;
+        OPTIONS.forEach(name => {
+          const o = document.createElement('div');
+          o.setAttribute('role', 'option'); o.textContent = name;
+          o.addEventListener('click', () => { $('cbtn').textContent = name; });
+          list.appendChild(o);
+        });
+      });
+
+      const p = pending({ url: WD_URL, jobId: 'wdc' });
+      const st = memStore({ [AutoApply.PENDING_KEY]: p, [AutoApply.DATA_KEY]: { profile: profile() } });   // country = 'United Arab Emirates'
+      const r = await AutoApply.run({ loc: loc(WD_URL), doc: document, storage: st, now: Date.now(), waitForForm: yes, stableOpts: { quiet: 5, timeout: 100 } });
+
+      assert(r.ran, 'should run: ' + JSON.stringify(r));
+      assert($('cbtn').textContent === 'United Arab Emirates', 'the exact profile country must be selected, got ' + JSON.stringify($('cbtn').textContent));
+      return 'Workday country combobox filled by EXACT match';
+    }],
+
+    ['30 · Workday combobox: NO exact match → never guessed, left unset', async () => {
+      const WD_URL = 'https://acme.wd1.myworkdayjobs.com/en-US/careers/job/City/B_JR/apply';
+      setForm('<div data-automation-id="formField-country"><label>Country</label>' +
+                '<button id="cbtn2" aria-haspopup="listbox" data-automation-id="countryDropdown">Select One</button>' +
+                '<div id="clist2"></div></div>');
+      const OPTIONS = ['United Kingdom', 'United States'];   // profile country "United Arab Emirates" has NO exact match here
+      $('cbtn2').addEventListener('click', function () {
+        const list = $('clist2');
+        if (list.childNodes.length) return;
+        OPTIONS.forEach(name => {
+          const o = document.createElement('div');
+          o.setAttribute('role', 'option'); o.textContent = name;
+          o.addEventListener('click', () => { $('cbtn2').textContent = name; });
+          list.appendChild(o);
+        });
+      });
+
+      const p = pending({ url: WD_URL, jobId: 'wdc2' });
+      const st = memStore({ [AutoApply.PENDING_KEY]: p, [AutoApply.DATA_KEY]: { profile: profile() } });
+      const r = await AutoApply.run({ loc: loc(WD_URL), doc: document, storage: st, now: Date.now(), waitForForm: yes, stableOpts: { quiet: 5, timeout: 100 } });
+
+      assert(r.ran, 'should run: ' + JSON.stringify(r));
+      assert($('cbtn2').textContent === 'Select One', 'a non-exact match must NEVER be guessed, got ' + JSON.stringify($('cbtn2').textContent));
+      return 'no exact combobox match → left unset (never guessed)';
+    }],
+
+    ['31 · Workday PwC (wd3): Latin Given/Family name filled, Arabic Given/Family name left EMPTY', async () => {
+      const PWC_URL = 'https://pwc.wd3.myworkdayjobs.com/en-US/Global_Experienced_Careers/job/Athens/Data-Security-Engineer_747045WD';
+      setForm(
+        '<div data-automation-id="formField-latinGivenName"><label>Latin Given Name(s)</label><div><input id="lgn" data-automation-id="textInputBox"></div></div>' +
+        '<div data-automation-id="formField-latinFamilyName"><label>Latin Family Name</label><div><input id="lfn" data-automation-id="textInputBox"></div></div>' +
+        '<div data-automation-id="formField-arabicGivenName"><label>Arabic Given Name(s)</label><div><input id="agn" data-automation-id="textInputBox"></div></div>' +
+        '<div data-automation-id="formField-arabicFamilyName"><label>Arabic Family Name</label><div><input id="afn" data-automation-id="textInputBox"></div></div>' +
+        /* also a field labelled in Arabic script — must stay empty too */
+        '<div data-automation-id="formField-scriptName"><label>الاسم الأول</label><div><input id="scr" data-automation-id="textInputBox"></div></div>');
+
+      const p = pending({ url: PWC_URL, jobId: 'pwc-ar' });
+      const st = memStore({ [AutoApply.PENDING_KEY]: p, [AutoApply.DATA_KEY]: { profile: profile() } });   // profile has Latin names only
+      const r = await AutoApply.run({ loc: loc(PWC_URL), doc: document, storage: st, now: Date.now(), waitForForm: yes, stableOpts: { quiet: 5, timeout: 100 } });
+
+      assert(r.ran, 'should run: ' + JSON.stringify(r));
+      assert($('lgn').value === 'Alex', 'Latin Given Name must be filled with the Latin first name, got ' + JSON.stringify($('lgn').value));
+      assert($('lfn').value === 'Morgan', 'Latin Family Name must be filled with the Latin last name, got ' + JSON.stringify($('lfn').value));
+      assert($('agn').value === '', 'Arabic Given Name must stay EMPTY (no Arabic name stored), got ' + JSON.stringify($('agn').value));
+      assert($('afn').value === '', 'Arabic Family Name must stay EMPTY, got ' + JSON.stringify($('afn').value));
+      assert($('scr').value === '', 'an Arabic-script-labelled name field must stay EMPTY, got ' + JSON.stringify($('scr').value));
+      return 'Latin names filled · Arabic (word + script) name fields left empty';
+    }],
+
+    ['32 · Workday login/verification does NOT consume the intent (kept alive)', async () => {
+      const PWC_URL = 'https://pwc.wd3.myworkdayjobs.com/en-US/Global_Experienced_Careers/job/Athens/Data-Security-Engineer_747045WD/apply/applyManually';
+      setForm('<h2>Sign In to your account</h2>' +
+              '<input id="li_em" type="email" placeholder="Email"><input id="li_pw" type="password" placeholder="Password">' +
+              '<p>Please verify your email to continue.</p>');
+      const p = pending({ url: PWC_URL, jobId: 'pwc-login' });
+      const st = memStore({ [AutoApply.PENDING_KEY]: p, [AutoApply.DATA_KEY]: { profile: profile() } });
+      /* real waitForForm, short cap → the form never appears within this page */
+      const r = await AutoApply.run({ loc: loc(PWC_URL), doc: document, storage: st, now: Date.now(), formInterval: 10, formTimeout: 150, stableOpts: { quiet: 5, timeout: 50 } });
+
+      assert(!r.ran && r.reason === 'workday-waiting' && r.kept, 'a login page → waiting, not consumed: ' + JSON.stringify(r));
+      assert((await st.get(AutoApply.PENDING_KEY)) !== null, 'the queue intent must remain ALIVE during login');
+      const doneRec = (await st.get(AutoApply.DONE_KEY)) || {};
+      assert(!doneRec[p.token], 'the intent must NOT be marked done on a login page');
+      assert($('li_pw').value === '', 'nothing filled on the login page');
+      return 'Workday login → intent kept alive, not consumed, nothing filled';
+    }],
+
+    ['33 · Workday login → real form: intent survives login, autofills once when the form appears', async () => {
+      const PWC_URL = 'https://pwc.wd3.myworkdayjobs.com/en-US/Global_Experienced_Careers/job/Athens/Data-Security-Engineer_747045WD/apply/applyManually';
+      setForm('<h2>Sign In</h2><input type="email"><input type="password"><p>verify your email</p>');
+      const p = pending({ url: PWC_URL, jobId: 'pwc-lf' });
+      const st = memStore({ [AutoApply.PENDING_KEY]: p, [AutoApply.DATA_KEY]: { profile: profile() } });
+      /* the user signs in → the "My Information" form renders shortly after */
+      setTimeout(() => {
+        setForm('<div data-automation-id="formField-legalName--firstName"><label>Latin Given Name(s)</label><div><input id="f1" data-automation-id="textInputBox"></div></div>' +
+                '<div data-automation-id="formField-legalName--lastName"><label>Latin Family Name</label><div><input id="f2" data-automation-id="textInputBox"></div></div>' +
+                '<div data-automation-id="formField-email"><label>Email Address</label><div><input id="f3" data-automation-id="textInputBox"></div></div>' +
+                '<div data-automation-id="formField-phone"><label>Phone Number</label><div><input id="f4" type="tel" data-automation-id="textInputBox"></div></div>');
+      }, 50);
+
+      const r = await AutoApply.run({ loc: loc(PWC_URL), doc: document, storage: st, now: Date.now(), formInterval: 10, formTimeout: 5000, stableOpts: { quiet: 10, timeout: 200 } });
+      assert(r.ran && r.ats === 'Workday', 'should autofill the real form after login: ' + JSON.stringify(r));
+      assert($('f1').value === 'Alex' && $('f2').value === 'Morgan' && $('f3').value === 'alex.morgan@example.com', 'name+email filled after login');
+      const doneRec = await st.get(AutoApply.DONE_KEY);
+      assert(doneRec && doneRec[p.token], 'the intent is consumed only AFTER the form appears (not during login)');
+      return 'login → form → filled once · intent survived login';
+    }],
+
+    ['34 · Workday intent valid ≥30 min; a non-Workday intent still expires at 3 min', async () => {
+      const now = Date.now();
+      const TEN_MIN = 10 * 60 * 1000;
+      const WD = 'https://pwc.wd3.myworkdayjobs.com/en-US/Global_Experienced_Careers/job/Athens/Data-Security-Engineer_747045WD/apply';
+      setForm('<div><label for="wa">First Name</label><input id="wa" data-automation-id="firstName"></div>' +
+              '<div><label for="wb">Email</label><input id="wb" type="email" data-automation-id="email"></div>');
+      let st = memStore({ [AutoApply.PENDING_KEY]: { url: WD, token: 'tw', jobId: 'j', ts: now - TEN_MIN }, [AutoApply.DATA_KEY]: { profile: profile() } });
+      let r = await AutoApply.run({ loc: loc(WD), doc: document, storage: st, now, waitForForm: yes, stableOpts: { quiet: 5, timeout: 50 } });
+      assert(r.ran, 'a 10-min-old intent must STILL run on Workday: ' + JSON.stringify(r));
+
+      const GH = 'https://boards.greenhouse.io/acme/jobs/1';
+      st = memStore({ [AutoApply.PENDING_KEY]: { url: GH, token: 'tg', jobId: 'j', ts: now - TEN_MIN }, [AutoApply.DATA_KEY]: { profile: profile() } });
+      r = await AutoApply.run({ loc: loc(GH), doc: document, storage: st, now, waitForForm: yes });
+      assert(!r.ran && r.reason === 'not-queue-opened', 'a 10-min-old intent must EXPIRE on non-Workday: ' + JSON.stringify(r));
+      return 'Workday intent valid ≥30 min · non-Workday expires at 3 min';
+    }],
+
+    ['35 · Workday phone: separate +966 code field → national number, extension untouched, Mobile only on exact', async () => {
+      const PWC_URL = 'https://pwc.wd3.myworkdayjobs.com/en-US/Global_Experienced_Careers/job/Athens/Data-Security-Engineer_747045WD/apply/applyManually';
+      setForm(
+        '<div data-automation-id="formField-countryPhoneCode"><label>Country Phone Code</label>' +
+          '<button id="wpc" aria-haspopup="listbox" data-automation-id="countryPhoneCode">Saudi Arabia (+966)</button></div>' +
+        '<div data-automation-id="formField-phoneNumber"><label>Phone Number</label><div><input id="wpn" type="tel" data-automation-id="textInputBox"></div></div>' +
+        '<div data-automation-id="formField-phoneExtension"><label>Phone Extension</label><div><input id="wpx" data-automation-id="textInputBox"></div></div>' +
+        '<div data-automation-id="formField-phoneType"><label>Phone Device Type</label>' +
+          '<button id="wpt" aria-haspopup="listbox" data-automation-id="phoneType">Select One</button><div id="wptlist"></div></div>');
+      const OPTIONS = ['Landline', 'Mobile', 'Pager'];
+      $('wpt').addEventListener('click', function () {
+        const list = $('wptlist');
+        if (list.childNodes.length) return;
+        OPTIONS.forEach(name => {
+          const o = document.createElement('div');
+          o.setAttribute('role', 'option'); o.textContent = name;
+          o.addEventListener('click', () => { $('wpt').textContent = name; });
+          list.appendChild(o);
+        });
+      });
+
+      const prof = Object.assign(profile(), { phone: '+966536886174' });   // no extension stored
+      const p = pending({ url: PWC_URL, jobId: 'pwc-phone' });
+      const st = memStore({ [AutoApply.PENDING_KEY]: p, [AutoApply.DATA_KEY]: { profile: prof } });
+      const r = await AutoApply.run({ loc: loc(PWC_URL), doc: document, storage: st, now: Date.now(), waitForForm: yes, stableOpts: { quiet: 5, timeout: 100 } });
+
+      assert(r.ran, 'should run: ' + JSON.stringify(r));
+      assert($('wpn').value === '536886174', 'Phone Number must be the national number 536886174, got ' + JSON.stringify($('wpn').value));
+      assert($('wpx').value === '', 'Phone Extension must NOT be filled, got ' + JSON.stringify($('wpx').value));
+      assert(/\+?966/.test($('wpc').textContent) && !/536886174/.test($('wpc').textContent), 'the country-code field must keep +966 and never receive the number');
+      assert($('wpt').textContent === 'Mobile', 'Phone Device Type must select the EXACT "Mobile" option, got ' + JSON.stringify($('wpt').textContent));
+      return 'national number 536886174 · extension untouched · code field kept +966 · Mobile selected (exact)';
+    }],
+
+    ['36 · Workday CUSTOM "Country / Territory Phone Code" combobox (+966) → Phone Number 536886174 (queue + manual, never overwrite)', async () => {
+      const PWC_URL = 'https://pwc.wd3.myworkdayjobs.com/en-US/Global_Experienced_Careers/job/Athens/Data-Security-Engineer_747045WD/apply/applyManually';
+      /* the code control is a CUSTOM combobox (button + nested selected value),
+         labelled "Country / Territory Phone Code" — NOT a native input/select */
+      setForm(
+        '<div data-automation-id="formField-country/territoryPhoneCode"><label>Country / Territory Phone Code</label>' +
+          '<div><button id="wpc2" data-automation-id="phoneWidgetCountryPhoneCode" aria-haspopup="listbox">' +
+          '<span data-automation-id="selectedItem">Saudi Arabia (+966)</span></button></div></div>' +
+        '<div data-automation-id="formField-phoneNumber"><label>Phone Number</label><div><input id="wpn2" type="tel" data-automation-id="textInputBox"></div></div>' +
+        '<div data-automation-id="formField-phoneExtension"><label>Phone Extension</label><div><input id="wpx2" data-automation-id="textInputBox"></div></div>');
+      const prof = Object.assign(profile(), { phone: '+966536886174' });
+
+      /* queue auto-autofill */
+      const p = pending({ url: PWC_URL, jobId: 'pwc-ph2' });
+      const st = memStore({ [AutoApply.PENDING_KEY]: p, [AutoApply.DATA_KEY]: { profile: prof } });
+      const r = await AutoApply.run({ loc: loc(PWC_URL), doc: document, storage: st, now: Date.now(), waitForForm: yes, stableOpts: { quiet: 5, timeout: 100 } });
+      assert(r.ran, 'should run: ' + JSON.stringify(r));
+      assert($('wpn2').value === '536886174', 'queue: Phone Number must be the national number, got ' + JSON.stringify($('wpn2').value));
+      assert($('wpx2').value === '', 'Phone Extension must stay empty');
+      assert(!/536886174/.test($('wpc2').textContent) && /\+966/.test($('wpc2').textContent), 'the custom code control keeps +966 and never receives the number');
+
+      /* manual "Autofill Application" uses the SAME normalization */
+      $('wpn2').value = '';
+      window.__cpHelper.autofill(prof, null);
+      assert($('wpn2').value === '536886174', 'manual autofill must also produce the national number, got ' + JSON.stringify($('wpn2').value));
+
+      /* never overwrite a genuine user-entered phone value */
+      $('wpn2').value = '0500000000';
+      window.__cpHelper.autofill(prof, null);
+      assert($('wpn2').value === '0500000000', 'a user-entered phone value must NEVER be overwritten, got ' + JSON.stringify($('wpn2').value));
+      return 'custom code combobox detected · national number (queue + manual) · code kept · user value preserved';
+    }],
   ];
 
   const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');

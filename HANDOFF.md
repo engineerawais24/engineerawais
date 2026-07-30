@@ -4,10 +4,10 @@
 bottom, then continue from **Next Up**. Rules, project shape, and how to run the tests
 live in [CLAUDE.md](CLAUDE.md) — read that too.
 
-- **Last updated:** 2026-07-27 *(always keep this line current — every HANDOFF edit stamps today's date here, so anyone can tell the latest version at a glance)*
-- **Status:** 🟢 **v1.0 SHIPPED** (2026-07-13, tagged 2026-07-22) · since: Chrome extension, real ATS import, ATS Engine v1, Universal Autofill v2 + profile auto-sync + resilient extension storage, Application Queue v1, extension-save→Today's-Jobs sync, imported-jobs→approvals→queue, **queue-triggered ATS autofill + hardened résumé handling (both verified live on a real Greenhouse job 2026-07-27)**
+- **Last updated:** 2026-07-30 *(always keep this line current — every HANDOFF edit stamps today's date here, so anyone can tell the latest version at a glance)*
+- **Status:** 🟢 **v1.0 SHIPPED** (2026-07-13, tagged 2026-07-22) · since: Chrome extension, real ATS import, ATS Engine v1, Universal Autofill v2 + profile auto-sync + resilient extension storage, Application Queue v1, extension-save→Today's-Jobs sync, imported-jobs→approvals→queue, **queue-triggered ATS autofill + hardened résumé handling (verified live on Greenhouse 2026-07-27), Workday adapter (queue autofill verified live on PwC 2026-07-30; national-phone recheck pending)**
 - **Branch:** `main` — clean, in sync with origin
-- **Head:** `fix: handle Greenhouse resume uploads safely with manual fallback` (hash in git log) · tag `v1.0` on `b676933`
+- **Head:** `feat: add reliable Workday queue autofill and field handling` (hash in git log) · tag `v1.0` on `b676933`
 - **Remote:** github.com/engineerawais24/engineerawais
 
 > ### ⚙️ Working agreement — for ANY agent editing this repo
@@ -169,6 +169,74 @@ prep, and an optional FastAPI backend with two-way sync.
 
 ## Next Up
 
+**✅ Workday Adapter v1 — checkpoint, queue autofill verified live (2026-07-30).** Committed as
+`feat: add reliable Workday queue autofill and field handling`. Queue-triggered Autofill v2 on Workday
+(`*.myworkdayjobs.com`), hardened over four live-PwC rounds. Verified on the real PwC wd3 job:
+- **Queue auto-autofill works** end-to-end; **login / account / email-verification delay is handled** —
+  the intent stays valid ≥30 min and is not consumed on the chooser/login/OTP pages, so it autofills once
+  the real *My Information* form appears.
+- **Latin Given/Family name, Country, City and phone fields fill**; **Arabic name fields stay empty**
+  (no Arabic name stored); salary/consent never filled; existing/user values never overwritten; nothing
+  is auto-submitted.
+- ⏳ **Still pending:** a final live verification of the **national phone formatting on a fresh job**
+  (`+966…` → national number via the custom "Country / Territory Phone Code" combobox) — logic is in and
+  unit-green (test 36), but not yet re-confirmed on a brand-new Workday posting.
+
+Detail of the four rounds (history):
+
+**Round 3 (Workday phone, [content.js](extension/content.js) only):** with a SEPARATE phone country-code
+field (e.g. "+966") the **Phone Number** field gets the NATIONAL number (`+966536886174` → `536886174`);
+the country-code / extension / device-type fields never receive the number (`PHONE_NOT` guard on the
+Phone rule); **Phone Extension** is filled only from an explicit `phoneExtension`; **Phone Device Type**
+combobox selects "Mobile" only when an EXACT "Mobile" option exists (via `fillWorkdayComboboxes`, exact
+match). Same `phoneNumberFor` normalization is used by queue AND manual autofill.
+**Round 4 (still failed live — detection):** the real control is a CUSTOM combobox labelled "Country /
+**Territory** Phone Code" (button/div, not a native input/select) — the old regex needed ≤3 chars between
+"country" and "code" so it never matched. Rewrote `phoneCodeControl()` to find it by label / wrapper /
+`data-automation-id` (matches phone+code, or country/territory/dial "…code"), and `readDialCode()` reads
+the selected "+966" from the control's displayed value; added "territory" to `PHONE_NOT`. One regression
+test with a custom combobox (auto-apply **36/36**); autofill 19/19. Nothing else changed.
+
+**Round 2 (2nd live PwC verify — manual autofill now works on the real form):** two more fixes —
+- **Arabic name fields** were being filled with the Latin profile name. [content.js](extension/content.js):
+  `isArabicNameField` (label contains "arabic" OR Arabic-script chars) — Arabic Given/Family name rules
+  run first and fill ONLY from an explicit `arabicFirstName`/`arabicLastName` (absent → field stays
+  empty); the Latin name rules are gated `notArabic`. So "Latin Given Name(s)" fills, "Arabic Given
+  Name(s)" (and Arabic-script labels) stay empty.
+- **Queue intent must survive long Workday login/verification.** [auto-apply.js](extension/auto-apply.js):
+  the intent stays valid **≥30 min** on Workday (`WD_INTENT_MAX_AGE`), and Workday **login / account /
+  OTP / chooser pages no longer consume it** — only a hard CAPTCHA/bot-wall is terminal; if the real form
+  isn't up yet the run returns `workday-waiting` (kept alive) so the next navigation / SPA step autofills
+  it once the real form (`workdayFormReady`) is visible. Never auto-clicks Apply Manually/Continue/Next/
+  Submit. Tests: auto-apply **34/34** (31 Arabic-vs-Latin names · 32 login doesn't consume · 33 login→form
+  autofills once · 34 30-min window). Manual autofill 19/19.
+
+Round 1 (1st live PwC verify) failed two ways — both fixed:
+- **Intent consumed too early on the "Start Your Application" modal** → the real form never got filled.
+  Fix in [auto-apply.js](extension/auto-apply.js): the queue intent is **no longer consumed up front**.
+  A `claim()` (atomic check-and-set) consumes it ONLY at a terminal outcome, and on Workday we WAIT
+  THROUGH the modal (`workdayFormReady` + a 90s cap) for the real form step before claiming — so the
+  intent survives the *Apply Manually* SPA transition and autofill runs once the real form is visible.
+- **Workday React inputs not filled (only phone worked)** → the input's own `data-automation-id` is
+  generic (`textInputBox`) and the real label lives on the field WRAPPER. Fix in
+  [content.js](extension/content.js): `haystack` now scans a few ancestors for the wrapper's
+  `data-automation-id` + its label (only borrowing a label from a single-field wrapper), and `setValue`
+  now fires **focus → native value setter → input → change → blur** so Workday's controlled inputs commit.
+- **Custom comboboxes** (country/state): new `fillWorkdayComboboxes` opens the listbox and selects ONLY
+  an **exact** saved-profile match — never a guess, never overwriting a set value, never a non-combobox
+  control. Blockers (Sign In / **account creation** / **OTP** / CAPTCHA / bot wall) → Needs Attention.
+- Unchanged safety: résumé from `cp_default_resume` via the real file input (failure → Needs Attention);
+  never overwrites existing fields; never fills salary; never auto-accepts consent; never clicks Apply
+  Manually / Continue / Next / Submit; one-shot DONE_KEY duplicate-run guard. Diagnostics: the completed
+  status records WHICH fields were filled. Manual Autofill still works (autofill 19/19).
+- Tests (auto-apply **30/30**): **26** visible current step fills name/email/phone/city/country/exp/
+  LinkedIn + salary blank + hidden step untouched · **27** SPA re-fire never autofills twice · **28**
+  PwC wd3 **modal → application SPA transition** (intent survives, wrapper-label fields fill once) · **29**
+  country combobox EXACT match selected · **30** no exact match → never guessed. Only
+  `extension/{auto-apply.js, content.js, tests/auto-apply}` changed. **Committed + pushed.** Remaining
+  live checks: national phone formatting on a fresh job (above), and whether Workday accepts a
+  programmatic résumé upload (if not → honest Needs Attention, same as Greenhouse).
+
 **✅ Greenhouse résumé handling is DONE + verified live (2026-07-27).** Final verified behaviour on
 `https://job-boards.greenhouse.io/andurilindustries/jobs/5193775007`:
 - Queue-triggered autofill works; **text fields fill and stay filled**.
@@ -278,7 +346,8 @@ HANDOFF update rule below.)*
 
 | Date | Sprint | Commit | Summary |
 |------|--------|--------|---------|
-| 2026-07-27 | — | *(this commit)* | fix: handle Greenhouse resume uploads safely with manual fallback — **✅ verified live**: text autofill works + stays filled, current PDF selected, **Greenhouse blocks synthetic upload** (both `input.files` AND a dropzone `drop`), CareerPilot safely marks **Needs Attention** for manual attach, nothing auto-submitted. Greenhouse Resume Uploader v1 (native input → dropzone `drop` fallback) added — résumé-only, once each (no retry loops), diag records `method`, popup shows honest Upload ok/FAILED. auto-apply 25/25 (test 25: native-rejected→dropzone path on exact URL); autofill 19/19, storage 9/9, messaging 8/8, queue 6/6. |
+| 2026-07-30 | — | *(this commit)* | feat: add reliable Workday queue autofill and field handling — **✅ queue autofill verified live on PwC wd3** (4 live rounds). Queue intent no longer consumed on the "Start Your Application" modal (`claim()` at terminal outcome only; waits THROUGH the modal via `workdayFormReady`); **login/account/OTP survive ≥30 min** (`WD_INTENT_MAX_AGE`, `workday-waiting`, not consumed). Workday React inputs fill (`haystack` scans field-wrapper `data-automation-id`+label; `setValue` fires focus→native-setter→input/change/**blur**). **Custom comboboxes** (country/state/phone-device-type) select ONLY an exact profile match. **Arabic name fields stay empty** (`isArabicNameField`); **phone** national-number when a custom "Country/Territory Phone Code" combobox is present (`phoneCodeControl`/`readDialCode`, `+966…`→`536886174`); extension only if stored; never salary/consent/submit/Continue; never overwrite; run-once via DONE_KEY. Tests auto-apply **36/36**, autofill 19/19. `extension/{auto-apply.js, content.js, tests/auto-apply}`. **Live recheck of national phone on a fresh job still pending.** |
+| 2026-07-27 | — | `8f11ac3` | fix: handle Greenhouse resume uploads safely with manual fallback — **✅ verified live**: text autofill works + stays filled, current PDF selected, **Greenhouse blocks synthetic upload** (both `input.files` AND a dropzone `drop`), CareerPilot safely marks **Needs Attention** for manual attach, nothing auto-submitted. Greenhouse Resume Uploader v1 (native input → dropzone `drop` fallback) added — résumé-only, once each (no retry loops), diag records `method`, popup shows honest Upload ok/FAILED. auto-apply 25/25 (test 25: native-rejected→dropzone path on exact URL); autofill 19/19, storage 9/9, messaging 8/8, queue 6/6. |
 | 2026-07-27 | — | `6f985be` | fix: stabilize ATS résumé handling and report upload failures accurately — **✅ verified live** on `job-boards.greenhouse.io/andurilindustries/jobs/5193775007` (text fills + stays filled; current PDF used; Greenhouse rejects the programmatic upload; honest Needs Attention; no false success; nothing submitted). Five rounds: (1) hidden/`formVisible` gate → deep file-input search (doc+shadow+iframes); (2) **lazy input behind "Attach"** → safe résumé-only Attach click to reveal it; (3) **Attach re-renders + wipes text** → reordered attach→`waitStable()`→autofill (fills only empty, never overwrites); (4) **Set Default Résumé didn't replace a DOCX** → `SafeStorage.replace()` (remove-then-set + verify); (5) **stale DOCX used + false green** → `cp_default_resume` is the ONLY source (intent carries no résumé), strict verify (files[0] name-match + filename visible + no `uploadFile` widget error), failure → Needs Attention (`resume-upload-failed`) with honest popup RÉSUMÉ UPLOAD panel. Tests: auto-apply 24/24, queue 6/6, autofill 19/19, storage 9/9, messaging 8/8. Never submits. |
 | 2026-07-27 | — | `38dd39a` | fix: make queue-triggered ATS autofill reliable on real job pages — **✅ verified live on `job-boards.greenhouse.io/andurilindustries/jobs/5193775007`**. Two bugs: (1) `matchIntent` `normHost` folds Greenhouse `boards.*`⇄`job-boards.*` (301 redirect); (2) the intent bridge only matched `file:///*` so on the **localhost** app page it never loaded → empty form. Rebuilt as a **background service worker + `window.postMessage`→`chrome.runtime` bridge** on `127.0.0.1`/`localhost` (a CustomEvent's `detail` doesn't cross into the content-script world — the real bug); no `file://`. Live popup diagnostic added. New `background.js`, `tests/messaging` (8/8), `tests/queue-origin` @127.0.0.1:5500 (5/5); auto-apply 17/17, ats 23/23, queue 6/6. Safety rules unchanged (never submit/salary/overwrite; run-once; hand-opened never auto-runs). |
 | 2026-07-26 | — | `6759244` | feat: queue-triggered ATS autofill — opening a queued job auto-runs Universal Autofill v2 once (bridge + AutoApply + AtsEngine); queue-opened tabs only; never submit/salary/consent; login/CAPTCHA/blocked/no-form → Needs Attention; run-once guarded. Harnesses 10/10 + 5/5. **Real-ATS smoke test pending.** |
