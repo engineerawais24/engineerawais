@@ -19,7 +19,12 @@ const SCREENS = {
   profile:   { label: 'Profile',         title: 'Career Profile',       render: () => Profile.render(), badge: () => Profile.isDirty() ? '•' : 0 },
   /* Sprint 18: the search panel renders ABOVE the existing Today's Jobs
      screen — Jobs.render() and its approval workflow are unchanged. */
-  jobs:      { label: "Today's Jobs",    title: "Today's Jobs",         render: () => (typeof SearchView !== 'undefined' ? SearchView.panel() : '') + Jobs.render(), badge: () => Jobs.pendingCount() },
+  /* Job Discovery v1 adds ONE more additive card above the search panel:
+     "Fetch Jobs Now". Nothing below it changes. */
+  jobs:      { label: "Today's Jobs",    title: "Today's Jobs",
+    render: () => (typeof JobFetch !== 'undefined' ? JobFetch.render() : '')
+      + (typeof SearchView !== 'undefined' ? SearchView.panel() : '') + Jobs.render(),
+    badge: () => Jobs.pendingCount() },
   approvals: { label: 'Approvals',       title: 'Approvals',            render: renderApprovals, badge: () => DB.approvals.filter(a => a.status === 'awaiting').length },
   review:    { label: 'Application Review', title: 'Application Review', render: () => Prep.renderReview(), hidden: true },
   applications: { label: 'Applications', title: 'Applications Board',   render: () => Applications.render() },
@@ -651,6 +656,11 @@ window.addEventListener('DOMContentLoaded', () => {
      relay so a blocked/login/CAPTCHA job gets flagged in the queue. */
   if (typeof QueueAutoApply !== 'undefined') {
     try { QueueAutoApply.bind(); } catch (e) { /* extension optional */ }
+  }
+  /* Job Discovery v1: listen for the extension's finished "Fetch Jobs Now" run
+     so its counts land on Today's Jobs. No-op without the extension. */
+  if (typeof JobFetch !== 'undefined') {
+    try { JobFetch.bind(); } catch (e) { /* extension optional */ }
   }
   /* Pull any jobs saved from the Chrome extension (POST /api/jobs) into
      Today's Jobs. Best-effort + silent; on boot and on each visit to the

@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CareerPilot Helper · Job Discovery v1 tests</title>
+  <style>
+    :root{ color-scheme: light dark; }
+    body{ font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif; margin:0; padding:28px; background:#0e0f1a; color:#e7e8f0; }
+    h1{ font-size:18px; margin:0 0 4px; }
+    .sub{ color:#9aa0b5; font-size:12px; margin-bottom:18px; max-width:900px; }
+    #summary{ display:inline-block; font-weight:700; font-size:13px; padding:4px 12px; border-radius:8px; margin-bottom:16px; }
+    #summary.ok{ background:#123524; color:#4ade80; } #summary.bad{ background:#3a1620; color:#f87171; }
+    .t{ display:flex; gap:12px; align-items:flex-start; padding:11px 13px; border:1px solid #23263a; border-radius:10px; margin-bottom:8px; background:#151728; }
+    .t.fail{ border-color:#5b2130; background:#1e1420; }
+    .badge{ font:600 10px/1 ui-monospace,monospace; padding:5px 7px; border-radius:6px; letter-spacing:.06em; }
+    .t.pass .badge{ background:#123524; color:#4ade80; } .t.fail .badge{ background:#3a1620; color:#f87171; }
+    b{ font-weight:600; } .detail{ color:#9aa0b5; font-size:12px; margin-top:3px; font-family:ui-monospace,monospace; }
+    /* mock portal pages are laid out (so getClientRects() is real) but off-screen */
+    #stage{ position:absolute; left:-12000px; top:0; width:1100px; }
+  </style>
+</head>
+<body>
+  <h1>Job Discovery v1 — harvest + fetch orchestration</h1>
+  <div class="sub">Drives the real <code>harvest.js</code> against mock LinkedIn / Bayt / GulfTalent results pages
+    (laid out off-screen, so the visibility check is genuine), and the real <code>fetch-jobs.js</code> +
+    <code>background.js</code> with stubbed tabs, scripting and HTTP. Verifies the five extracted fields plus the
+    portal job id, dedup by source job id AND exact URL, the four counts, and that a login wall or CAPTCHA marks
+    that source Needs Attention instead of being worked around. No page is ever modified and nothing is submitted.</div>
+  <div id="summary">running…</div>
+  <div id="results"></div>
+  <div id="stage"></div>
+
+  <!-- a chrome stub MUST exist before the modules load. The real browser APIs
+       are never reachable here; every test injects its own ctx. -->
+  <script>
+    window.__store = {};
+    window.chrome = {
+      runtime: { sendMessage: () => {}, lastError: null },   // no `id` → no live listeners
+      storage: { local: { set: (o, cb) => { Object.assign(window.__store, o); if (cb) cb(); },
+                          get: (k, cb) => cb({}) },
+                 onChanged: { addListener: () => {} } },
+    };
+  </script>
+
+  <!-- real modules under test (fetch-jobs before background: the importScripts guard) -->
+  <script src="../../fetch-jobs.js"></script>
+  <script src="../../background.js"></script>
+  <script src="../../harvest.js"></script>
+  <script src="job-fetch-tests.js"></script>
+</body>
+</html>

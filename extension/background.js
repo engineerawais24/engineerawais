@@ -10,8 +10,19 @@
 
    This replaces the old file://-only storage bridge (which never loaded when
    the app was served from localhost, so the intent was never stored and the
-   ATS form stayed empty). Nothing here reads website storage or the network.
+   ATS form stayed empty). Nothing here reads website storage.
+
+   Job Discovery v1 adds a SECOND message: `cp-fetch-jobs`. That one is
+   delegated to fetch-jobs.js (CPFetchJobs), which opens each saved search in a
+   background tab of the user's own logged-in Chrome, harvests the visible job
+   cards and saves them through the existing POST /api/jobs.
    ============================================================ */
+
+/* the Job Discovery orchestrator. In the worker it is imported here; in a test
+   harness the file is already loaded by a <script> tag, so the guard skips. */
+try {
+  if (typeof CPFetchJobs === 'undefined' && typeof importScripts === 'function') importScripts('fetch-jobs.js');
+} catch (e) { /* fetch-jobs unavailable → cp-fetch-jobs reports an honest failure */ }
 
 (function () {
   'use strict';
@@ -56,6 +67,16 @@
       if (!obj) return { ok: false, error: 'missing url/token' };
       await set(obj);
       return { ok: true, stored: true, token: msg.token };
+    }
+
+    /* Job Discovery v1 — "Fetch Jobs Now". Long-running (it opens a tab per
+       source), so the response IS the finished result; the worker also writes
+       it to storage so the bridge can relay it even if the sender went away. */
+    if (msg.type === 'cp-fetch-jobs') {
+      const runner = ctx.fetchJobs || (typeof CPFetchJobs !== 'undefined' ? CPFetchJobs.run : null);
+      if (typeof runner !== 'function') return { ok: false, error: 'the job fetcher is not loaded — reload the extension' };
+      try { return await runner(msg, ctx.fetchCtx); }
+      catch (e) { return { ok: false, error: (e && e.message) || 'fetch failed', token: msg.token || null }; }
     }
 
     return { ok: false, error: 'unknown message' };

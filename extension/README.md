@@ -41,6 +41,51 @@ your machine.
 Job detection has dedicated selectors for **LinkedIn, Bayt, GulfTalent, Workday,
 Greenhouse, Lever**, and a generic fallback for company career pages.
 
+## Job Discovery v1 — "Fetch Jobs Now"
+
+The button lives in **CareerPilot → Today's Jobs**, not in this popup. Save one
+search URL per portal (LinkedIn Jobs, Bayt, GulfTalent) — the address you see in
+Chrome after running that search — then click **Fetch Jobs Now**.
+
+The extension then, for each saved search:
+
+1. opens it in a **background tab of this same Chrome**, so it runs in the session
+   you are already signed into — nothing logs in, and no credential is read or stored;
+2. injects `harvest.js` and reads the job cards on screen — title, company,
+   location, job URL, source and the portal's own job id;
+3. deduplicates by **source job id** *and* by **exact job URL**, then saves each job
+   through the same `POST /api/jobs` as **Save Current Job**;
+4. closes the tab and reports four plain counts: **found · saved · duplicate · failed**.
+
+**LinkedIn is scrolled, because it has to be.** LinkedIn virtualizes its results
+list — only the cards near the viewport exist in the page at any moment, and the
+ones you scroll past are destroyed again. Reading a freshly opened tab once
+returned a single job against a search showing "99+ results". So the LinkedIn
+harvest scopes itself to the **left results list** (never the job-details panel on
+the right, which carries its own `/jobs/view/` links), scrolls the results
+container in rounds, and collects newly rendered cards by LinkedIn job id after
+each round. It stops after **3 consecutive rounds with no new job id**, or at
+**50 unique jobs**. Promoted cards repeat a posting — under the same job id, or
+occasionally a second id for the same title, company and location — and are saved
+once either way.
+
+Each source reports how the read went: **scroll rounds · card candidates · unique
+ids · parsed · failed cards**. If cards were clearly on screen but almost nothing
+could be read, the source is reported as a **harvest failure** rather than as a
+run that found one job — a silent partial result is what hid the bug the first
+time. Bayt and GulfTalent render their whole results page at once, so they still
+take a single read.
+
+If a portal shows a **login wall or a CAPTCHA**, that source is marked **Needs
+Attention** and nothing is harvested from it — it is reported, never worked around.
+Open that saved search in Chrome, sign in or clear the CAPTCHA, and fetch again.
+
+The saved jobs are pulled into Today's Jobs immediately. No matching, scoring,
+autofill or application step runs — discovery only.
+
+Host permissions for `linkedin.com`, `bayt.com` and `gulftalent.com` exist purely
+for this; a saved search URL that doesn't belong to its portal is never opened.
+
 ## What it deliberately does NOT do
 
 - No automatic submission — ever. Review every field, then click Apply yourself.
@@ -52,7 +97,12 @@ Greenhouse, Lever**, and a generic fallback for company career pages.
   filled, whatever your profile holds.
 - **No consenting on your behalf** — agreement, terms, privacy, and marketing
   checkboxes are never auto-ticked; they're surfaced for you to decide.
-- No CAPTCHA handling, no account creation, no background browsing.
+- No CAPTCHA handling, no account creation. The only background browsing is the
+  tab **Fetch Jobs Now** opens for a saved search you set yourself — it reads that
+  page, scrolls its results list, and closes it. No clicking, no pagination, no
+  form is ever touched there.
+- No scraping behind a wall: a portal that asks for a login or a CAPTCHA is
+  reported as **Needs Attention**, never bypassed.
 
 ## Troubleshooting
 

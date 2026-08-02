@@ -2,6 +2,14 @@
 
 Creating a job with a (source, source_job_id) that already exists
 returns 409 — duplicate protection (PART 10).
+
+Job Discovery v1 adds the second half of that rule: an EXACT `apply_url`
+match is a duplicate too, so the same posting reached under two different
+source ids (a portal re-issuing an id, two saved searches overlapping)
+is stored once. It is deliberately the exact URL and NEVER `canonical_url`:
+Oracle/SPA boards put the requisition id in the query string, so distinct
+jobs share one canonical URL and merging on it links a job to the wrong
+application package (the WSP-vs-Microsoft bug).
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -24,6 +32,12 @@ def create_job(body: JobIn, db: Session = Depends(get_db), user: User = Depends(
     exists = db.query(Job).filter_by(user_id=user.id, source=body.source, source_job_id=body.source_job_id).first()
     if exists:
         raise HTTPException(status_code=409, detail={"code": "duplicate", "message": f"job {body.source}:{body.source_job_id} already exists"})
+
+    apply_url = (body.apply_url or "").strip()
+    if apply_url:
+        same_url = db.query(Job).filter(Job.user_id == user.id, Job.apply_url == apply_url).first()
+        if same_url:
+            raise HTTPException(status_code=409, detail={"code": "duplicate", "message": f"job at {apply_url} already exists"})
     row = Job(user_id=user.id, **body.model_dump())
     db.add(row)
     db.commit()

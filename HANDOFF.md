@@ -4,10 +4,10 @@
 bottom, then continue from **Next Up**. Rules, project shape, and how to run the tests
 live in [CLAUDE.md](CLAUDE.md) — read that too.
 
-- **Last updated:** 2026-07-30 *(always keep this line current — every HANDOFF edit stamps today's date here, so anyone can tell the latest version at a glance)*
-- **Status:** 🟢 **v1.0 SHIPPED** (2026-07-13, tagged 2026-07-22) · since: Chrome extension, real ATS import, ATS Engine v1, Universal Autofill v2 + profile auto-sync + resilient extension storage, Application Queue v1, extension-save→Today's-Jobs sync, imported-jobs→approvals→queue, **queue-triggered ATS autofill + hardened résumé handling (verified live on Greenhouse 2026-07-27), Workday adapter (queue autofill verified live on PwC 2026-07-30; national-phone recheck pending)**
+- **Last updated:** 2026-08-02 *(always keep this line current — every HANDOFF edit stamps today's date here, so anyone can tell the latest version at a glance)*
+- **Status:** 🟢 **v1.0 SHIPPED** (2026-07-13, tagged 2026-07-22) · since: Chrome extension, real ATS import, ATS Engine v1, Universal Autofill v2 + profile auto-sync + resilient extension storage, Application Queue v1, extension-save→Today's-Jobs sync, imported-jobs→approvals→queue, queue-triggered ATS autofill + hardened résumé handling (verified live on Greenhouse 2026-07-27), Workday adapter (queue autofill verified live on PwC 2026-07-30; national-phone recheck pending), **Job Discovery v1 — "Fetch Jobs Now" for LinkedIn · Bayt · GulfTalent (committed 2026-08-02; LinkedIn virtualized-scroll fix in; live retest pending)**
 - **Branch:** `main` — clean, in sync with origin
-- **Head:** `feat: add reliable Workday queue autofill and field handling` (hash in git log) · tag `v1.0` on `b676933`
+- **Head:** `feat: add browser-based job discovery with reliable LinkedIn harvesting` (hash in git log) · tag `v1.0` on `b676933`
 - **Remote:** github.com/engineerawais24/engineerawais
 
 > ### ⚙️ Working agreement — for ANY agent editing this repo
@@ -43,6 +43,7 @@ live in [CLAUDE.md](CLAUDE.md) — read that too.
 | M12 | **Imported jobs → Approvals → Queue** — create an application for an approved imported job; it shows on Approvals; "Approve & queue" adds that exact job to the Application Queue; each queued job links only to its own package | — | ✅ Shipped 2026-07-26 (`bd64909` + `749191c`; harness 7/7) |
 | M13 | **Queue → ATS auto-autofill** — opening a queued job auto-runs Universal Autofill v2 once; login/CAPTCHA/blocked/no-form → Needs Attention | — | ✅ Built 2026-07-26 · ✅ **verified live 2026-07-27 on `https://job-boards.greenhouse.io/andurilindustries/jobs/5193775007`** (autofilled once automatically). Two smoke-test bugs fixed: (1) `matchIntent` `normHost` folds Greenhouse `boards.*`⇄`job-boards.*` (301 redirect); (2) **the real break** — the intent bridge only matched `file:///*`, so on the **localhost** app page (`http://127.0.0.1:5500`) it never loaded → intent never stored → empty form. Rebuilt as a **background service worker (`background.js`) + `window.postMessage` → `chrome.runtime` messaging** bridge on `127.0.0.1`/`localhost` (no `file://`; a CustomEvent's `detail` doesn't cross into the content-script world — that was the bug). Added a live popup diagnostic. Harnesses 17/17 + 8/8 + 5/5 + 23/23 + 6/6. · ✅ **Résumé handling hardened + verified live 2026-07-27**: `cp_default_resume` is the sole résumé source (queue intent carries none), deep/lazy Greenhouse input handling, attach→stabilize→autofill ordering, strict upload verification, honest **Needs Attention** when Greenhouse rejects the programmatic upload (no false green, nothing submitted). Harnesses auto-apply 25/25 + storage 9/9. **Greenhouse Resume Uploader v1** (native input → dropzone `drop` fallback) added; live-verified that Greenhouse blocks BOTH synthetic paths, so the extension safely marks **Needs Attention** and the user attaches the résumé manually (nothing auto-submitted). |
 | M10 | **Application Queue v1** — process approved jobs one at a time from Approvals: open in a new tab, Mark Applied / Needs Attention / Skip / Open Next, auto-advance, refresh-safe | — | ✅ Shipped 2026-07-25 (`d30af44`; reuses `ApplicationPackages`; never submits; harness 11/11) |
+| M14 | **Job Discovery v1 — "Fetch Jobs Now"** — one button on Today's Jobs brings real jobs in from **LinkedIn, Bayt and GulfTalent**, using the Chrome sessions the user is already signed into | — | ✅ **Implemented for all three portals 2026-08-02** (committed + pushed). One saved search URL per portal → the extension opens each in a background tab, harvests the cards, dedups by source job id **and** exact URL, saves via the existing `POST /api/jobs`, reports found/saved/duplicate/failed; login/CAPTCHA → **Needs Attention**. **LinkedIn virtualized-scrolling fix implemented** after the first live run returned 1 job of 99+: the harvest now scopes to the left results list and scrolls it in rounds (stop: 3 idle rounds or 50 jobs), with per-source diagnostics and an honest harvest-failure verdict. **Automated tests collect 30/30 virtualized LinkedIn jobs.** Harnesses 24/24 + 14/14, backend 51/51. **Real LinkedIn live retest still pending** — expected ~20–25 jobs from one results page. |
 
 ## To-do (v1.0 → v1.0-tagged)
 
@@ -78,9 +79,18 @@ live in [CLAUDE.md](CLAUDE.md) — read that too.
   independently re-confirmed — not a regression risk given the code path they exercise.
 
 **Open — code/repo:**
-- Nothing open right now — all v1.0 → v1.0-tagged code/repo items above are done.
+- Nothing open right now — Job Discovery v1 (all three portals, plus the LinkedIn virtualized-scroll
+  fix) is committed and pushed as of 2026-08-02.
 
 **Open — user-side (browser / live run; not code):**
+- [ ] **Real LinkedIn live retest — STILL PENDING.** The first live run returned 1 LinkedIn job of
+  99+ (its list is virtualized); the harvest was rebuilt to scroll and the **automated tests now
+  collect 30/30 virtualized jobs**, but that is a mock, not the live page. **Reload the unpacked
+  extension** (`chrome://extensions` → Reload — `harvest.js` and the manifest both changed), start
+  the backend, then fetch again. **Expected live result: roughly 20–25 jobs from one results page**
+  (the harvest scrolls but deliberately never paginates). A LinkedIn `failed` row now names the card
+  and parsed counts — that message is the thing to capture. Bayt and GulfTalent have never been run
+  live at all — their selectors are structural but untested against the real DOMs.
 - [ ] **Live-DOM smoke test the extension** — Load unpacked (`chrome://extensions` → `/extension`; see `extension/README.md`). Save + Autofill on a real posting, and Import on a LinkedIn search page. Selectors are untested against live DOMs; the LinkedIn importer now prints `links/ids/parsed` in the popup — paste those numbers if it comes back low.
 - [ ] Extension autofill reads the **backend** profile — populate it first (Settings → backend sync, or `PUT /api/profile`); the browser-localStorage profile is **not** what the extension sees
 - [ ] To use the ATS importer: set `"enabled": true` for a company in `backend/ats_sources.json`, run the backend, `POST /api/ats/import` (needs internet)
@@ -168,6 +178,88 @@ prep, and an optional FastAPI backend with two-way sync.
   guardrail that keeps auto-push safe.
 
 ## Next Up
+
+**🆕 Job Discovery v1 — "Fetch Jobs Now" (2026-08-02, committed + pushed).** One button on
+Today's Jobs brings real jobs in from **LinkedIn Jobs, Bayt and GulfTalent** — all three portals
+implemented — using the Chrome sessions the user is already signed into. Nothing logs in and no
+credential is read or stored.
+
+How it works, end to end:
+- **App** — `JobFetchStore` holds ONE saved search URL per portal (validated against that portal's
+  host) plus the last run's four counts; `JobFetch` posts a signed `window.postMessage`
+  `{kind:'fetch-jobs', token, sources, api}` through the SAME bridge the Application Queue uses;
+  `JobFetchView` renders an additive card at the top of Today's Jobs (`app/js/discovery/job-fetch*.js`,
+  registered in `app/index.html`, added to `SCREENS.jobs` — nothing below it changed).
+- **Extension** — `bridge.js` forwards it to the background worker; `fetch-jobs.js` (`CPFetchJobs`,
+  imported by `background.js`) opens each saved search in a **background tab**, injects `harvest.js`,
+  reads the cards already on screen (title · company · location · job URL · source · portal job id),
+  closes the tab, dedups **by source job id AND by exact job URL**, and saves each job through the
+  EXISTING `POST /api/jobs`. Result → `chrome.storage.local` + a direct ACK, relayed back to the app.
+- **Board** — the app then runs `JobsBackendSync.pull({force:true})`, so fetched jobs appear in
+  Today's Jobs immediately.
+- **Backend** — `POST /api/jobs` now also 409s on an **exact `apply_url`** match (never on
+  `canonical_url`; that would re-create the WSP↔Microsoft merge).
+- **Blocked sources** — a login wall or CAPTCHA is REPORTED, never worked around: that source is
+  **Needs Attention**, nothing is harvested from it, and the other portals still run.
+- **Scope held**: no matching, no scoring, no autofill, no application/submission changes, no UI
+  redesign. Tests enforce it (app case 11).
+
+Tests: extension [extension/tests/job-fetch/](extension/tests/job-fetch/job-fetch.html) **24/24**
+(mock LinkedIn/Bayt/GulfTalent DOMs laid out off-screen, so the visibility check is real, plus a
+virtualized LinkedIn list) · app [app/tests/job-fetch/](app/tests/job-fetch/job-fetch.html) **14/14** · backend
+`tests/test_job_discovery.py` (suite **51/51**). Regression-green: messaging 8/8, auto-apply 36/36,
+autofill 19/19, storage 9/9, ats 23/23, queue 11/11, queue-autoapply 6/6, jobs-backend-sync 8/8,
+imported-approval 7/7, sprint26 10/10, sprint30 13/13.
+
+Also fixed along the way (pre-existing, not a regression from this work): `bridge.js` posted its ACK
+with `targetOrigin = location.origin`, which a `file://` page can never match (opaque origin), so the
+ACK was dropped there — messaging case 7 had been failing. Both `bridge.js` and `job-fetch.js` now
+fall back to `'*'` when the origin isn't `http(s)`. Production (localhost) behaviour is unchanged.
+
+**🔧 LinkedIn virtualized-scrolling fix — implemented (2026-08-02).** The first live run, on a real
+`linkedin.com/jobs/search-results/` saved search with a `currentJobId` already selected, returned
+**1 job against "99+ results"**. Root cause: **LinkedIn virtualizes the left results list** —
+only the cards near the viewport exist in the DOM, and cards scrolled past are destroyed. v1 read the
+freshly opened background tab exactly once, so it saw the rendered window (often just the selected
+job). Two further faults found while fixing it: the card's **logo anchor** was picked as the job link
+(no text → the title read empty → the card counted as failed), and nothing scoped the read to the
+left list, so the **job-details panel's** own `/jobs/view/` links were in scope.
+
+The LinkedIn path in [harvest.js](extension/harvest.js) now:
+- **scopes to the LEFT results list** — `li[data-occludable-job-id]`'s shared parent, else known list
+  containers, else a `<ul>` holding ≥2 distinct job links; anything inside the details panel is
+  excluded by `closest()`.
+- **waits** for the first card (a background tab has rendered nothing yet), then **scrolls in rounds**
+  (scroll container + `scrollIntoView` on the last card — whichever the page listens to), collecting
+  newly rendered cards by LinkedIn job id after each round.
+- **stops** after **3 consecutive rounds with no new id**, or at **50 unique jobs** (hard round cap 40).
+- **extracts** title (from the visible `aria-hidden`/`strong` span, not the doubled link text),
+  company, location, the exact `/jobs/view/<id>/` URL, source and the LinkedIn job id.
+- **dedups** by job id and exact URL, plus a `title|company|location` key so a **promoted twin under a
+  second id** is not saved twice (deliberate drops are not counted as failures).
+- **reports diagnostics** — scroll rounds · card candidates · unique ids · parsed · failed cards —
+  carried through `fetch-jobs.js` → the run → `JobFetchStore` → a muted line under each source row.
+- **calls a bad read a FAILURE**: ≤1 job parsed with ≥3 cards on screen, or zero cards with no "no
+  matching jobs found" on the page, returns `ok:false` with the numbers in the message. Nothing is
+  saved — a silent partial result is exactly what hid this bug.
+
+Bayt and GulfTalent are **untouched**: they render their whole page, so `harvestList` returns the
+original single read for them (tests assert `harvestList` ≡ `harvest` for both). Autofill, queue,
+matching and the UI are unchanged.
+
+**Automated tests collect 30/30 virtualized LinkedIn jobs.** The harness mock is genuinely
+virtualized — cards are destroyed as new ones load — and **one read sees 8 while the scrolled harvest
+collects 30/30 in 8 rounds**. The 50-job cap holds on an 80-job list; a 12-job list idle-stops at 12.
+
+⏳ **REAL LINKEDIN LIVE RETEST — STILL PENDING** (user-side, needs the browser). The 30/30 above is a
+mock, not the live page. **Reload the unpacked extension** (`chrome://extensions` → Reload —
+`harvest.js` and the manifest both changed), start the backend, then click **Fetch Jobs Now** on the
+same saved search.
+- **Expected live result: roughly 20–25 jobs from one results page** — the harvest scrolls the
+  virtualized list but deliberately never paginates or clicks, so it collects what that single
+  results page holds (LinkedIn serves ~25 per page).
+- Also expect the four counts and a diagnostics line per source. If LinkedIn comes back **failed**,
+  the message now names the card and parsed counts — that message is the thing to capture.
 
 **✅ Workday Adapter v1 — checkpoint, queue autofill verified live (2026-07-30).** Committed as
 `feat: add reliable Workday queue autofill and field handling`. Queue-triggered Autofill v2 on Workday
@@ -346,6 +438,8 @@ HANDOFF update rule below.)*
 
 | Date | Sprint | Commit | Summary |
 |------|--------|--------|---------|
+| 2026-08-02 | — | *(this commit)* | **Job Discovery v1 — LinkedIn harvesting rebuilt after the first live run.** Live test on the real saved search returned **1 job against "99+ results"**: LinkedIn **virtualizes** the left results list (only cards near the viewport exist; scrolled-past cards are destroyed), and v1 read the freshly opened background tab once. Also found: the card's **logo anchor** was taken as the job link (empty text → title empty → card counted failed), and the **job-details panel's** own `/jobs/view/` links were in scope. [harvest.js](extension/harvest.js) LinkedIn path now scopes to the LEFT list (`li[data-occludable-job-id]`'s parent → known containers → a `<ul>` with ≥2 job links; details panel excluded via `closest()`), waits for the first card, then **scrolls in rounds** collecting new job ids — stopping after **3 idle rounds** or **50 jobs** (round cap 40). Title read from the visible `aria-hidden`/`strong` span; dedup by job id, exact URL, and a `title\|company\|location` key so a **promoted twin under a second id** is saved once. Per-source **diagnostics** (scroll rounds · card candidates · unique ids · parsed · failed) flow through to the panel, and a read that yields ≤1 job from ≥3 cards — or 0 cards with no "no matching jobs" on the page — is reported as a **harvest FAILURE**, saving nothing. Bayt/GulfTalent untouched (`harvestList` ≡ `harvest` for both, asserted). New harness mock is genuinely virtualized: one read sees 8, the scrolled harvest gets **30/30 in 8 rounds**. Tests **24/24** + **14/14**, backend 51/51, all other suites green. **Real LinkedIn live retest still pending — expected ~20–25 jobs from one results page** (scrolls, never paginates). |
+| 2026-08-02 | — | *(this commit)* | **Job Discovery v1 — "Fetch Jobs Now."** One button on Today's Jobs pulls real jobs from **LinkedIn / Bayt / GulfTalent** using the Chrome sessions the user is already signed into. New: `app/js/discovery/job-fetch-store.js` (one saved search URL per portal, host-validated, + the last run's four counts), `job-fetch.js` (posts `{kind:'fetch-jobs'}` over the existing bridge, records the run, then `JobsBackendSync.pull` so jobs land in Today's Jobs at once), `job-fetch-view.js` (additive card, existing CSS); `extension/harvest.js` (read-only card harvester — title · company · location · job URL · source · portal job id; structural, class-name-agnostic; login/CAPTCHA **reported**, never bypassed) and `extension/fetch-jobs.js` (opens each saved search in a background tab, injects the harvester, dedups by **source job id AND exact job URL**, saves via the existing `POST /api/jobs`, closes the tab, returns found/saved/duplicate/failed). `bridge.js`/`background.js` route the new message; manifest gains host permissions for the three portals only (no `tabs` permission). Backend `POST /api/jobs` now 409s on an exact `apply_url` too (never `canonical_url` — that would re-create the WSP↔Microsoft merge). Fixed a pre-existing `file://` ACK-drop in `bridge.js` (origin targetOrigin can't match an opaque origin) — messaging back to 8/8. No matching/scoring/autofill/application changes; no UI redesign. Tests: job-fetch **17/17** + **12/12**, backend **51/51**, all other suites green. (Superseded the same day by the LinkedIn virtualized-scroll fix in the row above.) |
 | 2026-07-30 | — | *(this commit)* | feat: add reliable Workday queue autofill and field handling — **✅ queue autofill verified live on PwC wd3** (4 live rounds). Queue intent no longer consumed on the "Start Your Application" modal (`claim()` at terminal outcome only; waits THROUGH the modal via `workdayFormReady`); **login/account/OTP survive ≥30 min** (`WD_INTENT_MAX_AGE`, `workday-waiting`, not consumed). Workday React inputs fill (`haystack` scans field-wrapper `data-automation-id`+label; `setValue` fires focus→native-setter→input/change/**blur**). **Custom comboboxes** (country/state/phone-device-type) select ONLY an exact profile match. **Arabic name fields stay empty** (`isArabicNameField`); **phone** national-number when a custom "Country/Territory Phone Code" combobox is present (`phoneCodeControl`/`readDialCode`, `+966…`→`536886174`); extension only if stored; never salary/consent/submit/Continue; never overwrite; run-once via DONE_KEY. Tests auto-apply **36/36**, autofill 19/19. `extension/{auto-apply.js, content.js, tests/auto-apply}`. **Live recheck of national phone on a fresh job still pending.** |
 | 2026-07-27 | — | `8f11ac3` | fix: handle Greenhouse resume uploads safely with manual fallback — **✅ verified live**: text autofill works + stays filled, current PDF selected, **Greenhouse blocks synthetic upload** (both `input.files` AND a dropzone `drop`), CareerPilot safely marks **Needs Attention** for manual attach, nothing auto-submitted. Greenhouse Resume Uploader v1 (native input → dropzone `drop` fallback) added — résumé-only, once each (no retry loops), diag records `method`, popup shows honest Upload ok/FAILED. auto-apply 25/25 (test 25: native-rejected→dropzone path on exact URL); autofill 19/19, storage 9/9, messaging 8/8, queue 6/6. |
 | 2026-07-27 | — | `6f985be` | fix: stabilize ATS résumé handling and report upload failures accurately — **✅ verified live** on `job-boards.greenhouse.io/andurilindustries/jobs/5193775007` (text fills + stays filled; current PDF used; Greenhouse rejects the programmatic upload; honest Needs Attention; no false success; nothing submitted). Five rounds: (1) hidden/`formVisible` gate → deep file-input search (doc+shadow+iframes); (2) **lazy input behind "Attach"** → safe résumé-only Attach click to reveal it; (3) **Attach re-renders + wipes text** → reordered attach→`waitStable()`→autofill (fills only empty, never overwrites); (4) **Set Default Résumé didn't replace a DOCX** → `SafeStorage.replace()` (remove-then-set + verify); (5) **stale DOCX used + false green** → `cp_default_resume` is the ONLY source (intent carries no résumé), strict verify (files[0] name-match + filename visible + no `uploadFile` widget error), failure → Needs Attention (`resume-upload-failed`) with honest popup RÉSUMÉ UPLOAD panel. Tests: auto-apply 24/24, queue 6/6, autofill 19/19, storage 9/9, messaging 8/8. Never submits. |
@@ -417,6 +511,12 @@ screens `#/admin` (System Diagnostics), `#/review`, `#/resumeReview`.
 
 **Chrome extension** under `extension/` (Manifest V3): `manifest.json`, `popup.html`,
 `popup.js` (backend calls: `/api/profile`, `POST /api/jobs`), `content.js` (job
-detection, autofill, `collectLinkedIn`), `README.md` (load-unpacked steps). No JS
-runtime on this machine → tested with standalone headless-Edge harnesses that stub
-`chrome.*` and drive the real scripts (see [[headless-edge-test-runner]] in memory).
+detection, autofill, `collectLinkedIn`), `background.js` + `bridge.js` (app↔worker
+messaging), `auto-apply.js` (queue-triggered ATS autofill), **`harvest.js` + `fetch-jobs.js`
+(Job Discovery v1)**, `README.md` (load-unpacked steps). No JS runtime on this machine →
+tested with standalone headless-Edge harnesses that stub `chrome.*` and drive the real
+scripts (see [[headless-edge-test-runner]] in memory).
+
+**Job Discovery v1** under `app/js/discovery/job-fetch{-store,-view,}.js` (app side) and
+`extension/{harvest,fetch-jobs}.js` (browser side); tests in `app/tests/job-fetch/` and
+`extension/tests/job-fetch/`; backend contract in `backend/tests/test_job_discovery.py`.

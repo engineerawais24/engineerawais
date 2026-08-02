@@ -189,6 +189,12 @@
   <script src="js/discovery/discovery-model.js"></script>
   <script src="js/discovery/job-match-engine.js"></script>
   <script src="js/discovery/job-discovery-service.js"></script>
+  <!-- Job Discovery v1: one "Fetch Jobs Now" button. The Chrome extension opens
+       each saved search in the session the user is already logged into, harvests
+       the visible cards and saves them via the existing POST /api/jobs. -->
+  <script src="js/discovery/job-fetch-store.js"></script>
+  <script src="js/discovery/job-fetch-view.js"></script>
+  <script src="js/discovery/job-fetch.js"></script>
   <!-- Sprint 26: manual job import (inside Today's Jobs) -->
   <script src="js/imports/imported-jobs.js"></script>
   <script src="js/imports/import-view.js"></script>
