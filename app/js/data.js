@@ -10,111 +10,54 @@ const DB = {
 
   lastSync: '6:00 AM',
 
-  /* ---------- dashboard ---------- */
+  /* ---------- dashboard ----------
+     Zeroed 2026-08-03 — every headline number here was invented (128
+     applications, a 31% response rate, a $148k average). The dashboard now
+     reports only what is really on the board; these fill in as you apply. */
   stats: [
-    { k: 'Applications',   v: '128',   d: '↑ 12 this week', up: true  },
-    { k: 'Interview rate', v: '14%',   d: '↑ 3 pts',        up: true  },
-    { k: 'Response rate',  v: '31%',   d: '40 replies',     up: false },
-    { k: 'Avg salary',     v: '$148k', d: 'target band',    up: false },
+    { k: 'Applications',   v: '0',  d: 'none yet',    up: false },
+    { k: 'Interview rate', v: '0%', d: 'no data yet', up: false },
+    { k: 'Response rate',  v: '0%', d: 'no data yet', up: false },
+    { k: 'Avg salary',     v: '—',  d: 'target band', up: false },
   ],
 
   weekly: [
-    { label: 'W1', pct: 38 }, { label: 'W2', pct: 52 }, { label: 'W3', pct: 44 },
-    { label: 'W4', pct: 66 }, { label: 'W5', pct: 58 }, { label: 'W6', pct: 78 },
-    { label: 'W7', pct: 70 }, { label: 'W8', pct: 90 },
+    { label: 'W1', pct: 0 }, { label: 'W2', pct: 0 }, { label: 'W3', pct: 0 },
+    { label: 'W4', pct: 0 }, { label: 'W5', pct: 0 }, { label: 'W6', pct: 0 },
+    { label: 'W7', pct: 0 }, { label: 'W8', pct: 0 },
   ],
 
-  /* seeded history for the monthly activity chart — Jun/Jul are
-     computed live from the Applications board at render time */
-  monthly: [
-    { m: 'Feb', n: 14 }, { m: 'Mar', n: 19 }, { m: 'Apr', n: 16 }, { m: 'May', n: 22 },
-  ],
+  /* the monthly activity chart — no seeded history; the live months are
+     computed from the Applications board at render time */
+  monthly: [],
 
   pendingActions: [
     { color: '#3538CD', html: '<b>Complete your profile</b> — sharpens match scores', route: 'profile' },
-    { color: '#B7791F', html: '<b>6 new matches</b> awaiting review', route: 'jobs' },
-    { color: '#3538CD', html: '<b>3 tailored applications</b> ready to approve', route: 'approvals' },
-    { color: '#1E7A4D', html: 'Prep <b>Stripe</b> tech screen · Jul 9', route: 'interview' },
-    { color: '#8B8272', html: 'Follow up with <b>Datadog</b> — 5 days silent', route: 'tracker' },
   ],
 
   funnel: [
-    { label: 'Applied',   n: 128, pct: 100, color: '#3538CD' },
-    { label: 'Responded', n: 40,  pct: 31,  color: '#5A5CD6' },
-    { label: 'Screened',  n: 22,  pct: 17,  color: '#8082E2' },
-    { label: 'Onsite',    n: 11,  pct: 9,   color: '#A6A8EC' },
-    { label: 'Offer',     n: 4,   pct: 4,   color: '#1E7A4D' },
+    { label: 'Applied',   n: 0, pct: 0, color: '#3538CD' },
+    { label: 'Responded', n: 0, pct: 0, color: '#5A5CD6' },
+    { label: 'Screened',  n: 0, pct: 0, color: '#8082E2' },
+    { label: 'Onsite',    n: 0, pct: 0, color: '#A6A8EC' },
+    { label: 'Offer',     n: 0, pct: 0, color: '#1E7A4D' },
   ],
 
   bestPerformers: [
-    { k: 'Best performing resume', v: 'Solutions Architect v3', d: '34% reply · 5 interviews' },
-    { k: 'Best job source',        v: 'Greenhouse + Ashby direct', d: '2.4× reply vs aggregators' },
+    { k: 'Best performing resume', v: '—', d: 'no applications yet' },
+    { k: 'Best job source',        v: '—', d: 'no applications yet' },
   ],
 
-  /* ---------- today's jobs (sourced overnight, awaiting review) ---------- */
-  jobs: [
-    {
-      id: 'j1', score: 92, title: 'Senior Solutions Architect', company: 'Stripe',
-      salary: '$185k–$215k', loc: 'Remote · US', mode: 'Full-time',
-      reasons: ['Terraform + K8s match', 'Enterprise onboarding exp', 'Payments domain overlap'],
-      missing: [], prob: '38%', status: 'pending',
-    },
-    {
-      id: 'j2', score: 88, title: 'Staff Solutions Engineer', company: 'Cloudflare',
-      salary: '$170k–$200k', loc: 'Remote · US', mode: 'Full-time',
-      reasons: ['Edge infra keywords', 'Client delivery record'],
-      missing: ['Rust exposure'], prob: '31%', status: 'pending',
-    },
-    {
-      id: 'j3', score: 84, title: 'Technical Consultant', company: 'Datadog',
-      salary: '$150k–$180k', loc: 'New York · Hybrid', mode: 'Full-time',
-      reasons: ['Observability stack match', 'Python automation'],
-      missing: ['On-site 2 days/wk'], prob: '27%', status: 'pending',
-    },
-    {
-      id: 'j4', score: 79, title: 'Implementation Engineer', company: 'Retool',
-      salary: '$140k–$165k', loc: 'Remote · US', mode: 'Full-time',
-      reasons: ['API integration exp', 'SQL + JS match'],
-      missing: ['Low-code platform exp'], prob: '22%', status: 'pending',
-    },
-    {
-      id: 'j5', score: 74, title: 'Solutions Engineer', company: 'Notion',
-      salary: '$135k–$160k', loc: 'San Francisco · Hybrid', mode: 'Full-time',
-      reasons: ['Client-facing depth', 'Workflow automation'],
-      missing: ['Relocation needed', 'Seniority stretch-down'], prob: '18%', status: 'pending',
-    },
-    {
-      id: 'j6', score: 66, title: 'Forward Deployed Engineer', company: 'Palantir',
-      salary: '$160k–$190k', loc: 'Washington DC · On-site', mode: 'Full-time',
-      reasons: ['Python + delivery match'],
-      missing: ['Clearance required', 'Full on-site'], prob: '11%', status: 'pending',
-    },
-  ],
+  /* ---------- today's jobs (sourced overnight, awaiting review) ----------
+     Emptied 2026-08-03 — no demo jobs. Real jobs arrive from the extension /
+     imports and are stored in `ImportedJobs`, never here. (Nothing reads this
+     array; the board's own feed lives in jobs-store.js.) */
+  jobs: [],
 
-  /* ---------- approvals (tailored packages awaiting final sign-off) ---------- */
-  approvals: [
-    {
-      id: 'a1', company: 'Stripe', title: 'Sr Solutions Architect',
-      resume: 'Stripe v3', ats: 94,
-      cover: 'Leading with the zero-downtime billing migration story; mirrors their “high ownership” value and names the Terraform provider v3 launch…',
-      changes: ['Reordered impact bullets', '+18 keywords matched', 'Tone: direct, low-ego'],
-      when: 'Tailored 6:04 AM', status: 'awaiting',
-    },
-    {
-      id: 'a2', company: 'Microsoft', title: 'Technical Consultant',
-      resume: 'Microsoft v1', ats: 88,
-      cover: 'Opens with Azure migration outcomes for regulated clients; maps consulting toolkit to their Industry Solutions delivery model…',
-      changes: ['+15 keywords matched', 'Certifications surfaced', 'Trimmed to 1 page'],
-      when: 'Tailored 6:07 AM', status: 'awaiting',
-    },
-    {
-      id: 'a3', company: 'Honeywell', title: 'Implementation Engineer',
-      resume: 'Honeywell v1', ats: 85,
-      cover: 'Highlights industrial IoT rollout experience and on-site commissioning work; emphasizes safety-critical delivery…',
-      changes: ['+13 keywords matched', 'Industrial projects first'],
-      when: 'Tailored 6:11 AM', status: 'awaiting',
-    },
-  ],
+  /* ---------- approvals (tailored packages awaiting final sign-off) ----------
+     Emptied 2026-08-03 — no demo approvals. Real approvals are pushed here at
+     runtime when you approve a job on the board. */
+  approvals: [],
 
   /* ---------- resume library ---------- */
   master: {
@@ -132,16 +75,10 @@ const DB = {
     { company: 'Datadog',   title: 'Technical Consultant',     meta: '12 keywords matched · v1', ats: 82, tone: 'amber' },
   ],
 
-  /* ---------- applications tracker ---------- */
-  applications: [
-    { company: 'Stripe',    position: 'Sr Solutions Architect', status: 'Interviewing', resume: 'Stripe v3',   salary: '$200k', next: 'Tech screen Jul 9',  nextTone: 'red' },
-    { company: 'HashiCorp', position: 'Professional Services',  status: 'Offer',        resume: 'HC v2',       salary: '$190k', next: 'Decide by Jul 11',   nextTone: 'red' },
-    { company: 'Vercel',    position: 'Solutions Engineer',     status: 'Screening',    resume: 'Vercel v2',   salary: '$175k', next: 'Recruiter call Jul 7', nextTone: 'body' },
-    { company: 'Datadog',   position: 'Technical Consultant',   status: 'Applied',      resume: 'Datadog v1',  salary: '$165k', next: 'Follow up Jul 8',    nextTone: 'amber' },
-    { company: 'Figma',     position: 'Solutions Architect',    status: 'Screening',    resume: 'Figma v1',    salary: '$180k', next: 'Awaiting scheduler', nextTone: 'body' },
-    { company: 'Notion',    position: 'Solutions Engineer',     status: 'Applied',      resume: 'Notion v1',   salary: '$150k', next: '—',                  nextTone: 'ghost' },
-    { company: 'Airtable',  position: 'Implementation Eng',     status: 'Rejected',     resume: 'Airtable v1', salary: '—',     next: '—',                  nextTone: 'ghost' },
-  ],
+  /* ---------- applications tracker ----------
+     Emptied 2026-08-03 — no demo applications. Real ones are added as you
+     apply, and live in `ApplicationsStore` / `ApplicationPackages`. */
+  applications: [],
 
   /* ---------- interview prep ---------- */
   interviews: [

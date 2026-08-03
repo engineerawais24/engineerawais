@@ -11,16 +11,12 @@ const Activity = (() => {
   const CAP = 30;
   let items = null;
 
+  /* Emptied 2026-08-03 — the timeline starts empty and fills with what you
+     actually do. It used to seed five invented events (a Stripe package, a
+     HashiCorp offer, a Honeywell application), which re-appeared every time the
+     stored log was cleared. */
   function seed() {
-    const now = Date.now();
-    const DAY = 864e5;
-    return [
-      { t: now - 12 * 60e3,     type: 'info',    msg: 'Daily search finished — 6 new matches scored' },
-      { t: now - 9 * 60e3,      type: 'success', msg: 'Stripe application package tailored (ATS 94)' },
-      { t: now - 1 * DAY,       type: 'info',    msg: 'Applied to Honeywell — Implementation Engineer' },
-      { t: now - 2 * DAY,       type: 'success', msg: 'Offer received from HashiCorp — $190k base' },
-      { t: now - 3 * DAY,       type: 'info',    msg: 'Tech screen scheduled with Stripe · Jul 9' },
-    ];
+    return [];
   }
 
   function ensure() {
@@ -28,7 +24,7 @@ const Activity = (() => {
     try {
       const raw = localStorage.getItem(KEY);
       const arr = raw ? JSON.parse(raw) : null;
-      items = Array.isArray(arr) && arr.length ? arr : seed();
+      items = Array.isArray(arr) ? arr : seed();
     } catch (e) {
       items = seed();
     }

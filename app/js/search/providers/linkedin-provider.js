@@ -9,25 +9,9 @@
 
 const LinkedInProvider = (() => {
 
-  const RAW = [
-    { jobId: 'li-8801', position: 'Senior Solutions Engineer', org: 'Careem', place: 'Dubai, United Arab Emirates',
-      mode: 'Hybrid', type: 'Full-time', payMin: 480, payMax: 600, payCur: 'AED', payPeriod: 'month',
-      listedOn: '2026-07-08', url: 'https://www.linkedin.com/jobs/view/8801?trk=feed',
-      blurb: 'Deliver platform integrations for super-app partners across the Middle East; own PoCs end to end.',
-      skills: ['Python', 'Kubernetes', 'API integration', 'Client delivery'], sponsor: true, expMin: 5, expMax: 8 },
-
-    { jobId: 'li-8802', position: 'Staff Solutions Architect', org: 'Stripe', place: 'Remote, United States',
-      mode: 'Remote', type: 'Full-time', payMin: 185, payMax: 215, payCur: 'USD', payPeriod: 'year',
-      listedOn: '2026-07-09', url: 'https://www.linkedin.com/jobs/view/8802',
-      blurb: 'Own the technical architecture for enterprise payment migrations and complex evaluations.',
-      skills: ['Terraform', 'Kubernetes', 'Python', 'Payments'], sponsor: true, expMin: 8, expMax: 12 },
-
-    { jobId: 'li-8803', position: 'Technical Consultant', org: 'Datadog', place: 'New York, United States',
-      mode: 'Hybrid', type: 'Full-time', payMin: 150, payMax: 180, payCur: 'USD', payPeriod: 'year',
-      listedOn: '2026-07-06', url: 'https://www.linkedin.com/jobs/view/8803',
-      blurb: 'Guide enterprise observability rollouts; workshops, dashboards-as-code, migration playbooks.',
-      skills: ['Python', 'Kubernetes', 'Observability'], sponsor: false, expMin: 4, expMax: 7 },
-  ];
+  /* Emptied 2026-08-03 — no demo jobs. This provider is a local mock feed;
+     with it empty, a search returns nothing rather than sample postings. */
+  const RAW = [];
 
   function normalize(r) {
     return {

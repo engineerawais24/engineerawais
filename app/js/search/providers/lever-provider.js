@@ -8,21 +8,9 @@
 
 const LeverProvider = (() => {
 
-  const RAW = [
-    { id: 'lv-4401', text: 'Platform Solutions Engineer',
-      categories: { team: 'Solutions', location: 'Remote, EU', commitment: 'Full-time' },
-      descriptionPlain: 'Partner with enterprise accounts on platform migrations and edge architecture reviews.',
-      hostedUrl: 'https://jobs.lever.co/globex/4401', createdAt: 1751932800000,
-      lists: [{ text: 'Skills', content: 'Kubernetes, Terraform, Client delivery' }],
-      extra: { salary_min: 95, salary_max: 130, currency: 'EUR', period: 'year', remote: true, visa: false, exp_min: 4, exp_max: 8 } },
-
-    { id: 'lv-4402', text: 'Technical Account Manager',
-      categories: { team: 'Customer', location: 'Dubai, United Arab Emirates', commitment: 'Full-time' },
-      descriptionPlain: 'Own post-sales technical relationships for strategic Gulf accounts.',
-      hostedUrl: 'https://jobs.lever.co/globex/4402', createdAt: 1751846400000,
-      lists: [{ text: 'Skills', content: 'Stakeholder management, API integration, SQL' }],
-      extra: { salary_min: null, salary_max: null, currency: 'AED', period: 'month', remote: false, visa: true, exp_min: 5, exp_max: 9 } },
-  ];
+  /* Emptied 2026-08-03 — no demo jobs. This provider is a local mock feed;
+     with it empty, a search returns nothing rather than sample postings. */
+  const RAW = [];
 
   function skillsFrom(lists) {
     const row = (lists || []).find(l => /skill/i.test(l.text || ''));

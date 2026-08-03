@@ -80,11 +80,13 @@ function renderDashboard() {
   const cc = Applications.counts();
   const conv = cc.total ? Math.round(((cc.interview + cc.offer) / cc.total) * 100) : 0;
   const succ = cc.total ? Math.round((cc.offer / cc.total) * 100) : 0;
+  /* every figure comes from the board — no invented totals (this tile used to
+     read a hard-coded "128 applications" and a "$148k" average) */
   const statData = [
-    { k: 'Applications',         v: '128',       d: `${cc.total} on the board now`, up: false },
+    { k: 'Applications',         v: String(cc.total), d: `${cc.total} on the board now`, up: false },
     { k: 'Interview conversion', v: conv + '%',  d: `${cc.interview + cc.offer} of ${cc.total} progressed`, up: conv >= 25 },
     { k: 'Success rate',         v: succ + '%',  d: `${cc.offer} offer${cc.offer === 1 ? '' : 's'} on the board`, up: succ > 0 },
-    { k: 'Avg salary',           v: '$148k',     d: 'target band', up: false },
+    { k: 'Avg salary',           v: '—',         d: 'target band', up: false },
   ];
   const stats = statData.map(s => `
     <div class="card stat">
@@ -633,6 +635,14 @@ function runDailySearch() {
 
 window.addEventListener('hashchange', navigate);
 window.addEventListener('DOMContentLoaded', () => {
+  /* Clear all job data — ONCE per install, before anything reads or republishes
+     it (so it lands ahead of the backend pull and boot discovery). After the
+     first run this is a no-op; JobDataReset.run() re-runs it on demand.
+     Personal data — profile, résumé, preferences, saved search URLs — is never
+     touched. */
+  if (typeof JobDataReset !== 'undefined') {
+    try { JobDataReset.runOnce(); } catch (e) { /* never block the app from starting */ }
+  }
   if (typeof Theme !== 'undefined') Theme.init();
   if (typeof Activity !== 'undefined') Activity.init();
   if (typeof Search !== 'undefined') Search.init();

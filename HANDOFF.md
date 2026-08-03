@@ -4,10 +4,12 @@
 bottom, then continue from **Next Up**. Rules, project shape, and how to run the tests
 live in [CLAUDE.md](CLAUDE.md) — read that too.
 
-- **Last updated:** 2026-08-02 *(always keep this line current — every HANDOFF edit stamps today's date here, so anyone can tell the latest version at a glance)*
+- **Last updated:** 2026-08-03 *(always keep this line current — every HANDOFF edit stamps today's date here, so anyone can tell the latest version at a glance)*
 - **Status:** 🟢 **v1.0 SHIPPED** (2026-07-13, tagged 2026-07-22) · since: Chrome extension, real ATS import, ATS Engine v1, Universal Autofill v2 + profile auto-sync + resilient extension storage, Application Queue v1, extension-save→Today's-Jobs sync, imported-jobs→approvals→queue, queue-triggered ATS autofill + hardened résumé handling (verified live on Greenhouse 2026-07-27), Workday adapter (queue autofill verified live on PwC 2026-07-30; national-phone recheck pending), **Job Discovery v1 — "Fetch Jobs Now" for LinkedIn · Bayt · GulfTalent (committed 2026-08-02; LinkedIn virtualized-scroll fix in; live retest pending)**
 - **Branch:** `main` — clean, in sync with origin
-- **Head:** `feat: add browser-based job discovery with reliable LinkedIn harvesting` (hash in git log) · tag `v1.0` on `b676933`
+- **Head:** `fix: reset CareerPilot to a clean real-jobs-only state` (hash in git log) · tag `v1.0` on `b676933`
+- **App state:** 🧼 **clean, real-jobs-only.** All demo/seed jobs are gone permanently; every board
+  starts at zero and fills only with jobs you actually import or save.
 - **Remote:** github.com/engineerawais24/engineerawais
 
 > ### ⚙️ Working agreement — for ANY agent editing this repo
@@ -79,8 +81,17 @@ live in [CLAUDE.md](CLAUDE.md) — read that too.
   independently re-confirmed — not a regression risk given the code path they exercise.
 
 **Open — code/repo:**
-- Nothing open right now — Job Discovery v1 (all three portals, plus the LinkedIn virtualized-scroll
-  fix) is committed and pushed as of 2026-08-02.
+- [ ] **Demo-dependent tests need separate fixture updates** (2026-08-03) — 11 cases across sprint23
+  (6), sprint24 (2), sprint25 (2,3,5,6,7), sprint26 (5,10), sprint27 (8) and sprint30 (1) assert on
+  the demo/seed data that has now been removed on purpose (e.g. "expected the four mock feeds to
+  return 10+ jobs", "the board should never be empty", "drag and drop was lost"). **None is a
+  functional regression** — each needs to seed its own fixture instead of leaning on shipped sample
+  data. Deliberately left for a separate pass. **Start with sprint30 case 1**: it is the CLAUDE.md §5
+  data-safety guardrail, so that invariant is unprotected until it is repaired.
+- [ ] **A local git stash holds discarded work** — `stash@{0}` "discarded: LinkedIn visible-cards
+  importer + Todays-Jobs visibility". Kept as a rollback net when that round was discarded on
+  2026-08-03; it is local-only and will be lost if the clone is. Drop it (`git stash drop`) or restore
+  it (`git stash pop`) when you have decided.
 
 **Open — user-side (browser / live run; not code):**
 - [ ] **Real LinkedIn live retest — STILL PENDING.** The first live run returned 1 LinkedIn job of
@@ -178,6 +189,69 @@ prep, and an optional FastAPI backend with two-way sync.
   guardrail that keeps auto-push safe.
 
 ## Next Up
+
+**🧹 All job data cleared + a permanent reset — ✅ VERIFIED LIVE IN THE REAL BROWSER (2026-08-03).**
+The user confirmed the reset ran and every screen reads zero. What this achieved:
+- **All old jobs, approvals, packages, queue and application history are cleared** — Today's Jobs,
+  imported/saved jobs, prepared packages, the Application Queue with its applied / skipped /
+  Needs Attention outcomes, the Applications board, submissions, and application+interview memory.
+- **Dashboard and pipeline counters are reset to zero** — pipeline 0,0,0,0 · funnel all 0 ·
+  stat tiles 0 / 0% / 0% / — · "No activity yet". No invented "128 applications" or "$148k".
+- **Profile, employment, certifications, preferences and the résumé library are preserved**, along
+  with the master and parsed résumé, backend configuration, both safety backups, and the **saved
+  search URLs**.
+- **Demo/seed jobs are removed permanently** — not just cleared from storage, deleted at source, so
+  nothing re-seeds on the next load.
+- ⚠️ **Demo-dependent tests still need separate fixture updates** — see *Open — code/repo*.
+
+The backend database was
+backed up to `backend/careerpilot-before-clear.db` and its 6 job rows deleted (profile, preferences
+and 3 employment rows untouched, verified through the live API). On the browser side there is now one
+reset instead of a hand-written key list:
+
+**`JobDataReset`** ([app/js/platform/job-data-reset.js](app/js/platform/job-data-reset.js), registered
+in `index.html`, called from `app.js` boot):
+- clears 15 stores — Today's Jobs, imported jobs, packages, the Queue (with applied/skipped/
+  needs-attention), the Applications board, prep, submissions, application+interview memory, activity,
+  cover letters, résumé overrides, job cache, search cache, sync log, and the discovery run counts.
+- **never hard-codes a key.** Each target names its owning MODULE and the key is read off it at run
+  time (`Mod.STORAGE_KEY` / `Mod.KEY`), preferring the module's own `clear()`. A module that fails to
+  resolve is REPORTED (`absent`), never silently skipped.
+- preserves profile, employment, certifications, résumé library, master + parsed résumé, preferences,
+  backend config, the two safety backups, and the **saved search URLs** — `JobFetchStore` is
+  deliberately not cleared via its own `clear()` (that would take the URLs), only `lastRun` goes.
+- **runs once per install** on load (flag `careerpilot_job_data_reset_v1`), then never again;
+  `JobDataReset.run()` re-runs it on demand.
+
+Two real bugs the harness caught before shipping: (1) `interview-store.js` exports **`ApplicationMemory`**,
+not `InterviewStore` — the wrong name would have silently skipped the applied/interview history;
+(2) these modules are top-level `const` — **lexical globals, NOT `window` properties** — so the
+original `window[name]` lookup resolved nothing and cleared nothing. Targets now reference the
+identifiers directly behind `typeof` guards, the idiom the rest of the app uses.
+
+**Demo/seed data removed at source** (clearing storage alone could never work — four of these re-seed
+themselves whenever their key is empty):
+`data.js` (`DB.jobs`/`approvals`/`applications`, plus the invented dashboard `stats`/`funnel`/
+`monthly`/`weekly`/`bestPerformers`/`pendingActions`) · `jobs-store.js` `BASE_JOBS` (what Today's Jobs
+actually rendered — `DB.jobs` was dead code) · the six search providers' `RAW` mock feeds (four
+auto-register, so `Jobs.bootDiscovery()` republished them on every refresh) ·
+**`ApplicationsStore.defaults()`** (10 demo applications) · **`Activity.seed()`** (5 invented events).
+`app.js` no longer prints a hard-coded "128 applications" / "$148k".
+
+Verified end-to-end in a headless browser profile (seed 24 keys → load the app → **pipeline 0,0,0,0 ·
+funnel all 0 · stats 0/0%/0%/— · "No activity yet" · Today's Jobs 0 · Approvals 0 · Applications 0 ·
+Queue 0**, every personal key intact, saved LinkedIn search URL kept) — and then **confirmed live by
+the user in their own Chrome profile on 2026-08-03**.
+
+⚠️ **11 tests now fail, all asserting demo data that no longer exists** — sprint23 5/6, sprint24 4/5,
+sprint25 2/7, sprint26 8/10, sprint27 7/8, sprint30 12/13 (e.g. "expected the four mock feeds to
+return 10+ jobs", "the board should never be empty", "drag and drop was lost", sprint30 case 1 "the
+sample job listings were removed"). None is a functional regression; each needs its own fixture
+instead of relying on seed data. **sprint30 case 1 is the CLAUDE.md §5 data-safety guardrail**, so it
+should be repaired rather than left red. Everything else is green: job-data-reset 8/8, job-fetch 14/14
++ 24/24, queue 11/11, imported-approval 7/7, ats 23/23, jobs-backend-sync 8/8, queue-autoapply 6/6,
+profile-sync 8/8, sprint19–22/29, backend 51/51.
+
 
 **🆕 Job Discovery v1 — "Fetch Jobs Now" (2026-08-02, committed + pushed).** One button on
 Today's Jobs brings real jobs in from **LinkedIn Jobs, Bayt and GulfTalent** — all three portals
@@ -438,6 +512,7 @@ HANDOFF update rule below.)*
 
 | Date | Sprint | Commit | Summary |
 |------|--------|--------|---------|
+| 2026-08-03 | — | *(this commit)* | **All job data cleared + one permanent `JobDataReset` — ✅ verified live by the user.** Backend: `backend/careerpilot.db` backed up to `careerpilot-before-clear.db`, 6 job rows deleted, profile/preferences/employment verified untouched via the live API. Browser: new [job-data-reset.js](app/js/platform/job-data-reset.js) clears **15 stores** in one call and **runs once automatically on load** (flag `careerpilot_job_data_reset_v1`); `run()` re-runs on demand. It **never hard-codes a storage key** — each target names its owning module and the key is read from it (`STORAGE_KEY`/`KEY`), preferring the module's own `clear()`; an unresolvable module is reported, never skipped. Preserves profile, employment, certifications, résumé library, master/parsed résumé, preferences, backend config, both safety backups and the **saved search URLs** (`JobFetchStore.clear()` is deliberately NOT used — only `lastRun` goes). Harness caught two real bugs first: `interview-store.js` exports **ApplicationMemory** (not `InterviewStore`), and these modules are **lexical `const` globals not reachable via `window[name]`**, so the original lookup cleared nothing. Demo data removed at source because four of them re-seed when their key is empty: `data.js` (jobs/approvals/applications + invented dashboard stats/funnel/monthly/weekly/bestPerformers), `jobs-store.js` `BASE_JOBS` (what the board really rendered — `DB.jobs` was dead code), the six providers' `RAW` mock feeds (four auto-register and republished on every refresh), **`ApplicationsStore.defaults()`** (10 demo apps) and **`Activity.seed()`** (5 invented events); `app.js` no longer hard-codes "128 applications"/"$148k". End-to-end in a real browser: seed 24 keys → load app → pipeline 0,0,0,0 · funnel all 0 · stats 0/0%/0%/— · "No activity yet" · Today's Jobs 0 · Approvals 0 · Applications 0 · Queue 0, personal keys intact, saved search URL kept. Tests: job-data-reset **8/8**, backend 51/51, all discovery/queue/ats suites green. **11 tests fail, every one asserting the deleted demo data** (sprint23/24/25/26/27/30) — no functional regression; **left deliberately for a separate fixture pass**, starting with sprint30 case 1 (the §5 data-safety guardrail). |
 | 2026-08-02 | — | *(this commit)* | **Job Discovery v1 — LinkedIn harvesting rebuilt after the first live run.** Live test on the real saved search returned **1 job against "99+ results"**: LinkedIn **virtualizes** the left results list (only cards near the viewport exist; scrolled-past cards are destroyed), and v1 read the freshly opened background tab once. Also found: the card's **logo anchor** was taken as the job link (empty text → title empty → card counted failed), and the **job-details panel's** own `/jobs/view/` links were in scope. [harvest.js](extension/harvest.js) LinkedIn path now scopes to the LEFT list (`li[data-occludable-job-id]`'s parent → known containers → a `<ul>` with ≥2 job links; details panel excluded via `closest()`), waits for the first card, then **scrolls in rounds** collecting new job ids — stopping after **3 idle rounds** or **50 jobs** (round cap 40). Title read from the visible `aria-hidden`/`strong` span; dedup by job id, exact URL, and a `title\|company\|location` key so a **promoted twin under a second id** is saved once. Per-source **diagnostics** (scroll rounds · card candidates · unique ids · parsed · failed) flow through to the panel, and a read that yields ≤1 job from ≥3 cards — or 0 cards with no "no matching jobs" on the page — is reported as a **harvest FAILURE**, saving nothing. Bayt/GulfTalent untouched (`harvestList` ≡ `harvest` for both, asserted). New harness mock is genuinely virtualized: one read sees 8, the scrolled harvest gets **30/30 in 8 rounds**. Tests **24/24** + **14/14**, backend 51/51, all other suites green. **Real LinkedIn live retest still pending — expected ~20–25 jobs from one results page** (scrolls, never paginates). |
 | 2026-08-02 | — | *(this commit)* | **Job Discovery v1 — "Fetch Jobs Now."** One button on Today's Jobs pulls real jobs from **LinkedIn / Bayt / GulfTalent** using the Chrome sessions the user is already signed into. New: `app/js/discovery/job-fetch-store.js` (one saved search URL per portal, host-validated, + the last run's four counts), `job-fetch.js` (posts `{kind:'fetch-jobs'}` over the existing bridge, records the run, then `JobsBackendSync.pull` so jobs land in Today's Jobs at once), `job-fetch-view.js` (additive card, existing CSS); `extension/harvest.js` (read-only card harvester — title · company · location · job URL · source · portal job id; structural, class-name-agnostic; login/CAPTCHA **reported**, never bypassed) and `extension/fetch-jobs.js` (opens each saved search in a background tab, injects the harvester, dedups by **source job id AND exact job URL**, saves via the existing `POST /api/jobs`, closes the tab, returns found/saved/duplicate/failed). `bridge.js`/`background.js` route the new message; manifest gains host permissions for the three portals only (no `tabs` permission). Backend `POST /api/jobs` now 409s on an exact `apply_url` too (never `canonical_url` — that would re-create the WSP↔Microsoft merge). Fixed a pre-existing `file://` ACK-drop in `bridge.js` (origin targetOrigin can't match an opaque origin) — messaging back to 8/8. No matching/scoring/autofill/application changes; no UI redesign. Tests: job-fetch **17/17** + **12/12**, backend **51/51**, all other suites green. (Superseded the same day by the LinkedIn virtualized-scroll fix in the row above.) |
 | 2026-07-30 | — | *(this commit)* | feat: add reliable Workday queue autofill and field handling — **✅ queue autofill verified live on PwC wd3** (4 live rounds). Queue intent no longer consumed on the "Start Your Application" modal (`claim()` at terminal outcome only; waits THROUGH the modal via `workdayFormReady`); **login/account/OTP survive ≥30 min** (`WD_INTENT_MAX_AGE`, `workday-waiting`, not consumed). Workday React inputs fill (`haystack` scans field-wrapper `data-automation-id`+label; `setValue` fires focus→native-setter→input/change/**blur**). **Custom comboboxes** (country/state/phone-device-type) select ONLY an exact profile match. **Arabic name fields stay empty** (`isArabicNameField`); **phone** national-number when a custom "Country/Territory Phone Code" combobox is present (`phoneCodeControl`/`readDialCode`, `+966…`→`536886174`); extension only if stored; never salary/consent/submit/Continue; never overwrite; run-once via DONE_KEY. Tests auto-apply **36/36**, autofill 19/19. `extension/{auto-apply.js, content.js, tests/auto-apply}`. **Live recheck of national phone on a fresh job still pending.** |

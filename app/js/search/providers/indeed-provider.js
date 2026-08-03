@@ -12,25 +12,9 @@
 
 const IndeedProvider = (() => {
 
-  const RAW = [
-    { jk: 'in-5501', jobtitle: 'Senior Solutions Engineer', company: 'Careem', formattedLocation: 'Dubai, UAE',
-      remote: false, hybrid: true, jobType: 'Full-time', salaryMin: 480, salaryMax: 600, currency: 'AED', period: 'month',
-      date: '2026-07-07', url: 'https://www.indeed.com/viewjob?jk=in-5501&from=serp',
-      snippet: 'Deliver platform integrations for super-app partners across the Middle East.',
-      keywords: ['Python', 'API integration', 'Kubernetes'], visa: true, expMin: 5, expMax: 8 },
-
-    { jk: 'in-5502', jobtitle: 'Cloud Solutions Consultant', company: 'Emirates NBD', formattedLocation: 'Dubai, UAE',
-      remote: false, hybrid: false, jobType: 'Full-time', salaryMin: 340, salaryMax: 380, currency: 'AED', period: 'month',
-      date: '2026-07-07', url: 'https://www.indeed.com/viewjob?jk=in-5502',
-      snippet: 'Advise on Azure landing zones and migration factories for digital transformation.',
-      keywords: ['Azure', 'Terraform', 'Banking'], visa: true, expMin: 6, expMax: 10 },
-
-    { jk: 'in-5503', jobtitle: 'Implementation Engineer', company: 'Retool', formattedLocation: 'San Francisco, United States',
-      remote: false, hybrid: false, jobType: 'Full-time', salaryMin: 125, salaryMax: 150, currency: 'USD', period: 'year',
-      date: '2026-07-05', url: 'https://www.indeed.com/viewjob?jk=in-5503',
-      snippet: 'Build internal tools with strategic customers; SQL and JavaScript heavy.',
-      keywords: ['SQL', 'JavaScript', 'API integration'], visa: false, expMin: 3, expMax: 6 },
-  ];
+  /* Emptied 2026-08-03 — no demo jobs. This provider is a local mock feed;
+     with it empty, a search returns nothing rather than sample postings. */
+  const RAW = [];
 
   function normalize(r) {
     const mode = r.remote ? 'Remote' : (r.hybrid ? 'Hybrid' : 'On-site');

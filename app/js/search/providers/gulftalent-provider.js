@@ -9,19 +9,9 @@
 
 const GulfTalentProvider = (() => {
 
-  const RAW = [
-    { gtId: 'gt-7701', role: 'Cloud Solutions Architect', firm: 'STC', location: 'Riyadh, Saudi Arabia',
-      workStyle: 'On-site', engagement: 'Full-time', payLow: 32000, payHigh: 40000, payCurrency: 'SAR', payBasis: 'month',
-      posted: '2026-07-05', href: 'https://www.gulftalent.com/saudi-arabia/jobs/cloud-solutions-architect-stc-7701',
-      about: 'Architect cloud and IoT solutions for government and enterprise clients across the Kingdom.',
-      tags: ['Azure', 'Terraform', 'Cloud fundamentals'], sponsorship: true, expMin: 6, expMax: 10 },
-
-    { gtId: 'gt-7702', role: 'Platform Solutions Lead', firm: 'noon', location: 'Dubai, United Arab Emirates',
-      workStyle: 'On-site', engagement: 'Full-time', payLow: null, payHigh: null, payCurrency: 'AED', payBasis: 'month',
-      posted: '2026-07-09', href: 'https://www.gulftalent.com/uae/jobs/platform-solutions-lead-noon-7702',
-      about: 'Lead marketplace seller-platform integrations; heavy stakeholder work across the region.',
-      tags: ['API integration', 'Stakeholder management', 'SQL'], sponsorship: true, expMin: 7, expMax: 12 },
-  ];
+  /* Emptied 2026-08-03 — no demo jobs. This provider is a local mock feed;
+     with it empty, a search returns nothing rather than sample postings. */
+  const RAW = [];
 
   function normalize(r) {
     return {

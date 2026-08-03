@@ -212,6 +212,11 @@
   <!-- Queue → ATS Auto Autofill v1: signal the extension when a queued job is
        opened, and receive its "needs attention" back. No-op without the extension. -->
   <script src="js/queue/queue-autoapply.js"></script>
+  <!-- One permanent "clear all job data" reset. Reads each store's key from the
+       module that owns it, so it cannot drift. Runs once automatically on load
+       (see app.js); `JobDataReset.run()` re-runs it on demand. Never touches the
+       profile, résumé, preferences or saved search URLs. -->
+  <script src="js/platform/job-data-reset.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

@@ -95,19 +95,11 @@ const ApplicationsStore = (() => {
 
   /* Sample pipeline. Companies mirror the rest of the demo data
      (data.js) so the product feels coherent across screens. */
+  /* Emptied 2026-08-03 — the board starts empty. These ten demo applications
+     (Stripe, HashiCorp, Vercel …) re-seeded themselves whenever the stored key
+     was empty, so clearing the data alone could never make the board zero. */
   function defaults() {
-    return [
-      { id: 'app1',  company: 'Stripe',    position: 'Sr Solutions Architect',    location: 'Remote · US',           applied: '2026-06-24', status: 'interview' },
-      { id: 'app2',  company: 'HashiCorp', position: 'Professional Services Eng', location: 'Remote · US',           applied: '2026-06-10', status: 'offer' },
-      { id: 'app3',  company: 'Vercel',    position: 'Solutions Engineer',        location: 'Remote · US',           applied: '2026-06-28', status: 'interview' },
-      { id: 'app4',  company: 'Datadog',   position: 'Technical Consultant',      location: 'New York · Hybrid',     applied: '2026-07-01', status: 'applied' },
-      { id: 'app5',  company: 'Figma',     position: 'Solutions Architect',       location: 'San Francisco · Hybrid', applied: '2026-06-30', status: 'applied' },
-      { id: 'app6',  company: 'Notion',    position: 'Solutions Engineer',        location: 'San Francisco · Hybrid', applied: '2026-07-03', status: 'applied' },
-      { id: 'app7',  company: 'Microsoft', position: 'Technical Consultant',      location: 'Dubai · On-site',       applied: '2026-07-06', status: 'applied' },
-      { id: 'app8',  company: 'Honeywell', position: 'Implementation Engineer',   location: 'Karachi · On-site',     applied: '2026-07-07', status: 'applied' },
-      { id: 'app9',  company: 'Airtable',  position: 'Implementation Engineer',   location: 'Remote · US',           applied: '2026-06-05', status: 'rejected' },
-      { id: 'app10', company: 'Palantir',  position: 'Forward Deployed Engineer', location: 'Washington DC · On-site', applied: '2026-06-02', status: 'rejected' },
-    ];
+    return [];
   }
 
   /* Load saved board; anything malformed falls back to defaults
