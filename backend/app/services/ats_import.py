@@ -174,33 +174,126 @@ def location_country(location: str) -> str | None:
     return None
 
 
+# ---------- titles that contradict the location field ----------
+#
+# Some boards file a posting under one country while the TITLE names another:
+# "Firewall Engineer - Dubai, UAE" listed with location "Saudi Arabia". The
+# location field alone would let it through, so the title is cross-checked.
+#
+# This is a SEPARATE list from FOREIGN_RE on purpose. FOREIGN_RE matches some
+# tokens as substrings (it has to, for "Remote-WesternEurope"), and "amer"
+# inside "Camera" would flag every "Security Camera Systems Engineer" — a core
+# physical-security title. Every entry here is word-bounded, and there are no
+# two-letter abbreviations, so a title cannot be rejected by accident.
+
+NON_TARGET_PLACE_RE = re.compile(
+    r"\b("
+    # UAE and its emirates
+    r"united arab emirates|u\.?a\.?e\.?|dubai|abu dhabi|sharjah|ajman|fujairah|"
+    r"ras al khaimah|umm al quwain|"
+    # Gulf states that are not Saudi Arabia or Qatar
+    r"kuwait|bahrain|manama|oman|muscat|"
+    # the rest of the region
+    r"egypt|cairo|alexandria|jordan|amman|lebanon|beirut|syria|iraq|baghdad|erbil|"
+    r"yemen|sudan|libya|tunisia|algeria|morocco|casablanca|"
+    # frequently seen on MENA boards
+    r"pakistan|karachi|lahore|islamabad|india|mumbai|delhi|bengaluru|bangalore|"
+    r"turkey|istanbul|iran|tehran|"
+    # further afield
+    r"united states|u\.?s\.?a\.?|canada|united kingdom|england|london|ireland|"
+    r"germany|berlin|france|paris|spain|italy|netherlands|poland|romania|"
+    r"singapore|malaysia|philippines|indonesia|china|beijing|shanghai|japan|tokyo|"
+    r"korea|australia|sydney|nigeria|kenya|south africa"
+    r")\b", re.I)
+
+
+def conflicting_location(title: str) -> str | None:
+    """A place named in the TITLE that is outside Saudi Arabia and Qatar.
+
+    Returns the offending place, or None. A title that names Saudi Arabia or
+    Qatar is treated as a target-country role even if it also lists another
+    site — the same way `location_country` treats a multi-site location field,
+    so the two rules stay consistent."""
+    t = (title or "").strip()
+    if not t:
+        return None
+    if SAUDI_RE.search(t) or QATAR_RE.search(t):
+        return None
+    m = NON_TARGET_PLACE_RE.search(t)
+    return m.group(1) if m else None
+
+
 # ---------- role: the target areas ----------
 #
 # Matched against the job TITLE only — a description mentioning "security" is
-# not a security role. Written from the target list, nothing broader.
+# not a security role.
+#
+# Two ways a title qualifies:
+#
+#   1. ROLE_ALWAYS_RE — a phrase that is a target role on its own, because the
+#      words themselves name the field (PSIM, ELV, ICT, OT/ICS security,
+#      physical security, smart city, data centre …).
+#
+#   2. ROLE_DOMAIN_RE + ROLE_NOUN_RE — a technical / security / network / ICT /
+#      infrastructure / solution keyword AND a role noun, in the same title.
+#
+# Rule 2 is what stops a generic title passing on its noun alone: "Manager",
+# "Lead", "Engineer", "Consultant", "Sales" and "Analyst" carry no domain, so
+# "Project Manager", "Sales Engineer" and "Data Analyst" are all rejected,
+# while "Infrastructure Project Manager", "Security Sales Engineer" and
+# "Cybersecurity Analyst" pass.
 
-ROLE_RE = re.compile(r"""(
-      network\s*(security|engineer|architect|specialist|administrator|admin|operations)
-    | (cyber|information)\s*security
-    | \bcybersecurity\b
-    | security\s*(engineer|architect|analyst|consultant|specialist|operations|systems?)
-    | (solution|solutions)\s*(architect|engineer|consultant)
-    | technical\s*(consultant|delivery|architect|account\s*manager|project\s*manager|program(me)?\s*manager)
-    | infrastructure
-    | pre[\s\-]?sales
-    | implementation
-    | delivery\s*(manager|lead|engineer|consultant|architect)
-    | (project|program|programme)\s*manager
-    | \bpsim\b
+ROLE_ALWAYS_RE = re.compile(r"""(
+      \bpsim\b
     | physical\s*security
-    | security\s*systems?
+    | security\s*systems?           | systems?\s*security
+    | integrated\s*security
+    | \belv\b
     | \bict\b
+    | smart\s*cit(?:y|ies)
+    | (?:\bot\b|\bics\b|industrial)\s*(?:cyber\s*)?security
+    | data\s*cent(?:er|re)
+    # "Delivery Lead" / "Delivery Manager" qualify on their own; "Service
+    # Delivery Manager" does not, and needs a technical keyword via rule 2
+    | (?<!service\s)delivery\s+(?:lead|manager|head)
+    | implementation\s+(?:manager|lead|engineer|specialist|consultant|architect)
+    | \bit\s+(?:infrastructure|security|manager|director|project\s*manager)\b
+)""", re.I | re.X)
+
+ROLE_DOMAIN_RE = re.compile(r"""(
+      technical | technolog(?:y|ies)
+    | solutions?
+    | security | cyber\s*security | \bcybersecurity\b | infosec
+    | network(?:s|ing)?
+    | infrastructure
+    | systems?
+    | \bict\b | \bot\b | \bics\b | industrial
+    | data\s*cent(?:er|re) | cloud
+    | pre[\s\-]?sales
+    | firewall
+    | telecom(?:munications?)? | unified\s*communications?
+    | integration | integrated
+    | implementation
+    | \belv\b | \bpsim\b | smart\s*cit(?:y|ies)
+)""", re.I | re.X)
+
+ROLE_NOUN_RE = re.compile(r"""(
+      engineer | architect | consultant | specialist
+    | manager | lead(?:er)? | head | director
+    | administrator | \badmin\b | analyst | advisor | adviser | officer
+    | technician | delivery
 )""", re.I | re.X)
 
 
 def matches_role(title: str) -> bool:
-    """True when the job title is in one of the target areas."""
-    return bool(ROLE_RE.search(title or ""))
+    """True when the job TITLE is in one of the target areas.
+
+    A role noun alone is never enough — it must be paired with a technical,
+    security, network, ICT, infrastructure or solution keyword."""
+    t = title or ""
+    if ROLE_ALWAYS_RE.search(t):
+        return True
+    return bool(ROLE_DOMAIN_RE.search(t) and ROLE_NOUN_RE.search(t))
 
 
 # Monthly floors. SAR and QAR are both pegged to the US dollar, so the Qatar
@@ -282,6 +375,47 @@ def parse_salary(text: str) -> dict | None:
     return None
 
 
+# ---------- nationality restrictions ----------
+#
+# Some Gulf postings are open only to Saudi nationals ("Cyber Security
+# Consultant - Saudi Nationals Only"). They are not applicable, so they are
+# rejected before they reach the board.
+#
+# The trap: "Saudi National" is also part of real employer names — Saudi
+# National Bank, Saudi National Guard — and a job may legitimately mention
+# serving Saudi nationals. So a bare mention is NEVER enough: the phrase has to
+# read as an eligibility restriction ("only", "must be", "restricted to"), and
+# an organisation word immediately after "National(s)" rules the match out.
+
+_ORG_AFTER = (r"(?!\s+(?:bank|guard|institute|company|co\b|corporation|committee|"
+              r"centre|center|academy|university|museum|library|airline|airlines|"
+              r"council|authority|assembly|championship|team|day|program|programme))")
+
+NATIONALITY_RESTRICTION_RE = re.compile(
+    r"("
+    # "Saudi Nationals Only", "Saudi National Only", "Saudi nationals candidates only"
+    r"saudi\s+nationals?" + _ORG_AFTER + r"[\s,\-–—:]*(?:candidates?[\s,\-–—]*)?only\b"
+    # "Only Saudi Nationals", "only open to Saudi nationals", "only for Saudi nationals"
+    r"|only\s+(?:open\s+to\s+|for\s+|available\s+(?:to|for)\s+)?saudi\s+nationals?\b"
+    # "open to / restricted to / limited to Saudi nationals"
+    r"|(?:open|restricted|limited|available)\s+(?:only\s+)?(?:to|for)\s+saudi\s+nationals?\b"
+    r"|exclusively\s+(?:to|for)\s+saudi\s+nationals?\b"
+    # "must be a Saudi national", "Saudi nationality is required"
+    r"|must\s+be\s+(?:a\s+)?saudi\s+national\b"
+    r"|saudi\s+national(?:ity)?\s+(?:is\s+)?(?:required|mandatory|essential|a\s+must)\b"
+    r")", re.I)
+
+
+def nationality_restriction(text: str) -> str | None:
+    """The phrase restricting a job to Saudi nationals, or None.
+
+    Only explicit eligibility wording counts — a job that merely names the
+    Saudi National Bank, or mentions serving Saudi nationals, is not
+    restricted."""
+    m = NATIONALITY_RESTRICTION_RE.search(text or "")
+    return " ".join(m.group(0).split()) if m else None
+
+
 SALARY_VERIFIED = "verified"     # disclosed and at or above the floor
 SALARY_UNKNOWN = "unknown"       # not disclosed — kept, never guessed at
 SALARY_BELOW = "below"           # disclosed and under the floor — rejected
@@ -341,6 +475,12 @@ def evaluate(job: dict) -> dict:
                 "country": country, "salary": None}
 
     text = " ".join([str(job.get("description") or ""), str(job.get("title") or "")])
+
+    restricted = nationality_restriction(text)
+    if restricted:
+        return {"ok": False, "reason": 'restricted to Saudi nationals ("%s")' % restricted,
+                "country": country, "salary": None}
+
     salary = assess_salary(country, text)
     if salary["status"] == SALARY_BELOW:
         return {"ok": False, "reason": salary["why"], "country": country, "salary": salary}

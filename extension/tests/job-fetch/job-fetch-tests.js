@@ -178,6 +178,7 @@
       },
       harvest: async (tabId, source) => {
         if (o.harvestFails && o.harvestFails.indexOf(source) !== -1) throw new Error('the page did not answer');
+        if (o.harvest) return o.harvest(tabId, source);      // per-tab control
         return (o.harvests || {})[source] || { ok: true, source, jobs: [], found: 0, blocked: null };
       },
       closeTab: async id => { calls.closed.push(id); return true; },
@@ -195,6 +196,11 @@
     title: 'Role ' + id, company: 'Co ' + id, location: 'Dubai',
     url, source, sourceJobId: source.toLowerCase() + '-' + id,
   }, over || {});
+
+  /* Bayt fans out into one tab per keyword family; cases whose subject is the
+     multi-portal run pin it to a single query so their tab counts stay about
+     the portals, not the fan-out (the fan-out has its own cases, B1-B3). */
+  const ONE_BAYT = ['cybersecurity'];
 
   const harvested = (source, jobs) => ({ ok: true, source, jobs, found: jobs.length, blocked: null });
 
@@ -464,7 +470,7 @@
         /* the backend already holds job 2, and job 4 fails to save */
         statusFor: b => b.source_job_id === 'linkedin-2' ? 409 : (b.source_job_id === 'gulftalent-4' ? 500 : 201),
       });
-      const r = await F.run({ token: 'tok-1', sources: ALL_SOURCES }, ctx);
+      const r = await F.run({ token: 'tok-1', sources: ALL_SOURCES, baytQueries: ONE_BAYT }, ctx);
       assert(r.ok, 'the run should complete');
       assert(r.totals.found === 4, 'found: ' + r.totals.found);
       assert(r.totals.saved === 2, 'saved: ' + r.totals.saved);
@@ -484,15 +490,18 @@
           GulfTalent: harvested('GulfTalent', [job('GulfTalent', '4', 'https://www.gulftalent.com/uae/jobs/role-4')]),
         },
       });
-      const r = await F.run({ token: 'tok-2', sources: ALL_SOURCES }, ctx);
-      const li = r.sources.find(s => s.id === 'LinkedIn');
-      const bayt = r.sources.find(s => s.id === 'Bayt');
-      const gt = r.sources.find(s => s.id === 'GulfTalent');
+      const r = await F.run({ token: 'tok-2', sources: ALL_SOURCES, baytQueries: ONE_BAYT }, ctx);
+      /* Bayt rows are labelled 'Bayt · <keyword>', so match on the portal */
+      const rowFor = p => r.sources.find(s => s.id === p || s.id.indexOf(p + ' ·') === 0);
+      const li = rowFor('LinkedIn');
+      const bayt = rowFor('Bayt');
+      const gt = rowFor('GulfTalent');
       assert(li.status === 'needs-attention' && /sign-in/i.test(li.reason), 'login → needs attention: ' + JSON.stringify(li));
       assert(bayt.status === 'needs-attention' && /captcha/i.test(bayt.reason), 'captcha → needs attention: ' + JSON.stringify(bayt));
       assert(gt.status === 'ok' && gt.saved === 1, 'a healthy source still runs: ' + JSON.stringify(gt));
       assert(ctx.calls.posts.length === 1, 'nothing is saved from a blocked source');
-      assert(r.attention.join(',') === 'LinkedIn,Bayt', 'both blocked sources are listed: ' + r.attention.join(','));
+      assert(r.attention.length === 2 && /^LinkedIn/.test(r.attention[0]) && /^Bayt/.test(r.attention[1]),
+        'both blocked sources are listed: ' + r.attention.join(','));
       assert(ctx.calls.closed.length === 3, 'blocked tabs are closed too');
       return 'login + captcha → needs attention · third source unaffected';
     }],
@@ -504,11 +513,12 @@
         harvestFails: ['GulfTalent'],
         harvests: { LinkedIn: harvested('LinkedIn', [job('LinkedIn', '1', 'https://www.linkedin.com/jobs/view/1/')]) },
       });
-      const r = await F.run({ token: 'tok-3', sources: ALL_SOURCES }, ctx);
+      const r = await F.run({ token: 'tok-3', sources: ALL_SOURCES, baytQueries: ONE_BAYT }, ctx);
+      const rowFor = p => r.sources.find(s => s.id === p || s.id.indexOf(p + ' ·') === 0);
       assert(r.ok, 'the run completes despite two broken sources');
-      assert(r.sources.find(s => s.id === 'Bayt').status === 'failed', 'a tab that will not open is a failed source');
-      assert(r.sources.find(s => s.id === 'GulfTalent').status === 'failed', 'a page that does not answer is a failed source');
-      assert(r.sources.find(s => s.id === 'LinkedIn').saved === 1, 'the working source still saved its job');
+      assert(rowFor('Bayt').status === 'failed', 'a tab that will not open is a failed source');
+      assert(rowFor('GulfTalent').status === 'failed', 'a page that does not answer is a failed source');
+      assert(rowFor('LinkedIn').saved === 1, 'the working source still saved its job');
       return 'per-source failure isolated';
     }],
 
@@ -548,6 +558,96 @@
       const wrong = H.harvest({ root, loc: BAYT_LOC, source: 'LinkedIn' });
       assert(wrong.ok === false && !wrong.jobs.length, 'the page must be read as the portal it actually is');
       return 'off-portal URLs never opened · host hint cannot override the real page';
+    }],
+
+    /* ---- Bayt: one run walks the keyword families ---- */
+
+    ['B1 · One Bayt saved search becomes one tab per keyword family', () => {
+      const F = window.CPFetchJobs;
+      const expanded = F.expandSources([{ id: 'Bayt', url: BAYT_LOC.href }]);
+      assert(expanded.length === F.BAYT_QUERIES.length,
+        'one source per keyword, got ' + expanded.length + ' for ' + F.BAYT_QUERIES.length + ' keywords');
+
+      ['network security engineer', 'cybersecurity', 'technical consultant',
+        'solutions engineer', 'solutions architect', 'presales engineer',
+        'infrastructure engineer', 'ICT', 'technical project manager',
+        'OT cybersecurity', 'ICS security', 'physical security', 'PSIM',
+      ].forEach(q => assert(F.BAYT_QUERIES.indexOf(q) !== -1, 'missing keyword family: ' + q));
+
+      const first = expanded[0];
+      assert(first.portal === 'Bayt', 'the portal stays Bayt so harvesting and host checks still work');
+      assert(/^Bayt · /.test(first.id), 'the row is labelled by keyword: ' + first.id);
+      assert(F.onPortal('Bayt', first.url), 'every generated URL is on bayt.com: ' + first.url);
+      assert(/saudi-arabia/.test(first.url), 'and scoped to Saudi Arabia: ' + first.url);
+      assert(F.baytSearchUrl('OT cybersecurity') === 'https://www.bayt.com/en/saudi-arabia/jobs/ot-cybersecurity-jobs/',
+        'keyword → slug: ' + F.baytSearchUrl('OT cybersecurity'));
+      assert(new Set(expanded.map(s => s.url)).size === expanded.length, 'every search URL is distinct');
+
+      const gt = F.expandSources([{ id: 'GulfTalent', url: GT_LOC.href }]);
+      assert(gt.length === 1 && gt[0].url === GT_LOC.href && gt[0].portal === 'GulfTalent',
+        'GulfTalent must pass through unchanged: ' + JSON.stringify(gt));
+      return F.BAYT_QUERIES.length + ' Bayt searches · other portals unchanged';
+    }],
+
+    ['B2 · A posting found under several keywords is saved once', async () => {
+      const F = window.CPFetchJobs;
+      const shared = job('Bayt', '5123456', 'https://www.bayt.com/en/saudi-arabia/jobs/nse-5123456/');
+      const ctx = fakeCtx({
+        /* every keyword search returns the SAME posting, plus one of its own */
+        harvest: async (tabId) => harvested('Bayt', [shared,
+          job('Bayt', 'x' + tabId, 'https://www.bayt.com/en/saudi-arabia/jobs/role-' + tabId + '/')]),
+      });
+      const r = await F.run({ token: 'tok-bayt', sources: [{ id: 'Bayt', url: BAYT_LOC.href }],
+        baytQueries: ['network security engineer', 'cybersecurity', 'PSIM'] }, ctx);
+
+      assert(ctx.calls.opened.length === 3, 'one tab per keyword, got ' + ctx.calls.opened.length);
+      assert(r.totals.found === 6, 'all six harvested rows are counted as found: ' + r.totals.found);
+      assert(ctx.calls.posts.length === 4, 'the repeat is never re-posted, got ' + ctx.calls.posts.length);
+      assert(r.totals.saved === 4 && r.totals.duplicate === 2,
+        'saved 4 · duplicate 2 expected, got ' + JSON.stringify(r.totals));
+      const ids = ctx.calls.posts.map(p => p.source_job_id);
+      assert(ids.filter(i => i === 'bayt-5123456').length === 1, 'the shared posting is saved exactly once');
+      return '3 searches · shared posting deduped across them';
+    }],
+
+    ['B3 · A 422 is "filtered", not "failed"', async () => {
+      const F = window.CPFetchJobs;
+      const ctx = fakeCtx({
+        harvest: async () => harvested('Bayt', [
+          job('Bayt', '1', 'https://www.bayt.com/en/saudi-arabia/jobs/a-1/'),
+          job('Bayt', '2', 'https://www.bayt.com/en/saudi-arabia/jobs/b-2/'),
+          job('Bayt', '3', 'https://www.bayt.com/en/saudi-arabia/jobs/c-3/'),
+        ]),
+        statusFor: b => b.source_job_id === 'bayt-1' ? 201 : 422,
+      });
+      const r = await F.run({ token: 'tok-422', sources: [{ id: 'Bayt', url: BAYT_LOC.href }],
+        baytQueries: ['cybersecurity'] }, ctx);
+
+      assert(r.totals.saved === 1, 'saved: ' + r.totals.saved);
+      assert(r.totals.filtered === 2, 'the two 422s are FILTERED, got ' + r.totals.filtered);
+      assert(r.totals.failed === 0, 'and none counts as failed, got ' + r.totals.failed);
+      assert(r.sources[0].status === 'ok', 'a filtered job never makes the source fail: ' + r.sources[0].status);
+
+      /* a real server error IS still a failure */
+      const broken = fakeCtx({
+        harvest: async () => harvested('Bayt', [job('Bayt', '9', 'https://www.bayt.com/en/saudi-arabia/jobs/z-9/')]),
+        statusFor: () => 500,
+      });
+      const bad = await F.run({ token: 'tok-500', sources: [{ id: 'Bayt', url: BAYT_LOC.href }],
+        baytQueries: ['cybersecurity'] }, broken);
+      assert(bad.totals.failed === 1 && bad.totals.filtered === 0,
+        'a 500 is still a failure: ' + JSON.stringify(bad.totals));
+
+      /* so is a transport error (no response at all) */
+      const dead = fakeCtx({
+        harvest: async () => harvested('Bayt', [job('Bayt', '8', 'https://www.bayt.com/en/saudi-arabia/jobs/y-8/')]),
+        postThrowsFor: () => true,
+      });
+      const off = await F.run({ token: 'tok-dead', sources: [{ id: 'Bayt', url: BAYT_LOC.href }],
+        baytQueries: ['cybersecurity'] }, dead);
+      assert(off.totals.failed === 1 && off.totals.filtered === 0,
+        'a transport error is still a failure: ' + JSON.stringify(off.totals));
+      return '422 → filtered · 500 and transport errors → failed';
     }],
 
     ['14 · The saved payload is the existing POST /api/jobs contract', async () => {

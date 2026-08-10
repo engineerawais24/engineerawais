@@ -10,6 +10,14 @@ is stored once. It is deliberately the exact URL and NEVER `canonical_url`:
 Oracle/SPA boards put the requisition id in the query string, so distinct
 jobs share one canonical URL and merging on it links a job to the wrong
 application package (the WSP-vs-Microsoft bug).
+
+Bayt postings arrive here from the browser extension, which harvests the
+user's own logged-in search page. Those jobs used to bypass the location /
+role / salary rules that every backend-side import already applies, so the
+gate is enforced HERE, at the save boundary — reusing `ats_import.evaluate`
+rather than porting the rules into the extension's JavaScript, where they
+would immediately drift. Only Bayt is gated: the other sources either filter
+at import time (Greenhouse, Lever, Cisco) or are deliberately unfiltered.
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -17,9 +25,13 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import Job, JobDecision, User
 from ..schemas import JobIn, JobOut, JobDecisionIn, JobDecisionOut
+from ..services import ats_import
 from ..services.seed import current_user
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
+
+# sources whose postings must pass the shared filters before they are stored
+FILTERED_SOURCES = {"bayt"}
 
 
 @router.get("", response_model=list[JobOut])
@@ -29,6 +41,35 @@ def list_jobs(limit: int = Query(100, ge=1, le=1000), db: Session = Depends(get_
 
 @router.post("", response_model=JobOut, status_code=201)
 def create_job(body: JobIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    # the shared location / role / salary rules, applied BEFORE anything is
+    # stored. Exactly the same `evaluate` the ATS and Cisco imports use — not a
+    # second copy of the rules.
+    if (body.source or "").strip().lower() in FILTERED_SOURCES:
+        # The location field can contradict the title: Bayt filed
+        # "Firewall Engineer - Dubai, UAE" under location "Saudi Arabia", and
+        # the field alone let it through. A title naming a country outside
+        # Saudi Arabia or Qatar wins over the field. Checked FIRST, with the
+        # other location rule, so the rejection is reported as what it is.
+        conflict = ats_import.conflicting_location(body.title)
+        if conflict:
+            raise HTTPException(status_code=422, detail={
+                "code": "filtered",
+                "message": (f"{body.source} job rejected by the job filters: the title names "
+                            f"{conflict}, which is outside Saudi Arabia and Qatar "
+                            f"(location field said '{body.location}')"),
+            })
+
+        verdict = ats_import.evaluate({
+            "location": body.location,
+            "title": body.title,
+            "description": body.description,
+        })
+        if not verdict["ok"]:
+            raise HTTPException(status_code=422, detail={
+                "code": "filtered",
+                "message": f"{body.source} job rejected by the job filters: {verdict['reason']}",
+            })
+
     exists = db.query(Job).filter_by(user_id=user.id, source=body.source, source_job_id=body.source_job_id).first()
     if exists:
         raise HTTPException(status_code=409, detail={"code": "duplicate", "message": f"job {body.source}:{body.source_job_id} already exists"})

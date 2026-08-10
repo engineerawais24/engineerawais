@@ -36,8 +36,12 @@ def _fetched(source: str, job_id: str, title: str, company: str, url: str, **ove
 
 LI = _fetched("LinkedIn", "4021", "Senior Solutions Engineer", "Careem",
               "https://www.linkedin.com/jobs/view/4021/")
-BAYT = _fetched("Bayt", "5123456", "Cloud Consultant", "stc",
-                "https://www.bayt.com/en/uae/jobs/cloud-consultant-5123456/")
+# Bayt postings are gated by the shared location/role/salary rules (see
+# test_bayt_filter.py), so this fixture is an in-region target role — otherwise
+# these cases would be testing the filter instead of the save contract.
+BAYT = _fetched("Bayt", "5123456", "Network Security Engineer", "stc",
+                "https://www.bayt.com/en/saudi-arabia/jobs/network-security-engineer-5123456/",
+                location="Riyadh, Saudi Arabia")
 GT = _fetched("GulfTalent", "778899", "Platform Engineer", "Majid Al Futtaim",
               "https://www.gulftalent.com/uae/jobs/platform-engineer-778899")
 
@@ -91,9 +95,15 @@ def test_same_url_from_a_different_portal_is_a_duplicate(client):
 def test_distinct_urls_all_save(client):
     """Different postings on one portal are all kept — dedup is not over-eager."""
     batch = [
-        _fetched("Bayt", "1", "Role A", "Acme", "https://www.bayt.com/en/uae/jobs/role-a-1/"),
-        _fetched("Bayt", "2", "Role B", "Acme", "https://www.bayt.com/en/uae/jobs/role-b-2/"),
-        _fetched("Bayt", "3", "Role C", "Acme", "https://www.bayt.com/en/uae/jobs/role-c-3/"),
+        _fetched("Bayt", "1", "Network Engineer", "Acme",
+                 "https://www.bayt.com/en/saudi-arabia/jobs/network-engineer-1/",
+                 location="Riyadh, Saudi Arabia"),
+        _fetched("Bayt", "2", "Security Architect", "Acme",
+                 "https://www.bayt.com/en/saudi-arabia/jobs/security-architect-2/",
+                 location="Jeddah, Saudi Arabia"),
+        _fetched("Bayt", "3", "Solutions Architect", "Acme",
+                 "https://www.bayt.com/en/qatar/jobs/solutions-architect-3/",
+                 location="Doha, Qatar"),
     ]
     for job in batch:
         assert client.post("/api/jobs", json=job).status_code == 201

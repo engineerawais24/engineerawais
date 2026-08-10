@@ -230,15 +230,19 @@
 
       const run = JobFetchStore.lastRun();
       assert(run && run.ok, 'the run should be recorded');
-      assert(Object.keys(run.totals).sort().join(',') === 'duplicate,failed,found,saved', 'only the four counts: ' + Object.keys(run.totals));
+      /* `filtered` joined the four: a job the backend rejected on purpose
+         (HTTP 422) is not a failure and is counted on its own */
+      assert(Object.keys(run.totals).sort().join(',') === 'duplicate,failed,filtered,found,saved',
+        'the counts stored: ' + Object.keys(run.totals));
       assert(run.totals.found === 4 && run.totals.saved === 2 && run.totals.duplicate === 1 && run.totals.failed === 1,
         'counts: ' + JSON.stringify(run.totals));
 
       const html = JobFetchView.panel(JobFetch.ui);
       assert(/found 4/.test(html) && /saved 2/.test(html) && /duplicate 1/.test(html) && /failed 1/.test(html),
-        'the four counts must be on the panel');
+        'the counts must be on the panel');
+      assert(/filtered 0/.test(html), 'including the filtered count');
       assert(/Fetch Jobs Now/.test(html), 'the button is on the panel');
-      return 'found 4 · saved 2 · duplicate 1 · failed 1 rendered';
+      return 'found 4 · saved 2 · duplicate 1 · filtered 0 · failed 1 rendered';
     }],
 
     ['6 · A source needing sign-in or a CAPTCHA is shown as Needs Attention', async () => {

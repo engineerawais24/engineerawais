@@ -275,8 +275,19 @@ TARGET_TITLES = [
     "Solutions Architect", "Solution Engineer", "Senior Solutions Consultant",
     "Technical Consultant", "Infrastructure Engineer", "Presales Engineer",
     "Pre-Sales Consultant", "Technical Delivery Manager", "Implementation Engineer",
-    "Project Manager", "Program Manager", "Programme Manager", "Technical Project Manager",
+    # project/programme management qualifies only when it names the field
+    "Technical Project Manager", "ICT Project Manager", "Infrastructure Project Manager",
+    "Security Project Manager", "Cybersecurity Project Manager", "Technical Program Manager",
+    "ICT Programme Manager",
     "PSIM Engineer", "Physical Security Manager", "Security Systems Engineer", "ICT Manager",
+    # broader families
+    "Technology Consultant", "Solutions Consultant", "Network Consultant",
+    "Systems Architect", "Data Center Engineer", "OT Security Engineer",
+    "ICS Cybersecurity Engineer", "Industrial Cybersecurity Manager",
+    "ELV Engineer", "Smart City Consultant", "Integrated Security Systems Engineer",
+    "Delivery Lead", "Implementation Lead", "Solution Delivery Manager",
+    "Technical Lead", "Network Lead", "Security Lead", "Cybersecurity Lead",
+    "Infrastructure Lead", "Presales Lead", "Security Sales Engineer",
 ]
 
 OFF_TARGET_TITLES = [
@@ -285,6 +296,11 @@ OFF_TARGET_TITLES = [
     "Engineering Manager - I", "Product Engineer II - Web", "FinOps Analyst",
     "Governance Manager", "Senior CRM & Lifecycle Specialist - B2B",
     "Team Lead - Partner Onboarding", "Senior Manager - Credit", "Application Support Engineer",
+    # a generic role noun is NEVER enough on its own — it needs a technical,
+    # security, network, ICT, infrastructure or solution keyword beside it
+    "Manager", "Team Lead", "Engineer", "Consultant", "Analyst", "Account Manager",
+    "Project Manager", "Program Manager", "Programme Manager",
+    "Sales Engineer", "Sales Representative", "Service Delivery Manager",
 ]
 
 
@@ -328,6 +344,55 @@ def test_disclosed_salary_below_floor_is_rejected():
 def test_qatar_uses_its_own_equivalent_threshold():
     assert ats_import.assess_salary("QA", "QAR 32,000 per month")["status"] == ats_import.SALARY_VERIFIED
     assert ats_import.assess_salary("QA", "QAR 20,000 per month")["status"] == ats_import.SALARY_BELOW
+
+
+# ---------- nationality restrictions ----------
+
+RESTRICTED = [
+    "Cyber Security Consultant- Saudi Nationals Only",   # a real title from the boards
+    "Network Security Engineer (Saudi Nationals Only)",
+    "Cyber Security Consultant - Saudi National Only",
+    "This role is open to Saudi nationals",
+    "Restricted to Saudi nationals.",
+    "Applicants must be a Saudi national.",
+    "Saudi nationality is required for this role",
+]
+
+# a bare mention is NOT a restriction — these are employer names and ordinary
+# sentences, and rejecting them would lose real jobs
+NOT_RESTRICTED = [
+    "Security Engineer at Saudi National Bank",
+    "Network Architect - Saudi National Guard Health Affairs",
+    "IT Manager, Saudi National Institute",
+    "Support Saudi nationals with onboarding and training",
+    "Saudi nationals are encouraged to apply",
+    "Network Security Engineer",
+    "",
+]
+
+
+@pytest.mark.parametrize("text", RESTRICTED)
+def test_saudi_nationals_only_postings_are_rejected(text):
+    assert ats_import.nationality_restriction(text) is not None
+    r = ats_import.evaluate({"location": "Riyadh, Saudi Arabia",
+                             "title": "Network Security Engineer", "description": text})
+    assert r["ok"] is False
+    assert "Saudi nationals" in r["reason"]
+
+
+@pytest.mark.parametrize("text", NOT_RESTRICTED)
+def test_a_bare_mention_of_saudi_nationals_is_not_a_restriction(text):
+    assert ats_import.nationality_restriction(text) is None
+    assert ats_import.evaluate({"location": "Riyadh, Saudi Arabia",
+                                "title": "Network Security Engineer",
+                                "description": text})["ok"] is True
+
+
+def test_a_restriction_in_the_title_is_caught_too():
+    r = ats_import.evaluate({"location": "Riyadh, Saudi Arabia",
+                             "title": "Security Engineer - Saudi Nationals Only",
+                             "description": ""})
+    assert r["ok"] is False and "Saudi nationals" in r["reason"]
 
 
 def test_evaluate_applies_location_then_role_then_salary():

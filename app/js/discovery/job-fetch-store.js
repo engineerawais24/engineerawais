@@ -99,7 +99,9 @@ const JobFetchStore = (() => {
 
   /* ---------- the last run ---------- */
 
-  const COUNTS = ['found', 'saved', 'duplicate', 'failed'];
+  /* `filtered` = deliberately rejected by the job filters (the backend answers
+     HTTP 422). It is NOT a failure, so it is counted and shown separately. */
+  const COUNTS = ['found', 'saved', 'duplicate', 'failed', 'filtered'];
   /* how the read itself went — kept per source so a harvest that silently
      under-collects (LinkedIn's virtualized list) is diagnosable, not a mystery */
   const DIAG = ['scrollRounds', 'cardCandidates', 'uniqueIds', 'parsed', 'failedCards'];

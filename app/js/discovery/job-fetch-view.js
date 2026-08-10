@@ -37,6 +37,8 @@ const JobFetchView = (() => {
       ['found', t.found, 'prep-neutral'],
       ['saved', t.saved, t.saved ? 'prep-green' : 'prep-neutral'],
       ['duplicate', t.duplicate, 'prep-neutral'],
+      /* filtered out on purpose — never shown as a failure */
+      ['filtered', t.filtered, 'prep-neutral'],
       ['failed', t.failed, t.failed ? 'prep-red' : 'prep-neutral'],
     ].map(([k, v, cls]) => `<span class="prep-chip ${cls}">${esc(k)} ${Number(v || 0)}</span>`).join(' ');
   }
@@ -76,7 +78,8 @@ const JobFetchView = (() => {
 
   function sourceRow(row) {
     const [cls, label] = STATUS_CHIP[row.status] || ['prep-neutral', esc(row.status)];
-    const counts = `found ${Number(row.found || 0)} · saved ${Number(row.saved || 0)} · duplicate ${Number(row.duplicate || 0)} · failed ${Number(row.failed || 0)}`;
+    const counts = `found ${Number(row.found || 0)} · saved ${Number(row.saved || 0)} · duplicate ${Number(row.duplicate || 0)}`
+      + ` · filtered ${Number(row.filtered || 0)} · failed ${Number(row.failed || 0)}`;
     const diag = diagLine(row.diag);
     return `
       <div class="ldrow">

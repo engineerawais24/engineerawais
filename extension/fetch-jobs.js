@@ -79,6 +79,59 @@ const CPFetchJobs = (() => {
     return out;
   }
 
+  /* ---------- Bayt: one saved search is not enough ----------
+     A broad "jobs in Saudi Arabia" search returns whatever Bayt puts on page
+     one — around 30 postings, mostly irrelevant — so the roles actually wanted
+     never appear. Instead a single Bayt run walks these search families, one
+     page each. Results are pooled and de-duplicated across all of them by Bayt
+     job id and exact URL, so a posting listed under two keywords is saved once.
+
+     Nothing here decides what is KEPT — every harvested job still goes through
+     the same backend filters (location, role, salary, nationality). This only
+     decides what is LOOKED AT. */
+
+  const BAYT_QUERIES = [
+    'network security engineer',
+    'cybersecurity',
+    'technical consultant',
+    'solutions engineer',
+    'solutions architect',
+    'presales engineer',
+    'infrastructure engineer',
+    'ICT',
+    'technical project manager',
+    'OT cybersecurity',
+    'ICS security',
+    'physical security',
+    'PSIM',
+  ];
+
+  /* Bayt's country-scoped search pages: /en/<country>/jobs/<slug>-jobs/.
+     (The country-less /en/jobs/... forms are disallowed by Bayt's robots.txt;
+     these are not.) Kept as one template so it is a single edit if Bayt ever
+     changes the shape. */
+  const BAYT_SEARCH_TEMPLATE = 'https://www.bayt.com/en/saudi-arabia/jobs/{slug}-jobs/';
+
+  const slugify = s => String(s || '').toLowerCase().trim()
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+
+  function baytSearchUrl(keyword) {
+    return BAYT_SEARCH_TEMPLATE.replace('{slug}', slugify(keyword));
+  }
+
+  /* Turn each validated source into the tabs the run will actually open.
+     Every portal keeps its own `portal` key, so host validation and the
+     harvester still see 'Bayt' while the row is labelled by its keyword. */
+  function expandSources(list, queries) {
+    const qs = queries || BAYT_QUERIES;
+    const out = [];
+    (list || []).forEach(s => {
+      if (s.id !== 'Bayt') { out.push({ id: s.id, portal: s.id, url: s.url }); return; }
+      qs.forEach(q => out.push({ id: 'Bayt · ' + q, portal: 'Bayt', url: baytSearchUrl(q) }));
+    });
+    return out;
+  }
+
   /* the two dedup keys the spec asks for */
   const urlKey = u => trim(u).toLowerCase().replace(/\/+$/, '');
   const idKey = j => (trim(j && j.source).toLowerCase() + '::' + trim(j && j.sourceJobId).toLowerCase());
@@ -124,7 +177,11 @@ const CPFetchJobs = (() => {
     blocked: 'The portal blocked the page — open the saved search in Chrome',
   };
 
-  function blankCounts() { return { found: 0, saved: 0, duplicate: 0, failed: 0 }; }
+  /* `filtered` is a job the backend deliberately rejected (HTTP 422) — wrong
+     country, off-target role, salary below the floor, nationality-restricted.
+     That is the filters working, NOT a failure, so it is counted separately.
+     `failed` is reserved for real transport or server errors. */
+  function blankCounts() { return { found: 0, saved: 0, duplicate: 0, failed: 0, filtered: 0 }; }
 
   /* ---------- default context: the real browser + the real backend ---------- */
 
@@ -222,9 +279,12 @@ const CPFetchJobs = (() => {
   async function runSource(src, ctx, seen) {
     const row = Object.assign({ id: src.id, url: src.url, status: 'ok', reason: null, diag: null }, blankCounts());
     let tabId = null;
+    /* the PORTAL the page belongs to — 'Bayt' for every one of its keyword
+       searches, whose row ids are 'Bayt · <keyword>' */
+    const portal = src.portal || src.id;
     try {
       tabId = await ctx.openTab(src.url);
-      const res = await ctx.harvest(tabId, src.id);
+      const res = await ctx.harvest(tabId, portal);
       /* how the read actually went: scroll rounds · card candidates · unique
          ids · parsed · failed cards. Kept even when the harvest failed — that
          is precisely when it is worth reading. */
@@ -241,7 +301,7 @@ const CPFetchJobs = (() => {
         return row;
       }
 
-      const harvested = (res.jobs || []).map(j => Object.assign({}, j, { source: j.source || src.id }));
+      const harvested = (res.jobs || []).map(j => Object.assign({}, j, { source: j.source || portal }));
       row.found = harvested.length;
 
       const d = dedupe(harvested, seen);
@@ -252,14 +312,21 @@ const CPFetchJobs = (() => {
           const r = await ctx.post(payloadFor(job));
           if (r && r.status === 201) row.saved++;
           else if (r && r.status === 409) row.duplicate++;
+          /* 422 = the backend filters rejected it on purpose (wrong country,
+             off-target role, salary below the floor, nationality-restricted).
+             That is the filters working, not a failure. */
+          else if (r && r.status === 422) row.filtered++;
           else row.failed++;
         } catch (e) {
-          row.failed++;
+          row.failed++;                     // no response at all: a real failure
         }
       }
       if (row.failed && !row.saved) {
         row.status = 'failed';
         row.reason = 'CareerPilot could not save these jobs — is the backend running?';
+      } else if (row.filtered && !row.saved && !row.duplicate) {
+        row.reason = row.filtered + ' job' + (row.filtered === 1 ? '' : 's')
+          + ' filtered out — none matched your location, role and salary rules';
       }
       return row;
     } catch (e) {
@@ -278,21 +345,29 @@ const CPFetchJobs = (() => {
     const now = (ctx.now || Date.now)();
     const token = trim(msg && msg.token) || 'fetch-' + now.toString(36);
 
-    const sources = validSources(msg && msg.sources);
-    if (!sources.length) {
+    const configured = validSources(msg && msg.sources);
+    if (!configured.length) {
       const empty = { ok: false, token, error: 'no saved search URL is set', totals: blankCounts(), sources: [], ts: now };
       await ctx.set(RESULT_KEY, empty);
       return empty;
     }
+    /* one Bayt saved search becomes one tab per keyword family */
+    const sources = expandSources(configured, msg && msg.baytQueries);
 
     await ctx.set(STATUS_KEY, { running: true, token, sources: sources.map(s => s.id), ts: now });
 
+    /* ONE `seen` set for the whole run, so a posting that shows up under
+       several Bayt keywords is saved once */
     const seen = new Set();
     const rows = [];
     for (const src of sources) rows.push(await runSource(src, ctx, seen));
 
     const totals = blankCounts();
-    rows.forEach(r => { totals.found += r.found; totals.saved += r.saved; totals.duplicate += r.duplicate; totals.failed += r.failed; });
+    rows.forEach(r => {
+      totals.found += r.found; totals.saved += r.saved;
+      totals.duplicate += r.duplicate; totals.failed += r.failed;
+      totals.filtered += r.filtered || 0;
+    });
 
     const result = {
       ok: true, token, totals, sources: rows,
@@ -305,8 +380,10 @@ const CPFetchJobs = (() => {
   }
 
   const api = {
-    run, runSource, validSources, dedupe, payloadFor, isHttpUrl, onPortal, urlKey, idKey,
-    blankCounts, PORTALS, PORTAL_HOSTS, RESULT_KEY, STATUS_KEY, DEFAULT_API, BLOCK_REASON,
+    run, runSource, validSources, expandSources, baytSearchUrl, slugify,
+    dedupe, payloadFor, isHttpUrl, onPortal, urlKey, idKey,
+    blankCounts, PORTALS, PORTAL_HOSTS, BAYT_QUERIES, BAYT_SEARCH_TEMPLATE,
+    RESULT_KEY, STATUS_KEY, DEFAULT_API, BLOCK_REASON,
   };
   if (typeof self !== 'undefined') self.CPFetchJobs = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

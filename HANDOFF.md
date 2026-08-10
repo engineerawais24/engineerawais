@@ -7,7 +7,7 @@ live in [CLAUDE.md](CLAUDE.md) — read that too.
 - **Last updated:** 2026-08-10 *(always keep this line current — every HANDOFF edit stamps today's date here, so anyone can tell the latest version at a glance)*
 - **Status:** 🟢 **v1.0 SHIPPED** (2026-07-13, tagged 2026-07-22) · since: Chrome extension, real ATS import, ATS Engine v1, Universal Autofill v2 + profile auto-sync + resilient extension storage, Application Queue v1, extension-save→Today's-Jobs sync, imported-jobs→approvals→queue, queue-triggered ATS autofill + hardened résumé handling (verified live on Greenhouse 2026-07-27), Workday adapter (queue autofill verified live on PwC 2026-07-30; national-phone recheck pending), **Job Discovery v1 — "Fetch Jobs Now" for LinkedIn · Bayt · GulfTalent (committed 2026-08-02; LinkedIn virtualized-scroll fix in; live retest pending)**
 - **Branch:** `main` — clean, in sync with origin
-- **Head:** `feat: import real Cisco jobs and tighten ATS filtering to Saudi/Qatar target roles` (hash in git log) · tag `v1.0` on `b676933`
+- **Head:** `feat: fan out Bayt discovery across target role searches` (hash in git log) · tag `v1.0` on `b676933`
 - **App state:** 🧼 **clean tracker, real-jobs-only.** All demo/seed jobs are gone permanently; every
   board starts at zero and fills only with real jobs that pass the filters.
 - **Live data right now:** the real backend database holds **exactly 2 jobs** — both Cisco, both
@@ -98,6 +98,13 @@ live in [CLAUDE.md](CLAUDE.md) — read that too.
   it (`git stash pop`) when you have decided.
 
 **Open — user-side (browser / live run; not code):**
+- [ ] **Live Bayt fan-out run — PENDING (2026-08-10).** One Fetch Jobs Now now opens **13** Bayt
+  searches instead of 1. Reload the unpacked extension (`chrome://extensions` → Reload —
+  `fetch-jobs.js` changed), start the backend, then fetch. Expect 13 `Bayt · <keyword>` rows, a shared
+  dedup across them, and `filtered` counting the jobs the backend rejected on purpose (422).
+  ⚠️ **13 sequential tab loads may trip Bayt rate limiting or a bot interstitial** — the affected
+  searches will read **Needs Attention**; note which keyword it stops at. Trim `BAYT_QUERIES` or
+  space the loads if it proves too aggressive.
 - [ ] **Real LinkedIn live retest — STILL PENDING.** The first live run returned 1 LinkedIn job of
   99+ (its list is virtualized); the harvest was rebuilt to scroll and the **automated tests now
   collect 30/30 virtualized jobs**, but that is a mock, not the live page. **Reload the unpacked
@@ -193,6 +200,48 @@ prep, and an optional FastAPI backend with two-way sync.
   guardrail that keeps auto-push safe.
 
 ## Next Up
+
+**🆕 Bayt discovery fans out across 13 Saudi keyword searches (2026-08-10) — ⏳ LIVE RUN NOT YET DONE.**
+
+One broad Saudi search only ever returned the first ~30 jobs, most of them irrelevant, so the target
+roles were being missed entirely. **One click of Fetch Jobs Now now opens 13 Bayt searches**, one per
+target-role family, instead of one:
+
+network security engineer · cybersecurity · technical consultant · solutions engineer ·
+solutions architect · presales engineer · infrastructure engineer · ICT · technical project manager ·
+OT cybersecurity · ICS security · physical security · PSIM
+
+- **URLs are generated, not stored** — `BAYT_SEARCH_TEMPLATE`
+  (`https://www.bayt.com/en/saudi-arabia/jobs/{slug}-jobs/`) with the keyword slugified
+  ([extension/fetch-jobs.js](extension/fetch-jobs.js) `baytSearchUrl`). Adding a family is one array entry.
+- **`expandSources()`** sits between "which portals are configured" and "visit each one": every
+  non-Bayt source passes through untouched, Bayt expands into one entry per keyword. Each carries a
+  display `id` (`Bayt · cybersecurity`) plus `portal: 'Bayt'` — the harvester and the saved `source`
+  field still say **Bayt**, so nothing downstream sees 13 portals. Each search reports as its own row,
+  so a single blocked search is visible instead of hidden inside one lump total.
+- **Dedup spans all 13 searches** — `run()` builds ONE `seen` Set before the loop and threads it
+  through every `runSource`, keyed on **Bayt job id and exact `apply_url`**. A posting that appears
+  under both "cybersecurity" and "network security engineer" is found once and POSTed once.
+- **HTTP 422 is now counted as `filtered`, NOT `failed`.** 201 → saved · 409 → duplicate · **422 →
+  filtered** · anything else, or a thrown fetch, → failed. Only real transport/server errors are
+  failures; a job the backend deliberately rejected means the filters did their job. `filtered` is a
+  fifth stored count ([job-fetch-store.js](app/js/discovery/job-fetch-store.js) `COUNTS`) shown as its
+  own neutral chip and a per-source figure — never styled red.
+- **The role, location and salary filters are UNCHANGED.** This is discovery breadth only; every
+  harvested Bayt job still goes through the same `ats_import` gate at `POST /api/jobs`. Cisco,
+  LinkedIn, GulfTalent, the queue and autofill were not touched.
+
+Tests: extension job-fetch **27/27** (+3: fan-out produces 13 rows · cross-search dedup · 422 →
+filtered), app job-fetch **25/25**, backend **226 passed**. Two extension tests and one app test
+needed repair for the new shape (rows are now `Bayt · <keyword>`; totals hold five counts, not four) —
+stale expectations, not behaviour regressions.
+
+⏳ **LIVE BAYT FAN-OUT TEST IS PENDING** (user-side, needs the browser). ⚠️ **13 sequential Bayt tab
+loads in one run is a far heavier footprint than the single search was — it may trigger Bayt rate
+limiting or a bot interstitial partway through.** If that happens the later searches surface as
+**Needs Attention** rather than silently returning nothing, so the run stays honest; capture which
+keyword it stops at. If it proves too aggressive, the fix is to trim `BAYT_QUERIES` or space the
+loads out — not to hide the failures.
 
 **✅ Cisco live importer + hard ATS filtering — VERIFIED LIVE (2026-08-10).**
 
@@ -572,6 +621,7 @@ HANDOFF update rule below.)*
 
 | Date | Sprint | Commit | Summary |
 |------|--------|--------|---------|
+| 2026-08-10 | — | *(this commit)* | **Bayt discovery fans out across 13 target-role searches.** One broad Saudi search only returned the first ~30 (mostly irrelevant) jobs, so target roles were missed. One Fetch Jobs Now run now opens **13** Bayt searches — network security engineer · cybersecurity · technical consultant · solutions engineer · solutions architect · presales engineer · infrastructure engineer · ICT · technical project manager · OT cybersecurity · ICS security · physical security · PSIM. URLs are **generated** from `BAYT_SEARCH_TEMPLATE` + a slugified keyword ([fetch-jobs.js](extension/fetch-jobs.js) `baytSearchUrl`), so a new family is one array entry. `expandSources()` sits between "configured portals" and "visit each"; non-Bayt sources pass through untouched, Bayt expands into one row per keyword carrying a display `id` (`Bayt · cybersecurity`) plus `portal: 'Bayt'` — the harvester and the saved `source` still say **Bayt**, nothing downstream sees 13 portals, and a single blocked search is visible instead of hidden in a lump total. **Dedup spans all 13**: one `seen` Set built before the loop and threaded through every `runSource`, keyed on **Bayt job id and exact `apply_url`**. **HTTP 422 is now `filtered`, not `failed`** (201 saved · 409 duplicate · **422 filtered** · anything else or a thrown fetch → failed) — a deliberate filter rejection is the filters working, so `filtered` is a fifth stored count ([job-fetch-store.js](app/js/discovery/job-fetch-store.js) `COUNTS`) with its own neutral chip, never red. **Role, location and salary filters unchanged** — every Bayt job still passes the same `ats_import` gate at `POST /api/jobs`; Cisco, LinkedIn, GulfTalent, queue and autofill untouched. Tests: extension job-fetch **27/27** (+3: 13-row fan-out · cross-search dedup · 422→filtered), app job-fetch **25/25**, backend **226 passed** — two extension tests and one app test repaired for the new shape (rows are `Bayt · <keyword>`; totals hold five counts), stale expectations not regressions. ⏳ **Live Bayt fan-out run still pending; ⚠️ 13 sequential tab loads may trigger Bayt rate limiting / a bot interstitial** — affected searches surface as Needs Attention rather than silently empty. |
 | 2026-08-10 | — | *(this commit)* | **Cisco live importer + hard Saudi/Qatar target-role filtering — ✅ verified live.** New [cisco_import.py](backend/app/services/cisco_import.py) + [routes/cisco.py](backend/app/routes/cisco.py) (`POST /api/cisco/import`): careers.cisco.com runs on **Phenom People**, so the results come from the endpoint its own page calls — `POST /widgets` with `ddoKey: refineSearch` (the documented GET `/api/apply/v2/jobs` answers "Tenant not identified"). No scraping, no auth, one request per country; deduped by **Cisco job id and exact URL**; wired into Fetch Jobs Now beside Greenhouse/Lever via `runBackendSources()`; apply URLs are Cisco's Workday tenant, so existing Workday autofill applies. **Hard filters in [ats_import.py](backend/app/services/ats_import.py), reused verbatim by Cisco: location = Saudi Arabia or Qatar ONLY** (UAE/Remote/Global rejected); **role = the target areas only**, matched on the title (27/27 target titles matched, 12/12 off-target rejected); **salary = disclosed-and-below-30,000 SAR/month rejects, undisclosed is KEPT and marked `unknown`**, disclosed-and-meeting marked `verified` on the row (Qatar floor 29,000 QAR — same money, both USD-pegged; annual ÷ 12; ranges use the upper bound). **Tracker cleared**: the 68 junk ATS jobs deleted from the real DB, profile/employment/preferences/résumé verified unchanged; **`GET /api/jobs` now returns exactly 2 — both Cisco, both Riyadh**. Live run: Saudi 5 fetched → 2 kept → 2 saved, Qatar 0; re-import 0 saved / 2 duplicate. Greenhouse/Lever's six verified boards currently yield 0 under the tighter rules (off-target Saudi roles, nothing in Qatar) and stay enabled. LinkedIn, queue, autofill and UI untouched. Tests: backend **173 passed**, app job-fetch **25/25**. |
 | 2026-08-03 | — | *(this commit)* | **All job data cleared + one permanent `JobDataReset` — ✅ verified live by the user.** Backend: `backend/careerpilot.db` backed up to `careerpilot-before-clear.db`, 6 job rows deleted, profile/preferences/employment verified untouched via the live API. Browser: new [job-data-reset.js](app/js/platform/job-data-reset.js) clears **15 stores** in one call and **runs once automatically on load** (flag `careerpilot_job_data_reset_v1`); `run()` re-runs on demand. It **never hard-codes a storage key** — each target names its owning module and the key is read from it (`STORAGE_KEY`/`KEY`), preferring the module's own `clear()`; an unresolvable module is reported, never skipped. Preserves profile, employment, certifications, résumé library, master/parsed résumé, preferences, backend config, both safety backups and the **saved search URLs** (`JobFetchStore.clear()` is deliberately NOT used — only `lastRun` goes). Harness caught two real bugs first: `interview-store.js` exports **ApplicationMemory** (not `InterviewStore`), and these modules are **lexical `const` globals not reachable via `window[name]`**, so the original lookup cleared nothing. Demo data removed at source because four of them re-seed when their key is empty: `data.js` (jobs/approvals/applications + invented dashboard stats/funnel/monthly/weekly/bestPerformers), `jobs-store.js` `BASE_JOBS` (what the board really rendered — `DB.jobs` was dead code), the six providers' `RAW` mock feeds (four auto-register and republished on every refresh), **`ApplicationsStore.defaults()`** (10 demo apps) and **`Activity.seed()`** (5 invented events); `app.js` no longer hard-codes "128 applications"/"$148k". End-to-end in a real browser: seed 24 keys → load app → pipeline 0,0,0,0 · funnel all 0 · stats 0/0%/0%/— · "No activity yet" · Today's Jobs 0 · Approvals 0 · Applications 0 · Queue 0, personal keys intact, saved search URL kept. Tests: job-data-reset **8/8**, backend 51/51, all discovery/queue/ats suites green. **11 tests fail, every one asserting the deleted demo data** (sprint23/24/25/26/27/30) — no functional regression; **left deliberately for a separate fixture pass**, starting with sprint30 case 1 (the §5 data-safety guardrail). |
 | 2026-08-02 | — | *(this commit)* | **Job Discovery v1 — LinkedIn harvesting rebuilt after the first live run.** Live test on the real saved search returned **1 job against "99+ results"**: LinkedIn **virtualizes** the left results list (only cards near the viewport exist; scrolled-past cards are destroyed), and v1 read the freshly opened background tab once. Also found: the card's **logo anchor** was taken as the job link (empty text → title empty → card counted failed), and the **job-details panel's** own `/jobs/view/` links were in scope. [harvest.js](extension/harvest.js) LinkedIn path now scopes to the LEFT list (`li[data-occludable-job-id]`'s parent → known containers → a `<ul>` with ≥2 job links; details panel excluded via `closest()`), waits for the first card, then **scrolls in rounds** collecting new job ids — stopping after **3 idle rounds** or **50 jobs** (round cap 40). Title read from the visible `aria-hidden`/`strong` span; dedup by job id, exact URL, and a `title\|company\|location` key so a **promoted twin under a second id** is saved once. Per-source **diagnostics** (scroll rounds · card candidates · unique ids · parsed · failed) flow through to the panel, and a read that yields ≤1 job from ≥3 cards — or 0 cards with no "no matching jobs" on the page — is reported as a **harvest FAILURE**, saving nothing. Bayt/GulfTalent untouched (`harvestList` ≡ `harvest` for both, asserted). New harness mock is genuinely virtualized: one read sees 8, the scrolled harvest gets **30/30 in 8 rounds**. Tests **24/24** + **14/14**, backend 51/51, all other suites green. **Real LinkedIn live retest still pending — expected ~20–25 jobs from one results page** (scrolls, never paginates). |
