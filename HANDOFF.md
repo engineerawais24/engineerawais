@@ -4,12 +4,16 @@
 bottom, then continue from **Next Up**. Rules, project shape, and how to run the tests
 live in [CLAUDE.md](CLAUDE.md) — read that too.
 
-- **Last updated:** 2026-08-03 *(always keep this line current — every HANDOFF edit stamps today's date here, so anyone can tell the latest version at a glance)*
+- **Last updated:** 2026-08-10 *(always keep this line current — every HANDOFF edit stamps today's date here, so anyone can tell the latest version at a glance)*
 - **Status:** 🟢 **v1.0 SHIPPED** (2026-07-13, tagged 2026-07-22) · since: Chrome extension, real ATS import, ATS Engine v1, Universal Autofill v2 + profile auto-sync + resilient extension storage, Application Queue v1, extension-save→Today's-Jobs sync, imported-jobs→approvals→queue, queue-triggered ATS autofill + hardened résumé handling (verified live on Greenhouse 2026-07-27), Workday adapter (queue autofill verified live on PwC 2026-07-30; national-phone recheck pending), **Job Discovery v1 — "Fetch Jobs Now" for LinkedIn · Bayt · GulfTalent (committed 2026-08-02; LinkedIn virtualized-scroll fix in; live retest pending)**
 - **Branch:** `main` — clean, in sync with origin
-- **Head:** `fix: reset CareerPilot to a clean real-jobs-only state` (hash in git log) · tag `v1.0` on `b676933`
-- **App state:** 🧼 **clean, real-jobs-only.** All demo/seed jobs are gone permanently; every board
-  starts at zero and fills only with jobs you actually import or save.
+- **Head:** `feat: import real Cisco jobs and tighten ATS filtering to Saudi/Qatar target roles` (hash in git log) · tag `v1.0` on `b676933`
+- **App state:** 🧼 **clean tracker, real-jobs-only.** All demo/seed jobs are gone permanently; every
+  board starts at zero and fills only with real jobs that pass the filters.
+- **Live data right now:** the real backend database holds **exactly 2 jobs** — both Cisco, both
+  Riyadh, Saudi Arabia (*Senior Cybersecurity Solutions Engineer – Splunk* and *Partner Solutions
+  Engineer*). The 68 earlier ATS imports were deleted on 2026-08-10; profile, employment,
+  preferences and résumé were preserved and verified unchanged.
 - **Remote:** github.com/engineerawais24/engineerawais
 
 > ### ⚙️ Working agreement — for ANY agent editing this repo
@@ -189,6 +193,62 @@ prep, and an optional FastAPI backend with two-way sync.
   guardrail that keeps auto-push safe.
 
 ## Next Up
+
+**✅ Cisco live importer + hard ATS filtering — VERIFIED LIVE (2026-08-10).**
+
+**The tracker is clean.** The 68 junk ATS jobs imported on 2026-08-02 were deleted from the real
+backend database; profile (1), preferences (1), employment (3), skills, certifications, résumé
+metadata and users were all verified unchanged. `GET /api/jobs` now returns **exactly 2 jobs** — both
+Cisco, both Riyadh.
+
+**Hard filters, applied to every ATS/Cisco posting before it can be saved**
+([ats_import.py](backend/app/services/ats_import.py), reused verbatim by Cisco):
+- **Location — Saudi Arabia or Qatar only.** UAE, Remote, Global and every other country are
+  rejected. A posting that names Riyadh/Doha alongside another site still counts as in-region;
+  a bare "Remote"/"Global" names no country and is rejected.
+- **Role — the target areas only**, matched against the TITLE (a description that merely mentions
+  "security" is not a security role): network / cyber / physical security, security + network
+  engineer/architect, solutions architect/engineer, technical consultant, infrastructure, presales,
+  technical delivery, implementation, project / programme / technical project manager, PSIM,
+  security systems, ICT. Verified 27/27 target titles matched, 12/12 off-target rejected.
+- **Salary — disclosed-and-below rejects; undisclosed is KEPT.**
+  - disclosed **≥ 30,000 SAR/month** → kept, marked **`salary_status: verified`** (written to the
+    row's `salary` / `salary_disclosed` / `currency` columns)
+  - disclosed **< 30,000 SAR/month** → **rejected**
+  - **undisclosed → kept, marked `salary_status: unknown`** — silence is never a rejection and the
+    figure is never guessed
+  - Qatar uses the equivalent senior threshold, **29,000 QAR/month** (SAR and QAR are both
+    USD-pegged, so it is the same money: 30,000 SAR = USD 8,000 ≈ 29,100 QAR). Annual figures are
+    divided by 12; a disclosed range uses its upper bound.
+
+**Cisco importer — new, and verified against the live site.** `jobs.cisco.com` serves
+`careers.cisco.com`, which runs on **Phenom People**: every URL returns the same 173 KB JS shell, so
+there is no HTML to parse. The results come from the endpoint Cisco's own search page calls —
+`POST https://careers.cisco.com/widgets` with `ddoKey: refineSearch` and
+`selected_fields.country`, returning `refineSearch.data.jobs`. No scraping, no auth, one request per
+country. (The documented GET form, `/api/apply/v2/jobs`, answers `"Tenant not identified"` — only the
+POST form works.)
+- [cisco_import.py](backend/app/services/cisco_import.py) + [routes/cisco.py](backend/app/routes/cisco.py)
+  → `POST /api/cisco/import`, `GET /api/cisco/countries`.
+- Deduped by **Cisco job id and exact URL** (a reissued id at the same URL is still a duplicate).
+- Borrows the ATS filters rather than reimplementing them — a test pins that a Cisco **UAE** posting
+  is still rejected; Cisco gets no exemption.
+- Wired into **Fetch Jobs Now** beside the Greenhouse/Lever feeds (`runBackendSources()` runs both);
+  saved rows go straight onto Today's Jobs. Apply URLs point at `cisco.wd5.myworkdayjobs.com`, so
+  the existing Workday autofill applies to them.
+
+**Live run (2026-08-10):** Saudi Arabia fetched 5 → 2 kept → 2 saved; Qatar fetched 0 (Cisco has no
+Qatar postings right now — the country is searched every run). 3 filtered out by the role rule
+(Renewals Specialist, Telco Account Executive, Splunk Customer Success Engineer). Re-import: saved 0,
+duplicate 2.
+
+**Greenhouse/Lever status:** the six enabled boards (Careem, Tamara, Elastic, MongoDB via Greenhouse;
+Binance, Palantir via Lever) are real and verified live, but under the tightened rules they currently
+yield **0** — their Saudi postings are all off-target (fintech/analytics/customer-care roles) and
+they post nothing in Qatar. Left enabled; they will contribute when a matching role appears.
+
+Tests: backend **173 passed**, app job-fetch **25/25**.
+
 
 **🧹 All job data cleared + a permanent reset — ✅ VERIFIED LIVE IN THE REAL BROWSER (2026-08-03).**
 The user confirmed the reset ran and every screen reads zero. What this achieved:
@@ -512,6 +572,7 @@ HANDOFF update rule below.)*
 
 | Date | Sprint | Commit | Summary |
 |------|--------|--------|---------|
+| 2026-08-10 | — | *(this commit)* | **Cisco live importer + hard Saudi/Qatar target-role filtering — ✅ verified live.** New [cisco_import.py](backend/app/services/cisco_import.py) + [routes/cisco.py](backend/app/routes/cisco.py) (`POST /api/cisco/import`): careers.cisco.com runs on **Phenom People**, so the results come from the endpoint its own page calls — `POST /widgets` with `ddoKey: refineSearch` (the documented GET `/api/apply/v2/jobs` answers "Tenant not identified"). No scraping, no auth, one request per country; deduped by **Cisco job id and exact URL**; wired into Fetch Jobs Now beside Greenhouse/Lever via `runBackendSources()`; apply URLs are Cisco's Workday tenant, so existing Workday autofill applies. **Hard filters in [ats_import.py](backend/app/services/ats_import.py), reused verbatim by Cisco: location = Saudi Arabia or Qatar ONLY** (UAE/Remote/Global rejected); **role = the target areas only**, matched on the title (27/27 target titles matched, 12/12 off-target rejected); **salary = disclosed-and-below-30,000 SAR/month rejects, undisclosed is KEPT and marked `unknown`**, disclosed-and-meeting marked `verified` on the row (Qatar floor 29,000 QAR — same money, both USD-pegged; annual ÷ 12; ranges use the upper bound). **Tracker cleared**: the 68 junk ATS jobs deleted from the real DB, profile/employment/preferences/résumé verified unchanged; **`GET /api/jobs` now returns exactly 2 — both Cisco, both Riyadh**. Live run: Saudi 5 fetched → 2 kept → 2 saved, Qatar 0; re-import 0 saved / 2 duplicate. Greenhouse/Lever's six verified boards currently yield 0 under the tighter rules (off-target Saudi roles, nothing in Qatar) and stay enabled. LinkedIn, queue, autofill and UI untouched. Tests: backend **173 passed**, app job-fetch **25/25**. |
 | 2026-08-03 | — | *(this commit)* | **All job data cleared + one permanent `JobDataReset` — ✅ verified live by the user.** Backend: `backend/careerpilot.db` backed up to `careerpilot-before-clear.db`, 6 job rows deleted, profile/preferences/employment verified untouched via the live API. Browser: new [job-data-reset.js](app/js/platform/job-data-reset.js) clears **15 stores** in one call and **runs once automatically on load** (flag `careerpilot_job_data_reset_v1`); `run()` re-runs on demand. It **never hard-codes a storage key** — each target names its owning module and the key is read from it (`STORAGE_KEY`/`KEY`), preferring the module's own `clear()`; an unresolvable module is reported, never skipped. Preserves profile, employment, certifications, résumé library, master/parsed résumé, preferences, backend config, both safety backups and the **saved search URLs** (`JobFetchStore.clear()` is deliberately NOT used — only `lastRun` goes). Harness caught two real bugs first: `interview-store.js` exports **ApplicationMemory** (not `InterviewStore`), and these modules are **lexical `const` globals not reachable via `window[name]`**, so the original lookup cleared nothing. Demo data removed at source because four of them re-seed when their key is empty: `data.js` (jobs/approvals/applications + invented dashboard stats/funnel/monthly/weekly/bestPerformers), `jobs-store.js` `BASE_JOBS` (what the board really rendered — `DB.jobs` was dead code), the six providers' `RAW` mock feeds (four auto-register and republished on every refresh), **`ApplicationsStore.defaults()`** (10 demo apps) and **`Activity.seed()`** (5 invented events); `app.js` no longer hard-codes "128 applications"/"$148k". End-to-end in a real browser: seed 24 keys → load app → pipeline 0,0,0,0 · funnel all 0 · stats 0/0%/0%/— · "No activity yet" · Today's Jobs 0 · Approvals 0 · Applications 0 · Queue 0, personal keys intact, saved search URL kept. Tests: job-data-reset **8/8**, backend 51/51, all discovery/queue/ats suites green. **11 tests fail, every one asserting the deleted demo data** (sprint23/24/25/26/27/30) — no functional regression; **left deliberately for a separate fixture pass**, starting with sprint30 case 1 (the §5 data-safety guardrail). |
 | 2026-08-02 | — | *(this commit)* | **Job Discovery v1 — LinkedIn harvesting rebuilt after the first live run.** Live test on the real saved search returned **1 job against "99+ results"**: LinkedIn **virtualizes** the left results list (only cards near the viewport exist; scrolled-past cards are destroyed), and v1 read the freshly opened background tab once. Also found: the card's **logo anchor** was taken as the job link (empty text → title empty → card counted failed), and the **job-details panel's** own `/jobs/view/` links were in scope. [harvest.js](extension/harvest.js) LinkedIn path now scopes to the LEFT list (`li[data-occludable-job-id]`'s parent → known containers → a `<ul>` with ≥2 job links; details panel excluded via `closest()`), waits for the first card, then **scrolls in rounds** collecting new job ids — stopping after **3 idle rounds** or **50 jobs** (round cap 40). Title read from the visible `aria-hidden`/`strong` span; dedup by job id, exact URL, and a `title\|company\|location` key so a **promoted twin under a second id** is saved once. Per-source **diagnostics** (scroll rounds · card candidates · unique ids · parsed · failed) flow through to the panel, and a read that yields ≤1 job from ≥3 cards — or 0 cards with no "no matching jobs" on the page — is reported as a **harvest FAILURE**, saving nothing. Bayt/GulfTalent untouched (`harvestList` ≡ `harvest` for both, asserted). New harness mock is genuinely virtualized: one read sees 8, the scrolled harvest gets **30/30 in 8 rounds**. Tests **24/24** + **14/14**, backend 51/51, all other suites green. **Real LinkedIn live retest still pending — expected ~20–25 jobs from one results page** (scrolls, never paginates). |
 | 2026-08-02 | — | *(this commit)* | **Job Discovery v1 — "Fetch Jobs Now."** One button on Today's Jobs pulls real jobs from **LinkedIn / Bayt / GulfTalent** using the Chrome sessions the user is already signed into. New: `app/js/discovery/job-fetch-store.js` (one saved search URL per portal, host-validated, + the last run's four counts), `job-fetch.js` (posts `{kind:'fetch-jobs'}` over the existing bridge, records the run, then `JobsBackendSync.pull` so jobs land in Today's Jobs at once), `job-fetch-view.js` (additive card, existing CSS); `extension/harvest.js` (read-only card harvester — title · company · location · job URL · source · portal job id; structural, class-name-agnostic; login/CAPTCHA **reported**, never bypassed) and `extension/fetch-jobs.js` (opens each saved search in a background tab, injects the harvester, dedups by **source job id AND exact job URL**, saves via the existing `POST /api/jobs`, closes the tab, returns found/saved/duplicate/failed). `bridge.js`/`background.js` route the new message; manifest gains host permissions for the three portals only (no `tabs` permission). Backend `POST /api/jobs` now 409s on an exact `apply_url` too (never `canonical_url` — that would re-create the WSP↔Microsoft merge). Fixed a pre-existing `file://` ACK-drop in `bridge.js` (origin targetOrigin can't match an opaque origin) — messaging back to 8/8. No matching/scoring/autofill/application changes; no UI redesign. Tests: job-fetch **17/17** + **12/12**, backend **51/51**, all other suites green. (Superseded the same day by the LinkedIn virtualized-scroll fix in the row above.) |

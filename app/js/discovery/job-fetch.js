@@ -64,6 +64,124 @@ const JobFetch = (() => {
     try { return (typeof Backend !== 'undefined') ? Backend.baseUrl() : ''; } catch (e) { return ''; }
   }
 
+  /* ---------- public ATS feeds (Greenhouse + Lever) ----------
+     These are the vendors' own public JSON board APIs, so they need no browser
+     session and no extension: the BACKEND fetches them (POST /api/ats/import),
+     filters to Saudi Arabia / UAE / GCC / Remote, dedups by ATS job id and exact
+     URL, and hands back the rows it stored. Runs on every Fetch Jobs Now,
+     alongside — and independently of — the portal saved searches. */
+
+  const ATS_TIMEOUT = 120000;      // real boards, several companies, one request
+  let _atsPending = null;          // Promise<fragment|null> for the run in flight
+
+  const num = v => Number(v || 0) || 0;
+
+  /* the backend summary, reshaped into the same rows the panel already renders */
+  function atsFragment(d) {
+    const rows = (d.detail || []).map(x => {
+      const filtered = num(x.filtered);
+      const reason = x.error
+        ? String(x.error)
+        : (filtered ? filtered + ' posting' + (filtered === 1 ? '' : 's') + ' outside Saudi Arabia / UAE / GCC / Remote' : '');
+      return {
+        id: String(x.company || 'ATS') + ' · ' + String(x.ats || 'ats'),
+        found: num(x.found), saved: num(x.saved), duplicate: num(x.duplicate), failed: num(x.failed),
+        status: x.error ? 'failed' : 'ok', reason, diag: null,
+      };
+    });
+    return {
+      totals: { found: num(d.found), saved: num(d.saved), duplicate: num(d.duplicate), failed: num(d.failed) },
+      sources: rows,
+      jobs: Array.isArray(d.jobs) ? d.jobs : [],
+    };
+  }
+
+  function atsUnavailable(message) {
+    return {
+      totals: { found: 0, saved: 0, duplicate: 0, failed: 0 },
+      sources: [{
+        id: 'Greenhouse + Lever', found: 0, saved: 0, duplicate: 0, failed: 0,
+        status: 'failed', reason: message, diag: null,
+      }],
+      jobs: [],
+    };
+  }
+
+  async function runAtsImport() {
+    const c = (typeof APIClient !== 'undefined') ? APIClient : null;
+    if (!c) return null;
+    try {
+      const r = await c.request('POST', apiBase() + '/api/ats/import', { retries: 0, timeout: ATS_TIMEOUT });
+      const d = r && r.data;
+      if (!d || typeof d !== 'object') return atsUnavailable('the ATS import returned nothing');
+      return atsFragment(d);
+    } catch (e) {
+      /* the backend is where these feeds are fetched, so no backend = no ATS */
+      return atsUnavailable('CareerPilot\'s backend is not reachable — start it to import Greenhouse and Lever');
+    }
+  }
+
+  /* ---------- Cisco (careers.cisco.com) ----------
+     Cisco's own job search, fetched backend-side like the ATS feeds and put
+     through the same location / role / salary rules. One row per country. */
+
+  function ciscoFragment(d) {
+    const rows = (d.detail || []).map(x => {
+      const filtered = num(x.filtered);
+      const reason = x.error
+        ? String(x.error)
+        : (filtered ? filtered + ' posting' + (filtered === 1 ? '' : 's') + ' outside the target roles or below the salary floor' : '');
+      return {
+        id: 'Cisco · ' + String(x.country || ''),
+        found: num(x.found), saved: num(x.saved), duplicate: num(x.duplicate), failed: num(x.failed),
+        status: x.error ? 'failed' : 'ok', reason, diag: null,
+      };
+    });
+    return {
+      totals: { found: num(d.found), saved: num(d.saved), duplicate: num(d.duplicate), failed: num(d.failed) },
+      sources: rows,
+      jobs: Array.isArray(d.jobs) ? d.jobs : [],
+    };
+  }
+
+  function ciscoUnavailable(message) {
+    return {
+      totals: { found: 0, saved: 0, duplicate: 0, failed: 0 },
+      sources: [{ id: 'Cisco', found: 0, saved: 0, duplicate: 0, failed: 0, status: 'failed', reason: message, diag: null }],
+      jobs: [],
+    };
+  }
+
+  async function runCiscoImport() {
+    const c = (typeof APIClient !== 'undefined') ? APIClient : null;
+    if (!c) return null;
+    try {
+      const r = await c.request('POST', apiBase() + '/api/cisco/import', { retries: 0, timeout: ATS_TIMEOUT });
+      const d = r && r.data;
+      if (!d || typeof d !== 'object') return ciscoUnavailable('the Cisco import returned nothing');
+      return ciscoFragment(d);
+    } catch (e) {
+      return ciscoUnavailable('CareerPilot\'s backend is not reachable — start it to import Cisco jobs');
+    }
+  }
+
+  /* both backend-side sources, run together */
+  async function runBackendSources() {
+    const parts = await Promise.all([runAtsImport(), runCiscoImport()]);
+    const live = parts.filter(Boolean);
+    if (!live.length) return null;
+    return live.reduce((acc, p) => ({
+      totals: {
+        found: acc.totals.found + p.totals.found,
+        saved: acc.totals.saved + p.totals.saved,
+        duplicate: acc.totals.duplicate + p.totals.duplicate,
+        failed: acc.totals.failed + p.totals.failed,
+      },
+      sources: acc.sources.concat(p.sources),
+      jobs: acc.jobs.concat(p.jobs),
+    }), { totals: { found: 0, saved: 0, duplicate: 0, failed: 0 }, sources: [], jobs: [] });
+  }
+
   function clearTimer() {
     if (_timer != null && typeof clearTimeout === 'function') clearTimeout(_timer);
     _timer = null;
@@ -93,20 +211,31 @@ const JobFetch = (() => {
     if (ui.running) return { ok: false, error: 'A fetch is already running' };
 
     const sources = JobFetchStore.configured();
-    if (!sources.length) {
-      ui.error = 'Add at least one saved search URL first';
-      say(ui.error, 'error');
-      refresh();
-      return { ok: false, error: ui.error };
-    }
 
     const token = 'cpf-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7);
     ui.running = true; ui.token = token; ui.startedAt = Date.now(); ui.error = null;
 
-    const sent = postToExtension({
+    /* the backend-side sources always run — the public Greenhouse + Lever feeds
+       and Cisco's own job search. They need no saved search and no browser
+       session, so they work even with no portals configured. */
+    _atsPending = runBackendSources();
+
+    /* the portal saved searches (Bayt / GulfTalent) still go through the
+       extension; LinkedIn is imported from its own tab, see linkedin-import.js */
+    const sent = sources.length && postToExtension({
       __careerpilot: true, kind: 'fetch-jobs', token, sources, api: apiBase(),
     });
-    if (!sent) { finish(token, null); return { ok: false, error: ui.error }; }
+
+    if (!sent) {
+      /* nothing for the extension to do (or it isn't there) — the ATS import is
+         the whole run, so finish as soon as it lands */
+      _atsPending.then(() => finish(token, sources.length ? null : { ok: true, token, totals: null, sources: [], jobs: [] }));
+      say(sources.length
+        ? 'Importing Greenhouse and Lever — the extension did not answer for your saved searches…'
+        : 'Importing jobs from Greenhouse and Lever…', 'info');
+      refresh();
+      return { ok: true, token, ats: true, sources: [] };
+    }
 
     clearTimer();
     if (typeof setTimeout === 'function') {
@@ -115,13 +244,36 @@ const JobFetch = (() => {
       }, REPLY_TIMEOUT);
     }
 
-    say('Fetching jobs — opening your saved searches…', 'info');
+    say('Fetching jobs — Greenhouse and Lever, plus your saved searches…', 'info');
     refresh();
-    return { ok: true, token, sources: sources.map(s => s.id) };
+    return { ok: true, token, ats: true, sources: sources.map(s => s.id) };
   }
 
   const NO_EXTENSION = 'The CareerPilot Chrome extension did not answer — load it in Chrome, then try again';
   const TIMED_OUT = 'The fetch did not finish in time — check the tabs Chrome opened, then try again';
+
+  /* One run, two independent halves: the portal saved searches (extension) and
+     the public ATS feeds (backend). Their counts add up, their source rows sit
+     side by side, and their saved jobs all reach the board. A run where the
+     extension failed but Greenhouse worked is still a successful run. */
+  function mergeAts(base, ats) {
+    const t = (base && base.totals) || { found: 0, saved: 0, duplicate: 0, failed: 0 };
+    return {
+      ok: (base && base.ok !== false) || !!(ats.sources || []).length,
+      token: base && base.token,
+      /* the extension's own error is dropped once ATS carried the run */
+      error: (base && base.ok === false && !(ats.totals.found || ats.totals.saved)) ? base.error : '',
+      totals: {
+        found: num(t.found) + ats.totals.found,
+        saved: num(t.saved) + ats.totals.saved,
+        duplicate: num(t.duplicate) + ats.totals.duplicate,
+        failed: num(t.failed) + ats.totals.failed,
+      },
+      sources: ((base && base.sources) || []).concat(ats.sources),
+      attention: (base && base.attention) || [],
+      jobs: (((base && base.jobs) || []).concat(ats.jobs)),
+    };
+  }
 
   /* record the outcome of a run, whatever it was. Resolves once the newly saved
      jobs have been pulled into Today's Jobs, so a caller can await the board
@@ -131,17 +283,28 @@ const JobFetch = (() => {
     ui.running = false;
     ui.token = null;
 
-    const result = (detail && typeof detail === 'object')
+    let result = (detail && typeof detail === 'object')
       ? detail
       : { ok: false, error: why === 'timeout' ? TIMED_OUT : NO_EXTENSION, totals: null, sources: [] };
+
+    /* fold in the public ATS feeds, whatever the portal side did. They are an
+       independent source: Greenhouse and Lever still count even when the
+       extension never answered. */
+    const ats = _atsPending ? await _atsPending.catch(() => null) : null;
+    _atsPending = null;
+    if (ats) result = mergeAts(result, ats);
 
     const run = JobFetchStore.saveRun(result);
     ui.error = (run && run.ok) ? null : (run && run.error) || null;
 
     if (run && run.ok) {
       const t = run.totals;
-      /* the newly saved jobs live in the backend — pull them into Today's Jobs
-         right away so the board shows them without a refresh */
+      /* Put the saved jobs on the board straight from what the run handed back
+         (the ATS import returns the rows it stored, backend id included). This
+         needs no second request, so the jobs show up even if the page cannot
+         GET from the backend. The pull below is a top-up for anything saved
+         outside this run. */
+      upsertRunJobs(result);
       await pullIntoBoard();
       say(`Found ${t.found} · saved ${t.saved} · duplicate ${t.duplicate} · failed ${t.failed}`,
         t.failed ? 'error' : 'success');
@@ -152,6 +315,22 @@ const JobFetch = (() => {
     }
     refresh();
     return run;
+  }
+
+  /* Fold every job the run saved into the SAME store Today's Jobs renders
+     (`ImportedJobs`, which the Imports panel inside the board reads). Deduped
+     by the backend job's own identity and by exact URL, so re-running never
+     doubles a card. */
+  function upsertRunJobs(detail) {
+    if (typeof ImportedJobs === 'undefined' || !detail || !Array.isArray(detail.jobs)) return 0;
+    let added = 0;
+    detail.jobs.forEach(j => {
+      try {
+        const r = ImportedJobs.upsertFromBackend(j);
+        if (r && r.ok && !r.duplicate) added++;
+      } catch (e) { /* one bad row must not lose the rest */ }
+    });
+    return added;
   }
 
   async function pullIntoBoard() {
@@ -184,5 +363,11 @@ const JobFetch = (() => {
     return (typeof JobFetchView !== 'undefined') ? JobFetchView.panel(ui) : '';
   }
 
-  return { ui, render, bind, fetchNow, onResult, finish, setDraft, saveSearch, REPLY_TIMEOUT };
+  return {
+    ui, render, bind, fetchNow, onResult, finish, setDraft, saveSearch, REPLY_TIMEOUT,
+    /* public ATS feeds (Greenhouse + Lever) */
+    runAtsImport, atsFragment, mergeAts, upsertRunJobs, ATS_TIMEOUT,
+    /* Cisco (careers.cisco.com) */
+    runCiscoImport, ciscoFragment, runBackendSources,
+  };
 })();

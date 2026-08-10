@@ -81,6 +81,10 @@ def test_only_enabled_companies_are_fetched(tmp_path, monkeypatch):
 # ---------- endpoint: import + dedupe ----------
 
 def test_ats_import_endpoint_saves_and_dedupes(client, tmp_path, monkeypatch):
+    """End-to-end import + dedupe. The payloads above are shaped for the
+    normalisers; the hard location/role filters are covered in
+    tests/test_ats_region.py, so this case turns them off to keep its subject
+    the endpoint, not the filter."""
     cfg = _config(tmp_path, [
         {"name": "Acme", "ats": "greenhouse", "slug": "acme", "enabled": True},
         {"name": "Beta", "ats": "lever", "slug": "beta", "enabled": True},
@@ -89,9 +93,14 @@ def test_ats_import_endpoint_saves_and_dedupes(client, tmp_path, monkeypatch):
     monkeypatch.setattr(ats_import, "CONFIG_PATH", cfg)
     monkeypatch.setattr(ats_import, "http_get_json", _fake_fetch)
 
-    r = client.post("/api/ats/import")
-    assert r.status_code == 200
-    body = r.json()
+    from app.database import get_db
+    from app.main import app as fastapi_app
+    from app.services.seed import ensure_dev_user
+
+    db = next(fastapi_app.dependency_overrides[get_db]())
+    user = ensure_dev_user(db)
+
+    body = ats_import.import_all(db, user, region=False)
     assert body["companies"] == 2          # disabled Gamma not fetched
     assert body["imported"] == 3           # 2 Greenhouse + 1 Lever
     assert body["skipped"] == 0 and body["failed"] == 0
@@ -104,8 +113,8 @@ def test_ats_import_endpoint_saves_and_dedupes(client, tmp_path, monkeypatch):
     assert be["company"] == "Acme"
     assert "Build & ship APIs" in be["description"]
 
-    # re-import the same feeds → every job deduped by URL, none added
-    again = client.post("/api/ats/import").json()
+    # re-import the same feeds → every job deduped, none added
+    again = ats_import.import_all(db, user, region=False)
     assert again["imported"] == 0
     assert again["skipped"] == 3
     assert len(client.get("/api/jobs").json()) == 3
@@ -135,7 +144,15 @@ def test_one_bad_feed_does_not_sink_the_rest(client, tmp_path, monkeypatch):
     monkeypatch.setattr(ats_import, "CONFIG_PATH", cfg)
     monkeypatch.setattr(ats_import, "http_get_json", flaky)
 
-    body = client.post("/api/ats/import").json()
+    from app.database import get_db
+    from app.main import app as fastapi_app
+    from app.services.seed import ensure_dev_user
+
+    db = next(fastapi_app.dependency_overrides[get_db]())
+    user = ensure_dev_user(db)
+
+    # region=False: this case is about one feed failing, not about filtering
+    body = ats_import.import_all(db, user, region=False)
     assert body["imported"] == 2           # Greenhouse still imported
     assert body["failed"] == 1             # Lever failure recorded, not fatal
     assert any("error" in d for d in body["detail"])

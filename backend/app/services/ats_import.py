@@ -76,6 +76,283 @@ def _canonical(url: str) -> str:
     return (url or "").split("?")[0].split("#")[0].rstrip("/")
 
 
+# ---------- region filter: Saudi Arabia / UAE / GCC / Remote ----------
+#
+# Boards state location as free text ("Dubai, United Arab Emirates",
+# "Remote - US", "Home Based - APAC", "CHI, SF, NYC, SEA, US Remote"). Two
+# rules, checked in order:
+#
+#   1. any GCC / Middle East token  -> keep
+#   2. an open-remote token         -> keep, UNLESS the string also names a
+#                                      country or region outside the GCC
+#
+# Rule 2's exclusion is what makes this useful: "Remote" and "Home based -
+# Worldwide" are reachable from Riyadh, while "Remote - US", "Austria Remote"
+# and "Home Based - APAC" are not, and every one of those appears in the real
+# feeds. EMEA is deliberately allowed — the Gulf is inside it.
+
+GCC_RE = re.compile(
+    r"(saudi|riyadh|jeddah|dammam|khobar|dhahran|makkah|mecca|medina|\bksa\b|"
+    r"united arab emirates|\bu\.?a\.?e\.?\b|dubai|abu dhabi|sharjah|ajman|"
+    r"qatar|doha|kuwait|bahrain|manama|\boman\b|muscat|"
+    r"\bgcc\b|middle east|\bmena\b)", re.I)
+
+REMOTE_RE = re.compile(r"\b(remote|home[\s-]?based|anywhere|worldwide|global|distributed)\b", re.I)
+
+# Places that make a "remote" posting unreachable from the Gulf. EMEA and
+# Middle East are deliberately absent — they include the GCC.
+#
+# Two groups, because the feeds write regions both ways: word-bounded names
+# ("Remote - Germany") and glued compounds ("Remote-WesternEurope", "NORAM"),
+# which a \b-anchored pattern never matches. The GCC rule is checked FIRST, so
+# a posting listing both ("Dubai, SF, Remote") is still kept.
+_FOREIGN_WORDS = (
+    r"u\.?s\.?a?\.?|united states|america[ns]?|canada|canadian|brazil|mexico|argentina|"
+    r"colombia|chile|peru|"
+    r"u\.?k\.?|united kingdom|england|scotland|ireland|dublin|london|"
+    r"germany|france|spain|italy|portugal|poland|romania|bulgaria|netherlands|belgium|"
+    r"austria|switzerland|sweden|norway|denmark|finland|greece|czech|hungary|serbia|"
+    r"croatia|ukraine|turkey|israel|"
+    r"india|bengaluru|bangalore|gurugram|china|beijing|shanghai|japan|korea|taiwan|taipei|"
+    r"hong kong|singapore|malaysia|kuala lumpur|indonesia|thailand|vietnam|philippines|"
+    r"australia|new zealand|"
+    r"nigeria|kenya|ghana|south africa|egypt|cairo|morocco|pakistan|karachi|lahore|jordan|amman|"
+    # US city / state shorthand that appears in multi-site strings
+    r"sf|nyc|sea|chi|nj|ny|ca|il|wa|tx|dc|bay area|san francisco|new york|seattle|chicago|"
+    r"austin|boston|denver|atlanta|dallas|phoenix|portland|toronto|palo alto|los angeles"
+)
+# glued or hyphenated region blocks — matched without a leading word boundary
+_FOREIGN_COMPOUND = (
+    r"europe|european|nordics?|dach|noram|latam|apac|iberia|benelux|amer(?:ica)?s?|asia|africa"
+)
+FOREIGN_RE = re.compile(r"(\b(?:%s)\b|(?:%s))" % (_FOREIGN_WORDS, _FOREIGN_COMPOUND), re.I)
+
+
+def matches_region(location: str) -> bool:
+    """True when a posting is in the GCC or is open-remote (see rules above)."""
+    loc = (location or "").strip()
+    if not loc:
+        return False                      # unknown location is not a GCC match
+    if GCC_RE.search(loc):
+        return True
+    if REMOTE_RE.search(loc) and not FOREIGN_RE.search(loc):
+        return True
+    return False
+
+
+# ==========================================================================
+# HARD FILTERS — a posting must pass all three to be saved.
+#
+#   Location : Saudi Arabia or Qatar only. UAE, Remote, Global and every
+#              other country are rejected.
+#   Role     : the title must be one of the target areas (network / cyber /
+#              physical security, network + solutions engineering, technical
+#              consulting, delivery, implementation, presales, project and
+#              programme management, PSIM, ICT).
+#   Salary   : reject ONLY when a salary is explicitly disclosed and falls
+#              below the floor. An undisclosed salary is KEPT and marked
+#              unknown — silence is not a rejection, and is never guessed at.
+# ==========================================================================
+
+SAUDI_RE = re.compile(
+    r"(saudi|\bk\.?s\.?a\.?\b|riyadh|jeddah|jiddah|dammam|khobar|dhahran|jubail|yanbu|"
+    r"mecca|makkah|medina|madinah|tabuk|abha|taif|hail|najran|jazan|qassim|buraidah|neom)", re.I)
+QATAR_RE = re.compile(r"(qatar|doha|lusail|al[\s-]?rayyan|al[\s-]?wakrah|al[\s-]?khor)", re.I)
+
+
+def location_country(location: str) -> str | None:
+    """'SA', 'QA', or None. A posting that names Saudi or Qatar qualifies even
+    when it also lists another site — the role is genuinely open there. Bare
+    'Remote' / 'Global' name no country and are therefore rejected."""
+    loc = (location or "").strip()
+    if not loc:
+        return None
+    if SAUDI_RE.search(loc):
+        return "SA"
+    if QATAR_RE.search(loc):
+        return "QA"
+    return None
+
+
+# ---------- role: the target areas ----------
+#
+# Matched against the job TITLE only — a description mentioning "security" is
+# not a security role. Written from the target list, nothing broader.
+
+ROLE_RE = re.compile(r"""(
+      network\s*(security|engineer|architect|specialist|administrator|admin|operations)
+    | (cyber|information)\s*security
+    | \bcybersecurity\b
+    | security\s*(engineer|architect|analyst|consultant|specialist|operations|systems?)
+    | (solution|solutions)\s*(architect|engineer|consultant)
+    | technical\s*(consultant|delivery|architect|account\s*manager|project\s*manager|program(me)?\s*manager)
+    | infrastructure
+    | pre[\s\-]?sales
+    | implementation
+    | delivery\s*(manager|lead|engineer|consultant|architect)
+    | (project|program|programme)\s*manager
+    | \bpsim\b
+    | physical\s*security
+    | security\s*systems?
+    | \bict\b
+)""", re.I | re.X)
+
+
+def matches_role(title: str) -> bool:
+    """True when the job title is in one of the target areas."""
+    return bool(ROLE_RE.search(title or ""))
+
+
+# Monthly floors. SAR and QAR are both pegged to the US dollar, so the Qatar
+# threshold is the same money: 30,000 SAR = USD 8,000 = ~29,100 QAR.
+SAUDI_MIN_SAR_MONTH = 30_000
+QATAR_MIN_QAR_MONTH = 29_000
+_USD_PER = {"SAR": 1 / 3.75, "QAR": 1 / 3.64, "USD": 1.0}
+MIN_USD_MONTH = SAUDI_MIN_SAR_MONTH * _USD_PER["SAR"]      # 8,000 USD / month
+
+_CURRENCY = {
+    "sar": "SAR", "sr": "SAR", "﷼": "SAR", "riyal": "SAR", "riyals": "SAR",
+    "qar": "QAR", "qr": "QAR",
+    "usd": "USD", "$": "USD", "us$": "USD",
+}
+# a money mention: currency before or after the amount, with an optional range
+_AMOUNT = r"(\d[\d,\s]*(?:\.\d+)?)\s*(?:k\b)?"
+_SALARY_RE = re.compile(
+    r"(?:(?P<cur1>SAR|SR|QAR|QR|USD|US\$|\$|﷼)\s*" + _AMOUNT +
+    r"(?:\s*(?:-|–|—|to|up to)\s*" + _AMOUNT.replace("(", "(?:", 1) + r")?"
+    r"|" + _AMOUNT + r"\s*(?:-|–|—|to)?\s*(?:\d[\d,\s]*)?\s*(?P<cur2>SAR|SR|QAR|QR|USD|riyals?))",
+    re.I)
+_PERIOD_RE = re.compile(
+    r"\b(per\s+month|monthly|/\s*month|/\s*mo\b|a\s+month|pm\b"
+    r"|per\s+annum|per\s+year|annually|annual|yearly|/\s*year|/\s*yr\b|a\s+year|p\.?a\.?\b)", re.I)
+_UNDISCLOSED_RE = re.compile(
+    r"(salary\s*:?\s*(not disclosed|undisclosed|competitive|negotiable|doe|tbd|confidential)"
+    r"|competitive (salary|package|compensation)|salary negotiable)", re.I)
+
+
+def _to_number(raw: str) -> float | None:
+    if raw is None:
+        return None
+    s = str(raw).replace(",", "").replace(" ", "").strip()
+    if not s:
+        return None
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+def parse_salary(text: str) -> dict | None:
+    """Pull an explicitly stated salary out of free text.
+
+    Returns {'monthly': <float in currency>, 'currency': 'SAR'|'QAR'|'USD'}
+    or None when nothing reliable is stated. Requires BOTH a currency and a
+    period — "35,000" alone is not a disclosed salary, and guessing the period
+    is exactly the kind of invention this filter exists to prevent."""
+    t = (text or "")
+    if not t.strip():
+        return None
+
+    for m in _SALARY_RE.finditer(t):
+        cur_raw = m.group("cur1") or m.group("cur2")
+        if not cur_raw:
+            continue
+        currency = _CURRENCY.get(cur_raw.strip().lower())
+        if not currency:
+            continue
+
+        nums = [_to_number(g) for g in m.groups()[1:] if g and re.match(r"^[\d,\s.]+$", str(g))]
+        nums = [n for n in nums if n]
+        if not nums:
+            continue
+        amount = max(nums)          # a disclosed range: the reachable figure
+
+        # the period has to be stated near the money, not anywhere on the page
+        window = t[max(0, m.start() - 60): m.end() + 60]
+        p = _PERIOD_RE.search(window)
+        if not p:
+            return None             # amount with no period → not reliably parseable
+        period = p.group(1).lower()
+        if re.search(r"(annum|year|yr|annual|p\.?a\.?)", period):
+            amount = amount / 12.0
+
+        if amount <= 0:
+            return None
+        return {"monthly": amount, "currency": currency}
+    return None
+
+
+SALARY_VERIFIED = "verified"     # disclosed and at or above the floor
+SALARY_UNKNOWN = "unknown"       # not disclosed — kept, never guessed at
+SALARY_BELOW = "below"           # disclosed and under the floor — rejected
+
+
+def _floor_for(country: str, currency: str) -> float | None:
+    """The monthly floor in the posting's own currency, or None if the pair
+    makes no sense (e.g. a SAR salary on a Qatar posting)."""
+    if currency == "USD":
+        return MIN_USD_MONTH
+    if country == "SA" and currency == "SAR":
+        return float(SAUDI_MIN_SAR_MONTH)
+    if country == "QA" and currency == "QAR":
+        return float(QATAR_MIN_QAR_MONTH)
+    return None
+
+
+def assess_salary(country: str, text: str) -> dict:
+    """{'status': verified|unknown|below, 'monthly':, 'currency':, 'why':}
+
+    Undisclosed is NOT a rejection — it comes back `unknown` so the caller can
+    keep the job and label it. Only a figure that is stated AND under the floor
+    is `below`. Nothing is ever inferred from a missing number."""
+    if _UNDISCLOSED_RE.search(text or ""):
+        return {"status": SALARY_UNKNOWN, "monthly": None, "currency": None,
+                "why": "salary stated as undisclosed/competitive"}
+    found = parse_salary(text)
+    if not found:
+        return {"status": SALARY_UNKNOWN, "monthly": None, "currency": None,
+                "why": "no salary disclosed"}
+
+    amount, currency = found["monthly"], found["currency"]
+    floor = _floor_for(country, currency)
+    if floor is None:
+        # a currency that does not belong to this country — not reliable enough
+        # to judge against a floor, so treat it as undisclosed rather than guess
+        return {"status": SALARY_UNKNOWN, "monthly": amount, "currency": currency,
+                "why": "salary in %s on a %s posting — not comparable" % (currency, country)}
+    if amount < floor:
+        return {"status": SALARY_BELOW, "monthly": amount, "currency": currency,
+                "why": "%.0f %s/month is below the %.0f floor" % (amount, currency, floor)}
+    return {"status": SALARY_VERIFIED, "monthly": amount, "currency": currency,
+            "why": "%.0f %s/month meets the %.0f floor" % (amount, currency, floor)}
+
+
+def evaluate(job: dict) -> dict:
+    """The single gate every posting goes through before it is saved.
+
+    {'ok': bool, 'reason': str, 'country':, 'salary': <assess_salary result>}"""
+    country = location_country(job.get("location", ""))
+    if not country:
+        return {"ok": False, "reason": "location not Saudi Arabia or Qatar",
+                "country": None, "salary": None}
+
+    if not matches_role(job.get("title", "")):
+        return {"ok": False, "reason": "title outside the target roles",
+                "country": country, "salary": None}
+
+    text = " ".join([str(job.get("description") or ""), str(job.get("title") or "")])
+    salary = assess_salary(country, text)
+    if salary["status"] == SALARY_BELOW:
+        return {"ok": False, "reason": salary["why"], "country": country, "salary": salary}
+    return {"ok": True, "reason": salary["why"], "country": country, "salary": salary}
+
+
+def passes_hard_filters(job: dict) -> tuple[bool, str]:
+    """Backwards-compatible thin wrapper over evaluate()."""
+    r = evaluate(job)
+    return r["ok"], r["reason"]
+
+
 def _iso_date(value: Any) -> str:
     """ISO string or epoch ms → 'YYYY-MM-DD'; '' when unknown."""
     if not value:
@@ -145,34 +422,73 @@ def fetch_company(entry: dict, fetch: FetchFn | None = None) -> list[dict]:
 
 # ---------- import (dedupe by URL) ----------
 
+def _existing(db: Session, user: User, job: dict) -> Job | None:
+    """Already stored? Deduped on the posting's OWN identity — the ATS job id,
+    and the exact apply URL. Never on a loosened/canonical URL: two distinct
+    postings can share one, and merging them links a job to the wrong package."""
+    by_id = (
+        db.query(Job)
+        .filter(Job.user_id == user.id,
+                Job.source == job["source"],
+                Job.source_job_id == job["source_job_id"])
+        .first()
+    )
+    if by_id:
+        return by_id
+    url = (job.get("url") or "").strip()
+    if not url:
+        return None
+    return db.query(Job).filter(Job.user_id == user.id, Job.apply_url == url).first()
+
+
 def import_all(db: Session, user: User, fetch: FetchFn | None = None,
-               path: Path | None = None) -> dict:
+               path: Path | None = None, region: bool = True) -> dict:
+    """Import every enabled company. `region=False` skips the GCC/Remote filter."""
     fetch = fetch or http_get_json          # resolved at call time (tests can patch)
     companies = enabled_companies(path)
     per_company = []
-    total_imported = total_skipped = total_failed = 0
+    saved_rows: list[dict] = []
+    total_found = total_imported = total_skipped = total_failed = total_filtered = 0
 
     for entry in companies:
         name = entry.get("name", entry.get("slug", "?"))
         try:
             jobs = fetch_company(entry, fetch=fetch)
         except Exception as exc:  # noqa: BLE001 — one bad feed must not fail the rest
-            per_company.append({"company": name, "error": str(exc), "imported": 0, "skipped": 0})
+            per_company.append({
+                "company": name, "error": str(exc),
+                "found": 0, "saved": 0, "duplicate": 0, "failed": 1, "filtered": 0,
+                "imported": 0, "skipped": 0,
+            })
             total_failed += 1
             continue
 
-        imported = skipped = 0
-        for job in jobs:
-            canon = job["url"]
-            exists = (
-                db.query(Job)
-                .filter(Job.user_id == user.id, Job.canonical_url == canon)
-                .first()
-            )
-            if exists:
-                skipped += 1                       # dedupe by job URL
+        fetched = len(jobs)
+        if region:
+            # HARD filters: Saudi Arabia or Qatar, a target-area title, and no
+            # disclosed-but-below-floor salary. Each survivor carries its own
+            # salary verdict so the saved row can be marked.
+            kept = []
+            for j in jobs:
+                verdict = evaluate(j)
+                if verdict["ok"]:
+                    j = dict(j, _salary=verdict["salary"])
+                    kept.append(j)
+        else:
+            kept = list(jobs)
+        filtered = fetched - len(kept)
+
+        imported = skipped = failed = 0
+        for job in kept:
+            if _existing(db, user, job):
+                skipped += 1
                 continue
-            db.add(Job(
+            # a verified salary is recorded on the row; an unknown one leaves
+            # salary_disclosed False, which is how the rest of the app already
+            # reads "no salary stated"
+            sal = job.get("_salary") or {}
+            verified = sal.get("status") == SALARY_VERIFIED
+            row = Job(
                 user_id=user.id,
                 source=job["source"],
                 source_job_id=job["source_job_id"],
@@ -181,27 +497,61 @@ def import_all(db: Session, user: User, fetch: FetchFn | None = None,
                 location=job["location"],
                 description=job["description"],
                 apply_url=job["url"],
-                canonical_url=canon,
+                canonical_url=_canonical(job["url"]),
                 posted_date=job["posted_date"],
-                raw={"ats": entry.get("ats"), "slug": entry.get("slug")},
-            ))
+                salary=("%.0f" % sal["monthly"]) if verified else "",
+                salary_disclosed=verified,
+                currency=(sal.get("currency") or "USD") if verified else "USD",
+                raw={
+                    "ats": entry.get("ats"), "slug": entry.get("slug"),
+                    "salary_status": sal.get("status") or SALARY_UNKNOWN,
+                    "salary_note": sal.get("why") or "",
+                },
+            )
+            db.add(row)
             try:
                 db.commit()
+                db.refresh(row)
                 imported += 1
+                # the stored row, so the app can put it on the board with no second request
+                saved_rows.append({
+                    "id": row.id, "source": row.source, "source_job_id": row.source_job_id,
+                    "title": row.title, "company": row.company, "location": row.location,
+                    "apply_url": row.apply_url, "canonical_url": row.canonical_url,
+                    "salary_status": sal.get("status") or SALARY_UNKNOWN,
+                    "salary": row.salary, "salary_disclosed": row.salary_disclosed,
+                    "currency": row.currency,
+                })
             except Exception:  # noqa: BLE001 — unique-constraint race → treat as dup
                 db.rollback()
                 skipped += 1
 
-        per_company.append({"company": name, "imported": imported, "skipped": skipped})
+        per_company.append({
+            "company": name, "ats": entry.get("ats"),
+            "found": len(kept), "saved": imported, "duplicate": skipped, "failed": failed,
+            "filtered": filtered, "fetched": fetched,
+            # legacy key names, kept so existing callers/tests keep working
+            "imported": imported, "skipped": skipped,
+        })
+        total_found += len(kept)
         total_imported += imported
         total_skipped += skipped
+        total_filtered += filtered
 
     return {
         "companies": len(companies),
+        # the four counts the UI shows
+        "found": total_found,
+        "saved": total_imported,
+        "duplicate": total_skipped,
+        "failed": total_failed,
+        # how many postings the region filter removed before saving
+        "filtered": total_filtered,
+        # legacy names
         "imported": total_imported,
         "skipped": total_skipped,
-        "failed": total_failed,
         "detail": per_company,
+        "jobs": saved_rows,
     }
 
 

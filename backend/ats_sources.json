@@ -1,9 +1,22 @@
 {
-  "_comment": "Public ATS job feeds to import via POST /api/ats/import (or `python -m app.services.ats_import`). Set enabled:true to include a company. 'ats' is 'greenhouse' or 'lever'. 'slug' is the Greenhouse board token or the Lever company slug — the part in the public board URL, e.g. https://boards.greenhouse.io/<token> or https://jobs.lever.co/<slug>. Sample entries below are real public boards but left DISABLED.",
+  "_comment": "Public ATS job feeds imported by POST /api/ats/import (also run from 'Fetch Jobs Now', or `python -m app.services.ats_import`). 'ats' is 'greenhouse' or 'lever'. 'slug' is the Greenhouse board token or the Lever company slug — the part in the public board URL (https://boards.greenhouse.io/<token>, https://jobs.lever.co/<slug>). Every entry below was verified live against the vendor API on 2026-08-03: the board answers HTTP 200 and returns postings that pass the Saudi Arabia / UAE / GCC / Remote filter. There are NO sample or demo companies here. Postings outside the region are fetched but not saved.",
   "companies": [
-    { "name": "Stripe",     "ats": "greenhouse", "slug": "stripe",     "enabled": false },
-    { "name": "Airtable",   "ats": "greenhouse", "slug": "airtable",   "enabled": false },
-    { "name": "Vercel",     "ats": "lever",      "slug": "vercel",     "enabled": false },
-    { "name": "Netlify",    "ats": "lever",      "slug": "netlify",    "enabled": false }
+    { "name": "Careem",   "ats": "greenhouse", "slug": "careem",   "enabled": true,
+      "_note": "Dubai-based super-app. 24 postings live, 11 in the UAE." },
+    { "name": "Tamara",   "ats": "greenhouse", "slug": "tamara",   "enabled": true,
+      "_note": "Saudi fintech. 41 postings live, 30 in Riyadh / Saudi Arabia / Dubai." },
+    { "name": "Elastic",  "ats": "greenhouse", "slug": "elastic",  "enabled": true,
+      "_note": "Remote-first; posts Dubai and Saudi Arabia roles." },
+    { "name": "MongoDB",  "ats": "greenhouse", "slug": "mongodb",  "enabled": true,
+      "_note": "Posts Dubai roles." },
+    { "name": "Binance",  "ats": "lever",      "slug": "binance",  "enabled": true,
+      "_note": "Large Dubai / Abu Dhabi presence, plus 'Global' remote postings." },
+    { "name": "Palantir", "ats": "lever",      "slug": "palantir", "enabled": true,
+      "_note": "Posts Abu Dhabi and Dubai roles." },
+
+    { "name": "Cloudflare", "ats": "greenhouse", "slug": "cloudflare", "enabled": false,
+      "_note": "Board is live, but its GCC-passing postings are bare 'Remote' / 'Distributed' with no Gulf presence — enable if you want broad remote roles." },
+    { "name": "Canonical",  "ats": "greenhouse", "slug": "canonical",  "enabled": false,
+      "_note": "Board is live and fully remote ('Home based - EMEA' / 'Worldwide'), ~176 pass the filter — enable if you want that volume." }
   ]
 }

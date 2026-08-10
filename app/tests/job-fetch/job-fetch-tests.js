@@ -18,13 +18,82 @@
   }
   const settle = (n) => waitFor(() => false, n || 12);
 
-  /* ---- stub the backend transport (what JobsBackendSync reads) ---- */
+  /* ---- stub the backend transport ----
+     `/api/jobs` is what JobsBackendSync reads; `/api/ats/import` is the public
+     Greenhouse + Lever import the backend performs. `atsReachable = false`
+     stands in for the backend being down. */
   let backendJobs = [];
+  let atsBody = null;
+  let atsReachable = true;
+  let atsCalls = 0;
+  let ciscoBody = null;
+  let ciscoReachable = true;
+  let ciscoCalls = 0;
   APIClient.configure({
-    transport: url => /\/api\/jobs/.test(url)
-      ? Promise.resolve({ ok: true, status: 200, data: backendJobs })
-      : Promise.resolve({ ok: true, status: 200, data: {} }),
+    transport: (url, opts) => {
+      if (/\/api\/ats\/import/.test(url)) {
+        atsCalls++;
+        if (!atsReachable) return Promise.reject(new Error('backend unreachable'));
+        return Promise.resolve({ ok: true, status: 200, data: atsBody });
+      }
+      if (/\/api\/cisco\/import/.test(url)) {
+        ciscoCalls++;
+        if (!ciscoReachable) return Promise.reject(new Error('backend unreachable'));
+        return Promise.resolve({ ok: true, status: 200, data: ciscoBody });
+      }
+      if (/\/api\/jobs/.test(url)) return Promise.resolve({ ok: true, status: 200, data: backendJobs });
+      return Promise.resolve({ ok: true, status: 200, data: {} });
+    },
   });
+
+  /* the summary POST /api/cisco/import returns (backend services/cisco_import.py) */
+  function ciscoSummary(over) {
+    return Object.assign({
+      countries: 2,
+      found: 2, saved: 2, duplicate: 0, failed: 0, filtered: 3,
+      detail: [
+        { country: 'Saudi Arabia', fetched: 5, found: 2, saved: 2, duplicate: 0, failed: 0, filtered: 3 },
+        { country: 'Qatar', fetched: 0, found: 0, saved: 0, duplicate: 0, failed: 0, filtered: 0 },
+      ],
+      jobs: [
+        { id: 9101, source: 'Cisco', source_job_id: 'cisco-2017334', title: 'Partner Solutions Engineer',
+          company: 'Cisco', location: 'Riyadh, Saudi Arabia',
+          apply_url: 'https://cisco.wd5.myworkdayjobs.com/Cisco_Careers/job/Riyadh/Partner-Solutions-Engineer_2017334-1',
+          canonical_url: 'https://cisco.wd5.myworkdayjobs.com/Cisco_Careers/job/Riyadh/Partner-Solutions-Engineer_2017334-1',
+          salary_status: 'unknown', salary: '', salary_disclosed: false, currency: 'USD' },
+        { id: 9102, source: 'Cisco', source_job_id: 'cisco-2012553',
+          title: 'Senior Cybersecurity Solutions Engineer - Splunk (Saudi Arabia)',
+          company: 'Cisco', location: 'Riyadh, Saudi Arabia',
+          apply_url: 'https://cisco.wd5.myworkdayjobs.com/Cisco_Careers/job/Riyadh/Senior-Cybersecurity_2012553-1',
+          canonical_url: 'https://cisco.wd5.myworkdayjobs.com/Cisco_Careers/job/Riyadh/Senior-Cybersecurity_2012553-1',
+          salary_status: 'unknown', salary: '', salary_disclosed: false, currency: 'USD' },
+      ],
+    }, over || {});
+  }
+
+  /* the summary POST /api/ats/import really returns (see backend
+     app/services/ats_import.py import_all) */
+  function atsSummary(over) {
+    return Object.assign({
+      companies: 2,
+      found: 3, saved: 2, duplicate: 1, failed: 0, filtered: 5,
+      imported: 2, skipped: 1,
+      detail: [
+        { company: 'Careem', ats: 'greenhouse', found: 2, saved: 2, duplicate: 0, failed: 0, filtered: 13, fetched: 15 },
+        { company: 'Binance', ats: 'lever', found: 1, saved: 0, duplicate: 1, failed: 0, filtered: 5, fetched: 6 },
+      ],
+      jobs: [
+        { id: 9001, source: 'Greenhouse', source_job_id: 'gh-1', title: 'Solutions Engineer',
+          company: 'Careem', location: 'Dubai, United Arab Emirates',
+          apply_url: 'https://boards.greenhouse.io/careem/jobs/1',
+          canonical_url: 'https://boards.greenhouse.io/careem/jobs/1' },
+        { id: 9002, source: 'Greenhouse', source_job_id: 'gh-2', title: 'Data Engineer',
+          company: 'Careem', location: 'Dubai, United Arab Emirates',
+          apply_url: 'https://boards.greenhouse.io/careem/jobs/2',
+          canonical_url: 'https://boards.greenhouse.io/careem/jobs/2' },
+      ],
+    }, over || {});
+  }
 
   /* a backend JobOut as the fetch run would have left it */
   function backendJob(over) {
@@ -46,10 +115,25 @@
     JobFetchStore.clear();
     ImportedJobs.clear();
     backendJobs = [];
+    atsBody = atsSummary();
+    atsReachable = true;
+    atsCalls = 0;
+    ciscoBody = ciscoSummary();
+    ciscoReachable = true;
+    ciscoCalls = 0;
     JobFetch.ui.running = false;
     JobFetch.ui.token = null;
     JobFetch.ui.error = null;
     JobFetch.ui.drafts = {};
+  }
+
+  /* Both backend sources run on every fetch, so a case about ONE of them
+     silences the other rather than baking the sum into its expectations. */
+  function noCisco() {
+    ciscoBody = ciscoSummary({ found: 0, saved: 0, duplicate: 0, failed: 0, detail: [], jobs: [] });
+  }
+  function noAts() {
+    atsBody = atsSummary({ found: 0, saved: 0, duplicate: 0, failed: 0, detail: [], jobs: [] });
   }
 
   /* the exact run shape extension/fetch-jobs.js returns */
@@ -104,16 +188,17 @@
       return 'wrong portal · no scheme → refused · existing value kept';
     }],
 
-    ['3 · Fetch Jobs Now with nothing configured does not call the extension', async () => {
+    ['3 · With no saved search configured, the extension is not called at all', async () => {
       reset();
       const cap = captureMessages();
-      const r = JobFetch.fetchNow();
-      await settle();
+      JobFetch.fetchNow();
+      await waitFor(() => JobFetch.ui.running === false, 200);
       cap.stop();
-      assert(!r.ok && /saved search/i.test(r.error), 'an honest message is required: ' + JSON.stringify(r));
-      assert(cap.seen.length === 0, 'no message may be sent when nothing is configured');
+      /* the public Greenhouse/Lever feeds still run — they need no saved search
+         — but nothing is asked of the extension */
+      assert(cap.seen.length === 0, 'no message may be sent when no portal is configured');
       assert(JobFetch.ui.running === false, 'the button must not be left spinning');
-      return 'no sources → no message · honest error';
+      return 'no portal → no extension message (the ATS feeds still run: see A4)';
     }],
 
     ['4 · Fetch Jobs Now sends the saved searches to the extension', async () => {
@@ -232,6 +317,9 @@
 
     ['10 · The extension\'s reply is accepted through the bridge relay, stale tokens are not', async () => {
       reset();
+      /* this case is about the bridge relay, so keep the backend sources out
+         of the totals — their own coverage is A1-A6 and C1-C5 */
+      noAts(); noCisco();
       JobFetchStore.setSearch('LinkedIn', LI_URL);
       JobFetch.bind();
       const started = JobFetch.fetchNow();
@@ -300,6 +388,227 @@
       assert(/25 card candidates/.test(html) && /1 parsed/.test(html) && /24 failed/.test(html),
         'and shows the numbers that prove it');
       return 'failed status · reason · diagnostics all surfaced';
+    }],
+
+    /* ---- public ATS feeds: Greenhouse + Lever ---- */
+
+    ['A1 · Greenhouse + Lever are imported on every Fetch Jobs Now', async () => {
+      reset(); noCisco();
+      JobFetchStore.setSearch('Bayt', BAYT_URL);
+      const started = JobFetch.fetchNow();
+      await settle();
+      assert(atsCalls === 1, 'the ATS import must be requested once, got ' + atsCalls);
+
+      /* the extension answers for the portal half; the ATS half merges in */
+      await JobFetch.onResult(started.token, {
+        ok: true, token: started.token,
+        totals: { found: 1, saved: 1, duplicate: 0, failed: 0 },
+        sources: [{ id: 'Bayt', found: 1, saved: 1, duplicate: 0, failed: 0, status: 'ok', reason: null }],
+        attention: [], jobs: [],
+      });
+
+      const run = JobFetchStore.lastRun();
+      const t = run.totals;
+      /* portal 1/1/0/0 + ats 3/2/1/0 */
+      assert(t.found === 4 && t.saved === 3 && t.duplicate === 1 && t.failed === 0,
+        'the two halves must add up: ' + JSON.stringify(t));
+
+      const ids = run.sources.map(s => s.id);
+      assert(ids.indexOf('Bayt') !== -1, 'the portal row survives: ' + ids.join(', '));
+      assert(ids.some(i => /Careem/.test(i)) && ids.some(i => /Binance/.test(i)),
+        'each ATS company gets its own row: ' + ids.join(', '));
+      const careem = run.sources.find(s => /Careem/.test(s.id));
+      assert(/greenhouse/.test(careem.id), 'the row names the ATS: ' + careem.id);
+      assert(careem.found === 2 && careem.saved === 2, 'per-company counts: ' + JSON.stringify(careem));
+      return 'portal + Greenhouse + Lever in one run · found 4 · saved 3 · duplicate 1 · failed 0';
+    }],
+
+    ['A2 · ATS jobs appear in Today\'s Jobs immediately', async () => {
+      reset();
+      noCisco();
+      JobFetchStore.setSearch('Bayt', BAYT_URL);
+      /* the page cannot GET from the backend — the run's own rows must be enough */
+      backendJobs = [];
+      assert(ImportedJobs.active().length === 0, 'the board starts empty');
+
+      const started = JobFetch.fetchNow();
+      await settle();
+      await JobFetch.onResult(started.token, {
+        ok: true, token: started.token, totals: { found: 0, saved: 0, duplicate: 0, failed: 0 },
+        sources: [], attention: [], jobs: [],
+      });
+
+      const board = ImportedJobs.active();
+      assert(board.length === 2, 'both imported ATS jobs must be on the board, got ' + board.length);
+      const j = board.find(x => x.url === 'https://boards.greenhouse.io/careem/jobs/1');
+      assert(j, 'the Greenhouse job is in the store Today\'s Jobs renders');
+      assert(j.title === 'Solutions Engineer' && j.company === 'Careem', 'fields carried through');
+      assert(j.location === 'Dubai, United Arab Emirates', 'GCC location kept: ' + j.location);
+      assert(j.source === 'Greenhouse', 'source recorded: ' + j.source);
+      assert(j.backendId === 9001, 'the backend id is kept for dedup');
+      assert(j.status === 'new', 'it arrives as new — no decision taken for the user');
+      assert(Imports.render().indexOf('Solutions Engineer') !== -1, 'and it renders in the Imports panel');
+      return '2 ATS jobs on the board with no second request and no refresh';
+    }],
+
+    ['A3 · Re-importing the same feeds never doubles a card', async () => {
+      reset(); noCisco();
+      JobFetchStore.setSearch('Bayt', BAYT_URL);
+      const run1 = JobFetch.fetchNow();
+      await settle();
+      await JobFetch.onResult(run1.token, { ok: true, token: run1.token, totals: null, sources: [], jobs: [] });
+      assert(ImportedJobs.active().length === 2, 'first run puts 2 on the board');
+
+      /* second run: the backend reports them as duplicates and returns no rows */
+      atsBody = atsSummary({ found: 2, saved: 0, duplicate: 2, failed: 0, jobs: [] });
+      const run2 = JobFetch.fetchNow();
+      await settle();
+      await JobFetch.onResult(run2.token, { ok: true, token: run2.token, totals: null, sources: [], jobs: [] });
+
+      assert(ImportedJobs.active().length === 2, 'still exactly 2 cards, got ' + ImportedJobs.active().length);
+      assert(JobFetchStore.lastRun().totals.duplicate === 2, 'and they are counted as duplicates');
+      return 'idempotent across runs';
+    }],
+
+    ['A4 · ATS runs even with no saved search URLs configured', async () => {
+      reset(); noCisco();
+      assert(JobFetchStore.configured().length === 0, 'no portal is configured');
+      const cap = captureMessages();
+      const r = JobFetch.fetchNow();
+      await waitFor(() => JobFetch.ui.running === false, 200);
+      cap.stop();
+
+      assert(r.ok && r.ats, 'the run still starts for the public feeds: ' + JSON.stringify(r));
+      assert(!cap.seen.some(m => m.kind === 'fetch-jobs'), 'no extension message when no portal is configured');
+      assert(atsCalls === 1, 'the ATS import still ran');
+      const run = JobFetchStore.lastRun();
+      assert(run && run.ok, 'the run is recorded as successful: ' + JSON.stringify(run && run.error));
+      assert(run.totals.found === 3 && run.totals.saved === 2, 'with the ATS counts: ' + JSON.stringify(run.totals));
+      assert(ImportedJobs.active().length === 2, 'and its jobs reached the board');
+      return 'no portals needed — Greenhouse + Lever stand alone';
+    }],
+
+    ['A5 · A backend that is down is reported, and never claims success', async () => {
+      reset(); noCisco();
+      atsReachable = false;
+      const r = JobFetch.fetchNow();
+      await waitFor(() => JobFetch.ui.running === false, 200);
+
+      const run = JobFetchStore.lastRun();
+      const row = (run.sources || []).find(s => /Greenhouse \+ Lever/.test(s.id));
+      assert(row, 'an honest failure row is recorded: ' + JSON.stringify(run.sources));
+      assert(row.status === 'failed' && /backend is not reachable/i.test(row.reason), 'and says why: ' + row.reason);
+      assert(run.totals.saved === 0 && ImportedJobs.active().length === 0, 'nothing is invented');
+      return 'backend down → failed row, zero counts';
+    }],
+
+    ['A6 · The run reshapes the backend summary without inventing numbers', () => {
+      const frag = JobFetch.atsFragment(atsSummary());
+      assert(frag.totals.found === 3 && frag.totals.saved === 2 && frag.totals.duplicate === 1 && frag.totals.failed === 0,
+        'totals come straight from the backend: ' + JSON.stringify(frag.totals));
+      assert(frag.sources.length === 2 && frag.jobs.length === 2, 'one row per company, rows passed through');
+      /* the region filter is surfaced, not hidden */
+      assert(/13 postings outside Saudi Arabia \/ UAE \/ GCC \/ Remote/.test(frag.sources[0].reason),
+        'the filtered-out count is shown: ' + frag.sources[0].reason);
+
+      /* a company whose feed failed is marked failed, not silently ok */
+      const bad = JobFetch.atsFragment(atsSummary({
+        detail: [{ company: 'Broken', ats: 'lever', error: 'HTTP 404', found: 0, saved: 0, duplicate: 0, failed: 1 }],
+      }));
+      assert(bad.sources[0].status === 'failed' && /404/.test(bad.sources[0].reason), 'feed error surfaces');
+      return 'counts passed through · filtered count shown · feed errors surfaced';
+    }],
+
+    /* ---- Cisco (careers.cisco.com) ---- */
+
+    ['C1 · Cisco is imported on every Fetch Jobs Now, alongside the ATS feeds', async () => {
+      reset();
+      JobFetch.fetchNow();
+      await waitFor(() => JobFetch.ui.running === false, 200);
+
+      assert(ciscoCalls === 1, 'the Cisco import must be requested once, got ' + ciscoCalls);
+      assert(atsCalls === 1, 'and the ATS import still runs, got ' + atsCalls);
+
+      const run = JobFetchStore.lastRun();
+      const ids = run.sources.map(s => s.id);
+      assert(ids.some(i => /Cisco · Saudi Arabia/.test(i)), 'a row per Cisco country: ' + ids.join(', '));
+      assert(ids.some(i => /Cisco · Qatar/.test(i)), 'including the empty one: ' + ids.join(', '));
+      assert(ids.some(i => /Careem/.test(i)), 'the Greenhouse/Lever rows are untouched: ' + ids.join(', '));
+
+      /* ats 3/2/1/0 + cisco 2/2/0/0 */
+      const t = run.totals;
+      assert(t.found === 5 && t.saved === 4 && t.duplicate === 1 && t.failed === 0,
+        'both backend sources add up: ' + JSON.stringify(t));
+
+      const sa = run.sources.find(s => /Cisco · Saudi Arabia/.test(s.id));
+      assert(sa.found === 2 && sa.saved === 2, 'Saudi counts: ' + JSON.stringify(sa));
+      assert(/3 postings outside the target roles/.test(sa.reason), 'filtered-out is explained: ' + sa.reason);
+      return 'Cisco + Greenhouse + Lever in one run · found 5 · saved 4';
+    }],
+
+    ['C2 · Cisco jobs land in Today\'s Jobs immediately', async () => {
+      reset();
+      noAts();
+      backendJobs = [];
+      assert(ImportedJobs.active().length === 0, 'the board starts empty');
+
+      JobFetch.fetchNow();
+      await waitFor(() => JobFetch.ui.running === false, 200);
+
+      const board = ImportedJobs.active();
+      assert(board.length === 2, 'both Cisco jobs must be on the board, got ' + board.length);
+      const j = board.find(x => /Partner Solutions Engineer/.test(x.title));
+      assert(j, 'the Cisco job is in the store Today\'s Jobs renders');
+      assert(j.company === 'Cisco' && j.source === 'Cisco', 'company/source: ' + j.company + '/' + j.source);
+      assert(j.location === 'Riyadh, Saudi Arabia', 'Saudi location kept: ' + j.location);
+      assert(j.backendId === 9101, 'the backend id is kept for dedup');
+      assert(j.status === 'new', 'arrives as new — no decision taken for the user');
+      assert(Imports.render().indexOf('Partner Solutions Engineer') !== -1, 'and it renders on the board');
+      return '2 Cisco jobs on the board with no refresh';
+    }],
+
+    ['C3 · Re-running never doubles a Cisco card', async () => {
+      reset();
+      JobFetch.fetchNow();
+      await waitFor(() => JobFetch.ui.running === false, 200);
+      assert(ImportedJobs.active().filter(j => j.source === 'Cisco').length === 2, 'first run adds 2');
+
+      /* second run: the backend reports them as duplicates and returns no rows */
+      ciscoBody = ciscoSummary({ found: 2, saved: 0, duplicate: 2, jobs: [] });
+      JobFetch.fetchNow();
+      await waitFor(() => JobFetch.ui.running === false, 200);
+
+      assert(ImportedJobs.active().filter(j => j.source === 'Cisco').length === 2,
+        'still exactly 2 Cisco cards, got ' + ImportedJobs.active().filter(j => j.source === 'Cisco').length);
+      return 'idempotent across runs';
+    }],
+
+    ['C4 · A Cisco failure is reported and never claims success', async () => {
+      reset();
+      ciscoReachable = false;
+      JobFetch.fetchNow();
+      await waitFor(() => JobFetch.ui.running === false, 200);
+
+      const run = JobFetchStore.lastRun();
+      const row = (run.sources || []).find(s => s.id === 'Cisco');
+      assert(row && row.status === 'failed', 'an honest failure row: ' + JSON.stringify(run.sources));
+      assert(/backend is not reachable/i.test(row.reason), 'and says why: ' + row.reason);
+      /* the ATS half still counted — one source failing is not the run failing */
+      assert(run.totals.saved === 2, 'the other source still saved: ' + JSON.stringify(run.totals));
+      assert(!ImportedJobs.active().some(j => j.source === 'Cisco'), 'no Cisco job is invented');
+      return 'Cisco down → failed row · ATS unaffected';
+    }],
+
+    ['C5 · The Cisco summary is reshaped without inventing numbers', () => {
+      const frag = JobFetch.ciscoFragment(ciscoSummary());
+      assert(frag.totals.found === 2 && frag.totals.saved === 2, 'totals from the backend: ' + JSON.stringify(frag.totals));
+      assert(frag.sources.length === 2 && frag.jobs.length === 2, 'one row per country');
+      assert(frag.sources[0].id === 'Cisco · Saudi Arabia', 'row id: ' + frag.sources[0].id);
+      const err = JobFetch.ciscoFragment(ciscoSummary({
+        detail: [{ country: 'Qatar', error: 'boom', found: 0, saved: 0, duplicate: 0, failed: 1 }],
+      }));
+      assert(err.sources[0].status === 'failed' && /boom/.test(err.sources[0].reason), 'errors surface');
+      return 'counts passed through · per-country rows · errors surfaced';
     }],
 
     ['11 · v1 scope: the panel offers no scoring, autofill or apply controls', () => {
